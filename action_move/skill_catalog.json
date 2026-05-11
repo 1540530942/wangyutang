@@ -3,7 +3,7 @@
   "robot": "TurboPi",
   "notes": [
     "Camera look skills assume PWM servo 1 is pan and PWM servo 2 is tilt.",
-    "Look skills use 1000..2000 for a wider visible camera movement while staying inside the conservative remote-control range.",
+    "Look skills use servo1=1000 for left and servo1=1700 for right after image-difference verification; 2000 can point too close to nearby objects.",
     "If the physical direction is inverted, swap the corresponding left/right or up/down positions in this catalog.",
     "Base movement uses /cmd_vel and always publishes stop after a timed burst.",
     "The original 0.10..0.12 movement values only converted to about 10..12 percent wheel speed, which can be below the physical movement threshold."
@@ -26,7 +26,7 @@
       "name_zh": "向左看",
       "description": "驱动摄像头水平舵机向左偏转，改变摄像头观察方向。",
       "type": "camera_servo",
-      "aliases": ["左看", "看左边", "摄像头向左", "镜头向左"],
+      "aliases": ["左看", "看左边", "摄像头向左", "镜头向左", "舵机向左转", "向左转"],
       "servo": {"id": 1, "position": 1000, "axis": "pan"}
     },
     {
@@ -34,8 +34,8 @@
       "name_zh": "向右看",
       "description": "驱动摄像头水平舵机向右偏转，改变摄像头观察方向。",
       "type": "camera_servo",
-      "aliases": ["右看", "看右边", "摄像头向右", "镜头向右"],
-      "servo": {"id": 1, "position": 2000, "axis": "pan"}
+      "aliases": ["右看", "看右边", "摄像头向右", "镜头向右", "舵机向右转", "向右转"],
+      "servo": {"id": 1, "position": 1700, "axis": "pan"}
     },
     {
       "id": "look_up",
