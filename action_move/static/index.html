@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TurboPi Action Move</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar">
+        <div>
+          <h1>TurboPi Action Move</h1>
+          <p>Raspberry Pi 5 / TurboPi motion and camera pan command queue.</p>
+        </div>
+        <div class="status" id="deviceStatus">checking...</div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
+          <h2>Camera Pan</h2>
+          <span>servo2 horizontal axis</span>
+        </div>
+        <div class="grid">
+          <button data-action="look_left">向左看</button>
+          <button data-action="look_right">向右看</button>
+          <button data-action="look_up">向上看</button>
+          <button data-action="look_down">向下看</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
+          <h2>Base Move</h2>
+          <span>timed /cmd_vel burst with stop</span>
+        </div>
+        <div class="pad">
+          <span></span>
+          <button data-action="move_forward">向前走</button>
+          <span></span>
+          <button data-action="move_left">向左走</button>
+          <button data-action="move_backward">向后走</button>
+          <button data-action="move_right">向右走</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
+          <h2>Tasks</h2>
+          <button class="small" id="refreshBtn">刷新</button>
+        </div>
+        <div class="tasks" id="tasks"></div>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>

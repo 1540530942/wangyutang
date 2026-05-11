@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+data/
+movement_verify/
+servo_scan/
+monitor_logs/
+*_verify*.jpg
+*.log

@@ -75,6 +75,23 @@
 	}
 }
 
+(action_path_routes) {
+	handle /action {
+		redir /action/ 308
+	}
+	handle_path /action/static/* {
+		rewrite * /static{path}
+		reverse_proxy action-move:8094
+	}
+	handle_path /action/api/* {
+		rewrite * /api{path}
+		reverse_proxy action-move:8094
+	}
+	handle_path /action/* {
+		reverse_proxy action-move:8094
+	}
+}
+
 (web_path_routes) {
 	handle /web {
 		redir /web/ 308
@@ -141,6 +158,7 @@
 	import remote_vite_dev_asset_routes
 	import sensing_path_routes
 	import camera_path_routes
+	import action_path_routes
 	import web_path_routes
 	import llm_path_routes
 	import robot_path_routes
@@ -202,6 +220,11 @@ https://sensing.wangyutang.com {
 https://camera.wangyutang.cn {
 	encode zstd gzip
 	reverse_proxy camera-snapshot:8099
+}
+
+https://action.wangyutang.cn {
+	encode zstd gzip
+	reverse_proxy action-move:8094
 }
 
 https://llm.wangyutang.cn {

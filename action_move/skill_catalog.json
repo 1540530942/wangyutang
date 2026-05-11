@@ -2,8 +2,9 @@
   "version": 1,
   "robot": "TurboPi",
   "notes": [
-    "Camera look skills assume PWM servo 1 is pan and PWM servo 2 is tilt.",
-    "Look skills use servo1=1000 for left and servo1=1700 for right after image-difference verification; 2000 can point too close to nearby objects.",
+    "Image calibration shows PWM servo 2 is the horizontal pan axis, while PWM servo 1 changes the vertical/pitch view.",
+    "Left/right look skills use servo2=1800 for left and servo2=1200 for right after image-difference verification.",
+    "Up/down look skills are mapped to the pitch axis on servo1 with conservative 1000/1700 positions.",
     "If the physical direction is inverted, swap the corresponding left/right or up/down positions in this catalog.",
     "Base movement uses /cmd_vel and always publishes stop after a timed burst.",
     "The original 0.10..0.12 movement values only converted to about 10..12 percent wheel speed, which can be below the physical movement threshold."
@@ -27,7 +28,7 @@
       "description": "驱动摄像头水平舵机向左偏转，改变摄像头观察方向。",
       "type": "camera_servo",
       "aliases": ["左看", "看左边", "摄像头向左", "镜头向左", "舵机向左转", "向左转"],
-      "servo": {"id": 1, "position": 1000, "axis": "pan"}
+      "servo": {"id": 2, "position": 1800, "axis": "pan"}
     },
     {
       "id": "look_right",
@@ -35,7 +36,7 @@
       "description": "驱动摄像头水平舵机向右偏转，改变摄像头观察方向。",
       "type": "camera_servo",
       "aliases": ["右看", "看右边", "摄像头向右", "镜头向右", "舵机向右转", "向右转"],
-      "servo": {"id": 1, "position": 1700, "axis": "pan"}
+      "servo": {"id": 2, "position": 1200, "axis": "pan"}
     },
     {
       "id": "look_up",
@@ -43,7 +44,7 @@
       "description": "驱动摄像头俯仰舵机向上偏转。",
       "type": "camera_servo",
       "aliases": ["上看", "看上面", "摄像头向上", "镜头向上"],
-      "servo": {"id": 2, "position": 1000, "axis": "tilt"}
+      "servo": {"id": 1, "position": 1000, "axis": "tilt"}
     },
     {
       "id": "look_down",
@@ -51,7 +52,7 @@
       "description": "驱动摄像头俯仰舵机向下偏转。",
       "type": "camera_servo",
       "aliases": ["下看", "看下面", "摄像头向下", "镜头向下"],
-      "servo": {"id": 2, "position": 2000, "axis": "tilt"}
+      "servo": {"id": 1, "position": 1700, "axis": "tilt"}
     },
     {
       "id": "move_forward",

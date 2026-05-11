@@ -60,6 +60,21 @@
     "data_owner": "camera_snapshot_data"
   },
   {
+    "id": "action-move",
+    "name": "TurboPi Action Move",
+    "public_url": "https://www.wangyutang.cn/action/",
+    "local_url": "http://127.0.0.1:8094/",
+    "route_strategy": "path-through-gateway + edge-action-poller",
+    "path_prefix": "/action/",
+    "service_url": "http://action-move:8094",
+    "health_url": "http://action-move:8094/api/health",
+    "image": "action-move:local",
+    "status": "ready",
+    "summary": "TurboPi action queue for camera pan skills and timed chassis movement, backed by Raspberry Pi edge polling.",
+    "capabilities": ["turbopi-action", "motion-skill", "camera-pan", "cmd-vel", "edge-task-queue"],
+    "data_owner": "action_move_data"
+  },
+  {
     "id": "web-manager",
     "name": "Web Manager 模块网页监督台",
     "public_url": "https://www.wangyutang.cn/web/",
