@@ -149,7 +149,7 @@ python3 pi_camera_sender.py --server https://camera.wangyutang.cn --token your-s
 - `GET /api/control`：读取当前拍照任务。
 - `GET /api/gpio`：读取最新 GPIO 状态。
 - `POST /api/gpio`：树莓派独立上报 GPIO 状态，body 为 JSON。
-- `POST /api/capture`：创建拍照任务，`mode` 为 `single`、`screenshot` 或 `continuous`，可选 `query_gpio`，默认 `26`。
+- `POST /api/capture`：创建截图任务，`mode` 为 `single`（摄像机截图）、`screenshot`（屏幕截图）、`face`（表情截图）或 `continuous`，可选 `query_gpio`，默认 `26`。
 - `POST /api/stop`：停止当前持续发送任务。
 - `POST /api/frame`：树莓派上传 JPEG，body 为原始 JPEG，header 带 `X-Device-ID` / `X-Frame-ID` / `X-Task-ID`，可带 `X-Gpio-*` 状态 header。
 - `GET /api/latest`：读取最新帧元数据。

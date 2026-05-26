@@ -310,7 +310,7 @@ def create_capture_task(payload: dict[str, object]) -> dict[str, object]:
     mode = str(payload.get("mode") or "single").strip().lower()
     query_gpio = normalize_gpio(payload.get("query_gpio"), 26)
     now = time.time()
-    if mode in {"single", "screenshot", "inspect"}:
+    if mode in {"single", "screenshot", "face", "inspect"}:
         max_frames = 1
         duration_seconds = 20 if mode == "inspect" else 10
         interval_ms = 0
@@ -323,7 +323,7 @@ def create_capture_task(payload: dict[str, object]) -> dict[str, object]:
         max_frames = 0
         duration_seconds = 24 * 60 * 60
     else:
-        raise HTTPException(status_code=400, detail="mode must be single, screenshot, inspect, or continuous")
+        raise HTTPException(status_code=400, detail="mode must be single, screenshot, face, inspect, or continuous")
 
     task = {
         "id": f"{int(now * 1000)}-{secrets.token_hex(3)}",

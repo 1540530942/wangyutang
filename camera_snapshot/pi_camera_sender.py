@@ -264,7 +264,7 @@ def build_camera(args: argparse.Namespace) -> CameraBackend:
     raise RuntimeError(f"unsupported backend: {args.backend}")
 
 
-def capture_screenshot_jpeg(quality: int) -> bytes:
+def capture_screenshot_jpeg(quality: int, label_prefix: str = "Screenshot") -> bytes:
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
         png_path = Path(handle.name)
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as handle:
@@ -303,7 +303,7 @@ def capture_screenshot_jpeg(quality: int) -> bytes:
             from PIL import ImageDraw
 
             image = Image.open(jpg_path).convert("RGB")
-        label = time.strftime("Screenshot %Y-%m-%d %H:%M:%S")
+        label = time.strftime(f"{label_prefix} %Y-%m-%d %H:%M:%S")
         data = stamp_image(image, label, quality)
         if not data:
             raise RuntimeError("screen capture produced an empty file")
@@ -341,7 +341,7 @@ def capture_camera_or_screenshot_fallback(
                 camera.close()
             except Exception as close_exc:
                 print(f"[WARN] camera close failed: {close_exc}", flush=True)
-        return capture_screenshot_jpeg(args.quality), None, "screenshot-fallback", error
+        return capture_screenshot_jpeg(args.quality, "Camera fallback"), None, "screenshot-fallback", error
 
 
 def fetch_control(session: requests.Session, server: str) -> dict[str, object]:
@@ -589,8 +589,12 @@ def main() -> None:
                 frame_id += 1
                 try:
                     if mode in {"screenshot", "inspect"}:
-                        jpeg = capture_screenshot_jpeg(args.quality)
+                        jpeg = capture_screenshot_jpeg(args.quality, "Screen")
                         capture_source = mode
+                        capture_error = ""
+                    elif mode == "face":
+                        jpeg = capture_screenshot_jpeg(args.quality, "Face")
+                        capture_source = "face-screenshot"
                         capture_error = ""
                     elif mode == "single":
                         jpeg, camera, capture_source, capture_error = capture_camera_or_screenshot_fallback(camera, args)
@@ -629,7 +633,7 @@ def main() -> None:
                         last_gpio_upload_at = time.time()
                     except Exception as heartbeat_exc:
                         print(f"[WARN] gpio status upload failed: {heartbeat_exc}", flush=True)
-                    if mode in {"screenshot", "inspect"}:
+                    if mode in {"screenshot", "face", "inspect"}:
                         break
                     if max_frames != 0:
                         break

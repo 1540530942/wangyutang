@@ -2,7 +2,7 @@ const elements = {
   statusBadge: document.getElementById("statusBadge"),
   singleButton: document.getElementById("singleButton"),
   screenshotButton: document.getElementById("screenshotButton"),
-  inspectButton: document.getElementById("inspectButton"),
+  faceButton: document.getElementById("faceButton"),
   continuousButton: document.getElementById("continuousButton"),
   downloadButton: document.getElementById("downloadButton"),
   intervalSelect: document.getElementById("intervalSelect"),
@@ -120,7 +120,7 @@ function clearInspection() {
 function setTaskButtonsBusy(isBusy) {
   elements.singleButton.disabled = isBusy;
   elements.screenshotButton.disabled = isBusy;
-  elements.inspectButton.disabled = isBusy;
+  elements.faceButton.disabled = isBusy;
 }
 
 function isTaskActive(task) {
@@ -209,8 +209,12 @@ function updateCameraHealth(meta) {
   const error = meta.capture_error || "";
   if (source === "screenshot-fallback") {
     setValue(elements.cameraHealth, error ? `相机异常：${error}` : "相机异常，已用截图兜底", "warn");
-  } else if (source === "screenshot" || source === "inspect") {
+  } else if (source === "screenshot") {
     setValue(elements.cameraHealth, "收到屏幕截图，不代表相机正常", "warn");
+  } else if (source === "face-screenshot") {
+    setValue(elements.cameraHealth, "收到表情截图，不代表相机正常", "warn");
+  } else if (source === "inspect") {
+    setValue(elements.cameraHealth, "收到巡检截图，不代表相机正常", "warn");
   } else if (source === "server-cache") {
     setValue(elements.cameraHealth, "本地缓存图片", "warn");
   } else {
@@ -288,7 +292,7 @@ async function createTask(mode, extra = {}) {
       body: JSON.stringify({ mode, query_gpio: selectedGpio(), ...extra }),
     });
     await loadControl();
-    if (["single", "screenshot", "inspect"].includes(mode) && result.task && result.task.id) {
+    if (["single", "screenshot", "face", "inspect"].includes(mode) && result.task && result.task.id) {
       focusedTaskId = result.task.id;
       await waitForTaskFrame(result.task.id);
       await loadInspection();
@@ -361,7 +365,7 @@ async function tick() {
 
 elements.singleButton.addEventListener("click", () => createTask("single"));
 elements.screenshotButton.addEventListener("click", () => createTask("screenshot"));
-elements.inspectButton.addEventListener("click", () => createTask("inspect"));
+elements.faceButton.addEventListener("click", () => createTask("face"));
 elements.downloadButton.addEventListener("click", downloadLatestImage);
 elements.continuousButton.addEventListener("click", async () => {
   const task = control.task;
