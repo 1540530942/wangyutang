@@ -13,20 +13,20 @@
         <p class="eyebrow">TurboPi</p>
         <h1>Camera Snapshot</h1>
       </div>
-      <div id="statusBadge" class="badge">未连接</div>
+      <div id="statusBadge" class="badge">初始化</div>
     </header>
 
     <section class="viewer">
-      <img id="cameraImage" alt="TurboPi camera latest frame">
-      <div id="emptyState" class="empty">等待拍照任务</div>
+      <img id="cameraImage" alt="TurboPi camera latest frame" hidden>
+      <div id="emptyState" class="empty">等待树莓派上传画面</div>
     </section>
 
     <section class="controls">
-      <button id="singleButton" class="primary" type="button">单帧发送</button>
-      <button id="screenshotButton" type="button">截图上传</button>
+      <button id="singleButton" class="primary" type="button">拍一张</button>
+      <button id="screenshotButton" type="button">上传屏幕截图</button>
       <button id="inspectButton" type="button">巡检快照</button>
-      <button id="continuousButton" type="button">持续发送</button>
-      <button id="downloadButton" type="button">保存到本地</button>
+      <button id="continuousButton" type="button">连续发送</button>
+      <button id="downloadButton" type="button">保存图片</button>
       <label class="field">
         <span>频率</span>
         <select id="intervalSelect">
@@ -38,7 +38,7 @@
         </select>
       </label>
       <label class="field">
-        <span>查询 GPIO</span>
+        <span>GPIO</span>
         <select id="gpioSelect">
           <option value="26" selected>GPIO26 LED2</option>
           <option value="16">GPIO16 LED1</option>
@@ -59,14 +59,15 @@
     </section>
 
     <section class="meta">
-      <div><span>设备</span><strong id="deviceId">-</strong></div>
-      <div><span>帧 ID</span><strong id="frameId">-</strong></div>
-      <div><span>更新时间</span><strong id="updatedAt">-</strong></div>
-      <div><span>大小</span><strong id="contentLength">-</strong></div>
-      <div><span>来源</span><strong id="captureSource">-</strong></div>
-      <div><span>引脚状态</span><strong id="gpioState">-</strong></div>
-      <div><span>采样时间</span><strong id="gpioSampledAt">-</strong></div>
       <div><span>树莓派</span><strong id="deviceOnline">-</strong></div>
+      <div><span>相机状态</span><strong id="cameraHealth">-</strong></div>
+      <div><span>采集来源</span><strong id="captureSource">-</strong></div>
+      <div><span>更新时间</span><strong id="updatedAt">-</strong></div>
+      <div><span>图片大小</span><strong id="contentLength">-</strong></div>
+      <div><span>设备 ID</span><strong id="deviceId">-</strong></div>
+      <div><span>帧 ID</span><strong id="frameId">-</strong></div>
+      <div><span>GPIO 状态</span><strong id="gpioState">-</strong></div>
+      <div><span>GPIO 采样</span><strong id="gpioSampledAt">-</strong></div>
       <div><span>任务</span><strong id="taskState">-</strong></div>
     </section>
 
@@ -89,6 +90,6 @@
       </div>
     </section>
   </main>
-  <script src="./static/app.js?v=20260511-watermark-refresh"></script>
+  <script src="./static/app.js?v=20260526-camera-status"></script>
 </body>
 </html>

@@ -191,9 +191,8 @@ button.primary.danger {
 .meta strong,
 .inspection-grid strong {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .meta strong[data-mode="ok"],

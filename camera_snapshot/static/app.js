@@ -10,14 +10,15 @@ const elements = {
   refreshButton: document.getElementById("refreshButton"),
   cameraImage: document.getElementById("cameraImage"),
   emptyState: document.getElementById("emptyState"),
-  deviceId: document.getElementById("deviceId"),
-  frameId: document.getElementById("frameId"),
+  deviceOnline: document.getElementById("deviceOnline"),
+  cameraHealth: document.getElementById("cameraHealth"),
+  captureSource: document.getElementById("captureSource"),
   updatedAt: document.getElementById("updatedAt"),
   contentLength: document.getElementById("contentLength"),
-  captureSource: document.getElementById("captureSource"),
+  deviceId: document.getElementById("deviceId"),
+  frameId: document.getElementById("frameId"),
   gpioState: document.getElementById("gpioState"),
   gpioSampledAt: document.getElementById("gpioSampledAt"),
-  deviceOnline: document.getElementById("deviceOnline"),
   taskState: document.getElementById("taskState"),
   inspectHost: document.getElementById("inspectHost"),
   inspectTemp: document.getElementById("inspectTemp"),
@@ -32,19 +33,50 @@ const elements = {
 };
 
 let control = { task: null };
-let lastUpdatedAt = 0;
 let latestMeta = null;
-let tickRunning = false;
+let lastUpdatedAt = 0;
 let focusedTaskId = "";
+let tickRunning = false;
+
+function apiPath(path) {
+  return `api/${path}`;
+}
+
+function selectedGpio() {
+  return Number(elements.gpioSelect.value || 26);
+}
+
+function setMode(element, mode) {
+  if (mode) {
+    element.dataset.mode = mode;
+  } else {
+    delete element.dataset.mode;
+  }
+}
+
+function setStatus(text, mode = "") {
+  elements.statusBadge.textContent = text;
+  setMode(elements.statusBadge, mode);
+}
+
+function setValue(element, value, mode = "") {
+  const text = value || "-";
+  element.textContent = text;
+  element.title = text;
+  setMode(element, mode);
+}
 
 function formatTime(seconds) {
   if (!seconds) return "-";
   return new Date(seconds * 1000).toLocaleString();
 }
 
-function setStatus(text, mode) {
-  elements.statusBadge.textContent = text;
-  elements.statusBadge.dataset.mode = mode;
+function formatAge(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "-";
+  if (seconds < 3) return "刚刚";
+  if (seconds < 60) return `${Math.round(seconds)} 秒前`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)} 分钟前`;
+  return `${Math.round(seconds / 3600)} 小时前`;
 }
 
 async function getJson(url, options) {
@@ -55,17 +87,9 @@ async function getJson(url, options) {
   return response.json();
 }
 
-function apiPath(path) {
-  return `api/${path}`;
-}
-
-function selectedGpio() {
-  return Number(elements.gpioSelect.value || 26);
-}
-
 function formatGpio(gpioMeta) {
   const fallbackGpio = selectedGpio();
-  if (!gpioMeta) return `GPIO${fallbackGpio} 未采样`;
+  if (!gpioMeta) return `GPIO${fallbackGpio} 未上报`;
   const gpio = gpioMeta.gpio === 0 || gpioMeta.gpio ? `GPIO${gpioMeta.gpio}` : `GPIO${fallbackGpio}`;
   if (!gpioMeta.available) return `${gpio} 未采样`;
   const level = gpioMeta.level === "hi" ? "高电平" : gpioMeta.level === "lo" ? "低电平" : gpioMeta.level || "-";
@@ -74,17 +98,8 @@ function formatGpio(gpioMeta) {
 }
 
 function applyGpioMeta(gpioMeta) {
-  elements.gpioState.textContent = formatGpio(gpioMeta);
-  elements.gpioSampledAt.textContent = gpioMeta && gpioMeta.sampled_at ? formatTime(gpioMeta.sampled_at) : "-";
-}
-
-function setInspectionValue(element, value, mode = "") {
-  element.textContent = value || "-";
-  if (mode) {
-    element.dataset.mode = mode;
-  } else {
-    delete element.dataset.mode;
-  }
+  setValue(elements.gpioState, formatGpio(gpioMeta), gpioMeta && gpioMeta.available ? "ok" : "warn");
+  setValue(elements.gpioSampledAt, gpioMeta && gpioMeta.sampled_at ? formatTime(gpioMeta.sampled_at) : "-");
 }
 
 function clearInspection() {
@@ -99,7 +114,7 @@ function clearInspection() {
     elements.inspectDisk,
     elements.inspectService,
     elements.inspectLoad,
-  ].forEach((element) => setInspectionValue(element, "-"));
+  ].forEach((element) => setValue(element, "-"));
 }
 
 function setTaskButtonsBusy(isBusy) {
@@ -108,37 +123,46 @@ function setTaskButtonsBusy(isBusy) {
   elements.inspectButton.disabled = isBusy;
 }
 
+function isTaskActive(task) {
+  return task && !["complete", "expired", "stopped"].includes(task.status);
+}
+
 async function loadControl() {
   control = await getJson(apiPath("control"));
   const task = control.task;
-  if (task) {
-    const total = task.max_frames ? task.max_frames : "∞";
-    elements.taskState.textContent = `${task.mode} ${task.status} ${task.uploaded_frames}/${total}`;
-    const activeContinuous = task.mode === "continuous" && !["complete", "expired", "stopped"].includes(task.status);
-    elements.continuousButton.textContent = activeContinuous ? "停止持续发送" : "持续发送";
-    elements.continuousButton.classList.toggle("danger", activeContinuous);
-  } else {
-    elements.taskState.textContent = "-";
-    elements.continuousButton.textContent = "持续发送";
+  if (!task) {
+    setValue(elements.taskState, "-");
+    elements.continuousButton.textContent = "连续发送";
     elements.continuousButton.classList.remove("danger");
+    return control;
   }
+
+  const total = task.max_frames ? task.max_frames : "∞";
+  const label = `${task.mode} ${task.status} ${task.uploaded_frames}/${total}`;
+  const mode = task.status === "complete" ? "ok" : isTaskActive(task) ? "warn" : "";
+  setValue(elements.taskState, label, mode);
+
+  const activeContinuous = task.mode === "continuous" && isTaskActive(task);
+  elements.continuousButton.textContent = activeContinuous ? "停止连续发送" : "连续发送";
+  elements.continuousButton.classList.toggle("danger", activeContinuous);
+  return control;
 }
 
 async function loadDeviceStatus() {
   try {
     const device = await getJson(apiPath("device"));
     if (device.online) {
-      const label = device.device_id ? `${device.device_id} 在线` : "在线";
-      elements.deviceOnline.textContent = label;
-      elements.deviceOnline.dataset.mode = "ok";
-      return device;
+      const age = formatAge(Number(device.age_seconds || 0));
+      const label = device.device_id ? `${device.device_id} 在线，${age}` : `在线，${age}`;
+      setValue(elements.deviceOnline, label, "ok");
+    } else if (device.last_seen_at) {
+      setValue(elements.deviceOnline, `离线，${formatAge(Number(device.age_seconds || 0))}`, "bad");
+    } else {
+      setValue(elements.deviceOnline, "未连接", "bad");
     }
-    elements.deviceOnline.textContent = device.last_seen_at ? "离线" : "未连接";
-    elements.deviceOnline.dataset.mode = "bad";
     return device;
   } catch (error) {
-    elements.deviceOnline.textContent = "状态未知";
-    elements.deviceOnline.dataset.mode = "bad";
+    setValue(elements.deviceOnline, "状态接口失败", "bad");
     return null;
   }
 }
@@ -150,21 +174,23 @@ async function loadInspection() {
       clearInspection();
       return inspection;
     }
+
     const temp = Number(inspection.temperature_c);
     const tempLabel = Number.isFinite(temp) ? `${temp.toFixed(1)}°C` : "-";
     const throttled = inspection.throttled || "-";
     const throttleOk = typeof throttled === "string" && throttled.includes("0x0");
     const service = inspection.sender_service || "-";
-    setInspectionValue(elements.inspectHost, inspection.hostname);
-    setInspectionValue(elements.inspectTemp, tempLabel, Number.isFinite(temp) && temp < 70 ? "ok" : "warn");
-    setInspectionValue(elements.inspectThrottle, throttleOk ? "正常" : throttled, throttleOk ? "ok" : "warn");
-    setInspectionValue(elements.inspectWifi, inspection.wifi_ssid);
-    setInspectionValue(elements.inspectIp, inspection.ip_address);
-    setInspectionValue(elements.inspectGateway, inspection.gateway);
-    setInspectionValue(elements.inspectUptime, inspection.uptime);
-    setInspectionValue(elements.inspectDisk, inspection.disk);
-    setInspectionValue(elements.inspectService, service, service === "active" ? "ok" : "bad");
-    setInspectionValue(elements.inspectLoad, inspection.load_average);
+
+    setValue(elements.inspectHost, inspection.hostname);
+    setValue(elements.inspectTemp, tempLabel, Number.isFinite(temp) && temp < 70 ? "ok" : "warn");
+    setValue(elements.inspectThrottle, throttleOk ? "正常" : throttled, throttleOk ? "ok" : "warn");
+    setValue(elements.inspectWifi, inspection.wifi_ssid);
+    setValue(elements.inspectIp, inspection.ip_address);
+    setValue(elements.inspectGateway, inspection.gateway);
+    setValue(elements.inspectUptime, inspection.uptime);
+    setValue(elements.inspectDisk, inspection.disk);
+    setValue(elements.inspectService, service, service === "active" ? "ok" : "bad");
+    setValue(elements.inspectLoad, inspection.load_average);
     return inspection;
   } catch (error) {
     clearInspection();
@@ -172,14 +198,86 @@ async function loadInspection() {
   }
 }
 
+function updateCameraHealth(meta) {
+  if (!meta || !meta.has_image) {
+    setValue(elements.cameraHealth, "暂无图片", "warn");
+    setValue(elements.captureSource, "-");
+    return;
+  }
+
+  const source = meta.capture_source || "unknown";
+  const error = meta.capture_error || "";
+  if (source === "screenshot-fallback") {
+    setValue(elements.cameraHealth, error ? `相机异常：${error}` : "相机异常，已用截图兜底", "warn");
+  } else if (source === "screenshot" || source === "inspect") {
+    setValue(elements.cameraHealth, "收到屏幕截图，不代表相机正常", "warn");
+  } else if (source === "server-cache") {
+    setValue(elements.cameraHealth, "本地缓存图片", "warn");
+  } else {
+    setValue(elements.cameraHealth, "真实摄像头画面", "ok");
+  }
+  setValue(elements.captureSource, error ? `${source}: ${error}` : source, source === "screenshot-fallback" ? "warn" : "ok");
+}
+
+async function refreshLatest(forceImage = false) {
+  try {
+    const [meta, gpioMeta] = await Promise.all([
+      getJson(apiPath("latest")),
+      getJson(apiPath("gpio")).catch(() => null),
+    ]);
+    latestMeta = meta;
+
+    if (!meta.has_image) {
+      elements.emptyState.hidden = false;
+      elements.cameraImage.hidden = true;
+      setValue(elements.updatedAt, "-");
+      setValue(elements.contentLength, "-");
+      setValue(elements.deviceId, "-");
+      setValue(elements.frameId, "-");
+      updateCameraHealth(meta);
+      applyGpioMeta(gpioMeta || meta.gpio || { gpio: selectedGpio(), available: false, sampled_at: 0 });
+      setStatus(control.task && isTaskActive(control.task) ? "等待上传" : "无图片", control.task ? "warn" : "idle");
+      return meta;
+    }
+
+    setValue(elements.deviceId, meta.device_id || "-");
+    setValue(elements.frameId, meta.frame_id || "-");
+    setValue(elements.updatedAt, `${formatTime(meta.updated_at)} (${formatAge(Date.now() / 1000 - Number(meta.updated_at || 0))})`);
+    setValue(elements.contentLength, meta.content_length ? `${Math.round(meta.content_length / 1024)} KB` : "-");
+    updateCameraHealth(meta);
+    applyGpioMeta(gpioMeta || meta.gpio || meta.led1);
+
+    elements.emptyState.hidden = true;
+    elements.cameraImage.hidden = false;
+
+    if (forceImage || meta.updated_at !== lastUpdatedAt) {
+      lastUpdatedAt = meta.updated_at;
+      elements.cameraImage.src = `${apiPath("latest.jpg")}?t=${Date.now()}`;
+    }
+
+    const ageSeconds = Date.now() / 1000 - Number(meta.updated_at || 0);
+    if (meta.capture_source === "screenshot-fallback") {
+      setStatus("相机异常", "warn");
+    } else {
+      setStatus(ageSeconds < 10 ? "画面已更新" : formatAge(ageSeconds), ageSeconds < 30 ? "ok" : "warn");
+    }
+    return meta;
+  } catch (error) {
+    setStatus("连接失败", "bad");
+    setValue(elements.cameraHealth, "接口请求失败", "bad");
+    return null;
+  }
+}
+
 async function createTask(mode, extra = {}) {
   const device = await loadDeviceStatus().catch(() => null);
   if (!device || !device.online) {
-    setStatus("树莓派离线，无法发送", "bad");
+    setStatus("树莓派离线，无法下发任务", "bad");
     await loadControl().catch(() => null);
     await refreshLatest(false).catch(() => null);
     return;
   }
+
   setTaskButtonsBusy(mode !== "continuous");
   applyGpioMeta({ gpio: selectedGpio(), available: false, sampled_at: 0 });
   setStatus("任务已下发", "warn");
@@ -197,14 +295,21 @@ async function createTask(mode, extra = {}) {
     } else {
       await refreshLatest(true);
     }
+  } catch (error) {
+    setStatus(`任务失败：${error.message}`, "bad");
   } finally {
     setTaskButtonsBusy(false);
   }
 }
 
 async function stopTask() {
-  await getJson(apiPath("stop"), { method: "POST" });
-  await loadControl();
+  try {
+    await getJson(apiPath("stop"), { method: "POST" });
+    await loadControl();
+    setStatus("已停止", "warn");
+  } catch (error) {
+    setStatus(`停止失败：${error.message}`, "bad");
+  }
 }
 
 function downloadLatestImage() {
@@ -223,56 +328,6 @@ function downloadLatestImage() {
   link.remove();
 }
 
-async function refreshLatest(forceImage) {
-  try {
-    const [meta, gpioMeta] = await Promise.all([
-      getJson(apiPath("latest")),
-      getJson(apiPath("gpio")).catch(() => null),
-    ]);
-    if (!meta.has_image) {
-      setStatus(control.task ? "等待上传" : "空闲", control.task ? "warn" : "idle");
-      elements.emptyState.hidden = false;
-      elements.cameraImage.hidden = true;
-      applyGpioMeta(gpioMeta || meta.gpio || { gpio: selectedGpio(), available: false, sampled_at: 0 });
-      latestMeta = meta;
-      return meta;
-    }
-
-    latestMeta = meta;
-    elements.deviceId.textContent = meta.device_id || "-";
-    elements.frameId.textContent = meta.frame_id || "-";
-    elements.updatedAt.textContent = formatTime(meta.updated_at);
-    elements.contentLength.textContent = meta.content_length ? `${Math.round(meta.content_length / 1024)} KB` : "-";
-    const captureSource = meta.capture_source || "-";
-    const captureError = meta.capture_error || "";
-    elements.captureSource.textContent = captureError ? `${captureSource}: ${captureError}` : captureSource;
-    if (captureSource === "screenshot-fallback") {
-      elements.captureSource.dataset.mode = "warn";
-    } else {
-      delete elements.captureSource.dataset.mode;
-    }
-    applyGpioMeta(gpioMeta || meta.gpio || meta.led1);
-    elements.emptyState.hidden = true;
-    elements.cameraImage.hidden = false;
-
-    if (forceImage || meta.updated_at !== lastUpdatedAt) {
-      lastUpdatedAt = meta.updated_at;
-      elements.cameraImage.src = `${apiPath("latest.jpg")}?t=${Date.now()}`;
-    }
-
-    const ageSeconds = Date.now() / 1000 - Number(meta.updated_at || 0);
-    if (captureSource === "screenshot-fallback") {
-      setStatus("相机不可用，已回退截图", "warn");
-    } else {
-      setStatus(ageSeconds < 5 ? "实时" : `${Math.round(ageSeconds)} 秒前`, ageSeconds < 5 ? "ok" : "warn");
-    }
-    return meta;
-  } catch (error) {
-    setStatus("连接失败", "bad");
-    return null;
-  }
-}
-
 async function waitForTaskFrame(taskId) {
   const deadline = Date.now() + 20000;
   while (Date.now() < deadline) {
@@ -280,7 +335,7 @@ async function waitForTaskFrame(taskId) {
     const meta = await refreshLatest(true);
     if (meta && meta.task_id === taskId) {
       focusedTaskId = "";
-      setStatus("已更新", "ok");
+      setStatus("图片已更新", "ok");
       return meta;
     }
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -288,21 +343,6 @@ async function waitForTaskFrame(taskId) {
   setStatus("等待上传超时", "warn");
   return null;
 }
-
-elements.singleButton.addEventListener("click", () => createTask("single"));
-elements.screenshotButton.addEventListener("click", () => createTask("screenshot"));
-elements.inspectButton.addEventListener("click", () => createTask("inspect"));
-elements.downloadButton.addEventListener("click", downloadLatestImage);
-elements.continuousButton.addEventListener("click", async () => {
-  const task = control.task;
-  const activeContinuous = task && task.mode === "continuous" && !["complete", "expired", "stopped"].includes(task.status);
-  if (activeContinuous) {
-    await stopTask();
-    return;
-  }
-  await createTask("continuous", { interval_ms: Number(elements.intervalSelect.value) });
-});
-elements.refreshButton.addEventListener("click", () => refreshLatest(true));
 
 async function tick() {
   if (tickRunning) return;
@@ -313,11 +353,26 @@ async function tick() {
     await loadInspection();
     await refreshLatest(Boolean(focusedTaskId));
   } catch (error) {
-    setStatus("控制失败", "bad");
+    setStatus("控制接口失败", "bad");
   } finally {
     tickRunning = false;
   }
 }
 
+elements.singleButton.addEventListener("click", () => createTask("single"));
+elements.screenshotButton.addEventListener("click", () => createTask("screenshot"));
+elements.inspectButton.addEventListener("click", () => createTask("inspect"));
+elements.downloadButton.addEventListener("click", downloadLatestImage);
+elements.continuousButton.addEventListener("click", async () => {
+  const task = control.task;
+  const activeContinuous = task && task.mode === "continuous" && isTaskActive(task);
+  if (activeContinuous) {
+    await stopTask();
+    return;
+  }
+  await createTask("continuous", { interval_ms: Number(elements.intervalSelect.value) });
+});
+elements.refreshButton.addEventListener("click", () => refreshLatest(true));
+
 tick();
-setInterval(tick, 800);
+setInterval(tick, 1000);
