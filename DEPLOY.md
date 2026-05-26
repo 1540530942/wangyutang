@@ -41,6 +41,25 @@ powershell -ExecutionPolicy Bypass -File scripts\deploy_camera_snapshot.ps1
 
 This updates both sides of the camera chain: the Tencent Cloud `camera-snapshot` container and the Raspberry Pi `camera-snapshot-sender.service`.
 
+GitHub Actions can run the same camera release from the repository:
+
+```text
+.github/workflows/deploy-camera-snapshot.yml
+```
+
+Required repository secrets:
+
+```text
+TENCENT_HOST              Tencent Cloud public host or IP
+TENCENT_USER              Tencent SSH user, usually root
+TENCENT_SSH_PRIVATE_KEY   Private key allowed to SSH into Tencent Cloud
+PI_HOST                   Raspberry Pi host reachable from Tencent Cloud
+PI_USER                   Raspberry Pi SSH user, usually pi
+PI_SSH_PRIVATE_KEY        Private key allowed to SSH into Raspberry Pi
+```
+
+The GitHub workflow uses Tencent Cloud as a jump host for the Raspberry Pi. It deploys only `camera_snapshot`, then verifies the public `/camera/` page and all three capture modes.
+
 The deployment script performs these steps:
 
 ```text

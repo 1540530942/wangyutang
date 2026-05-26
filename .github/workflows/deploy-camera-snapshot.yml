@@ -1,0 +1,180 @@
+name: Deploy camera_snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_pi:
+        description: "Update Raspberry Pi sender and systemd service"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+  push:
+    branches:
+      - main
+    paths:
+      - "camera_snapshot/**"
+      - "scripts/github_deploy_camera_snapshot.sh"
+      - ".github/workflows/deploy-camera-snapshot.yml"
+
+concurrency:
+  group: camera-snapshot-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+
+    env:
+      TENCENT_HOST: ${{ secrets.TENCENT_HOST }}
+      TENCENT_USER: ${{ secrets.TENCENT_USER }}
+      TENCENT_SSH_PRIVATE_KEY: ${{ secrets.TENCENT_SSH_PRIVATE_KEY }}
+      PI_HOST: ${{ secrets.PI_HOST }}
+      PI_USER: ${{ secrets.PI_USER }}
+      PI_SSH_PRIVATE_KEY: ${{ secrets.PI_SSH_PRIVATE_KEY }}
+      DEPLOY_PI: ${{ github.event_name == 'push' && 'true' || inputs.deploy_pi }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate camera module
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run syntax checks
+        run: |
+          python -m py_compile camera_snapshot/server.py camera_snapshot/pi_camera_sender.py
+
+      - name: Create release archive
+        run: |
+          tar \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='camera_snapshot/data' \
+            --exclude='camera_snapshot/dist' \
+            -czf camera_snapshot-${GITHUB_SHA}.tgz \
+            camera_snapshot scripts/github_deploy_camera_snapshot.sh
+
+      - name: Configure SSH
+        run: |
+          test -n "$TENCENT_HOST"
+          test -n "$TENCENT_USER"
+          test -n "$TENCENT_SSH_PRIVATE_KEY"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$TENCENT_SSH_PRIVATE_KEY" > ~/.ssh/tencent_key
+          chmod 600 ~/.ssh/tencent_key
+          {
+            echo "Host tencent-prod"
+            echo "  HostName $TENCENT_HOST"
+            echo "  User $TENCENT_USER"
+            echo "  IdentityFile ~/.ssh/tencent_key"
+            echo "  StrictHostKeyChecking accept-new"
+          } > ~/.ssh/config
+          if [ "$DEPLOY_PI" = "true" ]; then
+            test -n "$PI_HOST"
+            test -n "$PI_USER"
+            test -n "$PI_SSH_PRIVATE_KEY"
+            printf '%s\n' "$PI_SSH_PRIVATE_KEY" > ~/.ssh/pi_key
+            chmod 600 ~/.ssh/pi_key
+            {
+              echo "Host pi-camera"
+              echo "  HostName $PI_HOST"
+              echo "  User $PI_USER"
+              echo "  IdentityFile ~/.ssh/pi_key"
+              echo "  ProxyJump tencent-prod"
+              echo "  StrictHostKeyChecking accept-new"
+            } >> ~/.ssh/config
+          fi
+
+      - name: Upload release to Tencent Cloud
+        run: |
+          ssh tencent-prod "mkdir -p /tmp/wangyutang-camera-deploy"
+          scp camera_snapshot-${GITHUB_SHA}.tgz tencent-prod:/tmp/wangyutang-camera-deploy/
+
+      - name: Apply cloud release
+        run: |
+          ssh tencent-prod \
+            "bash -s -- '/tmp/wangyutang-camera-deploy/camera_snapshot-${GITHUB_SHA}.tgz' '${GITHUB_SHA}'" \
+            < scripts/github_deploy_camera_snapshot.sh
+
+      - name: Update Raspberry Pi sender
+        if: env.DEPLOY_PI == 'true'
+        run: |
+          scp camera_snapshot/pi_camera_sender.py pi-camera:/tmp/pi_camera_sender.py
+          scp camera_snapshot/systemd/camera-snapshot-sender.service pi-camera:/tmp/camera-snapshot-sender.service
+          ssh pi-camera '
+            set -euo pipefail
+            install -m 0644 /tmp/pi_camera_sender.py /home/pi/pi_camera_sender.py
+            sudo install -m 0644 /tmp/camera-snapshot-sender.service /etc/systemd/system/camera-snapshot-sender.service
+            sudo rm -f /etc/systemd/system/camera-snapshot-sender.service.d/override.conf
+            sudo rmdir /etc/systemd/system/camera-snapshot-sender.service.d 2>/dev/null || true
+            sudo systemctl daemon-reload
+            sudo systemctl enable camera-snapshot-sender.service
+            sudo systemctl restart camera-snapshot-sender.service
+            systemctl is-active --quiet camera-snapshot-sender.service
+            ps -ef | grep -E "pi_camera_sender.py" | grep -v grep
+          '
+
+      - name: Verify public camera flow
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          import urllib.request
+
+          base = "https://www.wangyutang.cn/camera"
+
+          def get_json(path):
+              with urllib.request.urlopen(base + path, timeout=20) as response:
+                  return json.loads(response.read().decode("utf-8"))
+
+          def post_json(path, payload):
+              data = json.dumps(payload).encode("utf-8")
+              request = urllib.request.Request(
+                  base + path,
+                  data=data,
+                  headers={"Content-Type": "application/json"},
+                  method="POST",
+              )
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  return json.loads(response.read().decode("utf-8"))
+
+          html = urllib.request.urlopen(base + "/", timeout=20).read().decode("utf-8")
+          labels = (
+              "".join(chr(value) for value in (0x6444, 0x50CF, 0x673A, 0x622A, 0x56FE)),
+              "".join(chr(value) for value in (0x5C4F, 0x5E55, 0x622A, 0x56FE)),
+              "".join(chr(value) for value in (0x8868, 0x60C5, 0x622A, 0x56FE)),
+          )
+          for label in labels:
+              if label not in html:
+                  raise SystemExit(f"missing button label: {label}")
+
+          get_json("/api/health")
+
+          expectations = [
+              ("single", "opencv"),
+              ("screenshot", "screenshot"),
+              ("face", "face-screenshot"),
+          ]
+          for mode, expected_source in expectations:
+              task = post_json("/api/capture", {"mode": mode, "query_gpio": 26})["task"]
+              deadline = time.time() + 40
+              latest = {}
+              while time.time() < deadline:
+                  time.sleep(2)
+                  latest = get_json("/api/latest")
+                  if latest.get("task_id") == task["id"] and latest.get("capture_source") == expected_source:
+                      print(f"OK mode={mode} task={task['id']} source={expected_source}")
+                      break
+              else:
+                  raise SystemExit(
+                      f"mode={mode} expected={expected_source} latest={json.dumps(latest, ensure_ascii=False)}"
+                  )
+          PY
