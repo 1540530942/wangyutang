@@ -92,6 +92,40 @@
 	}
 }
 
+(audio_path_routes) {
+	handle /audio {
+		redir /audio/ 308
+	}
+	handle_path /audio/static/* {
+		rewrite * /static{path}
+		reverse_proxy audio-recognition:8095
+	}
+	handle_path /audio/api/* {
+		rewrite * /api{path}
+		reverse_proxy audio-recognition:8095
+	}
+	handle_path /audio/* {
+		reverse_proxy audio-recognition:8095
+	}
+}
+
+(common_path_routes) {
+	handle /common {
+		redir /common/ 308
+	}
+	handle_path /common/static/* {
+		rewrite * /static{path}
+		reverse_proxy 172.18.0.1:8101
+	}
+	handle_path /common/api/* {
+		rewrite * /api{path}
+		reverse_proxy 172.18.0.1:8101
+	}
+	handle_path /common/* {
+		reverse_proxy 172.18.0.1:8101
+	}
+}
+
 (web_path_routes) {
 	handle /web {
 		redir /web/ 308
@@ -143,6 +177,23 @@
 	}
 }
 
+(face_path_routes) {
+	handle /face {
+		redir /face/ 308
+	}
+	handle_path /face/static/* {
+		rewrite * /static{path}
+		reverse_proxy smile-face:8096
+	}
+	handle_path /face/api/* {
+		rewrite * /api{path}
+		reverse_proxy smile-face:8096
+	}
+	handle_path /face/* {
+		reverse_proxy smile-face:8096
+	}
+}
+
 (modules_path_routes) {
 	handle /modules {
 		redir /modules/ 308
@@ -159,9 +210,12 @@
 	import sensing_path_routes
 	import camera_path_routes
 	import action_path_routes
+	import audio_path_routes
+	import common_path_routes
 	import web_path_routes
 	import llm_path_routes
 	import robot_path_routes
+	import face_path_routes
 	import modules_path_routes
 }
 
@@ -225,6 +279,11 @@ https://camera.wangyutang.cn {
 https://action.wangyutang.cn {
 	encode zstd gzip
 	reverse_proxy action-move:8094
+}
+
+https://audio.wangyutang.cn {
+	encode zstd gzip
+	reverse_proxy audio-recognition:8095
 }
 
 https://llm.wangyutang.cn {

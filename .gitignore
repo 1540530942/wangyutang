@@ -10,3 +10,10 @@ build/
 .DS_Store
 Thumbs.db
 control_platform/infra/caddy/Caddyfile.server
+*.log
+*.err.log
+*.out.log
+data/
+dist/
+cloud_image_verify/
+movement_verify_local/

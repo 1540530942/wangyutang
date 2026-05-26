@@ -1,19 +1,27 @@
 {
-  "version": 1,
+  "version": 2,
   "robot": "TurboPi",
   "notes": [
     "Image calibration shows PWM servo 2 is the horizontal pan axis, while PWM servo 1 changes the vertical/pitch view.",
     "Left/right look skills use servo2=1800 for left and servo2=1200 for right after image-difference verification.",
     "Up/down look skills are mapped to the pitch axis on servo1 with conservative 1000/1700 positions.",
-    "If the physical direction is inverted, swap the corresponding left/right or up/down positions in this catalog.",
     "Base movement uses /cmd_vel and always publishes stop after a timed burst.",
-    "The original 0.10..0.12 movement values only converted to about 10..12 percent wheel speed, which can be below the physical movement threshold."
+    "Movement and turn commands are open-loop units. The web setting defines the requested unit distance or angle; the executor converts it to a bounded duration."
   ],
   "defaults": {
     "ros_container": "turbopi",
     "cmd_vel_topic": "/cmd_vel",
     "pwm_servo_topic": "/ros_robot_controller/pwm_servo/set_state",
-    "move_duration_ms": 800,
+    "unit_distance_cm": 5.0,
+    "turn_angle_deg": 5.0,
+    "sensitivity": 1.0,
+    "move_duration_ms_at_5cm": 800,
+    "turn_duration_ms_at_5deg": 450,
+    "min_move_duration_ms": 180,
+    "max_move_duration_ms": 3000,
+    "min_turn_duration_ms": 180,
+    "max_turn_duration_ms": 2500,
+    "stop_publish_times": 3,
     "servo_duration_s": 0.35,
     "pwm_center": 1500,
     "camera_server": "https://www.wangyutang.cn/camera",
@@ -23,68 +31,211 @@
   },
   "skills": [
     {
+      "id": "emergency_stop",
+      "name_zh": "急停",
+      "description": "立即向 /cmd_vel 发布零速度，优先打断普通排队动作。",
+      "type": "base_stop",
+      "aliases": [
+        "停止",
+        "急停按钮",
+        "刹车",
+        "stop",
+        "e-stop"
+      ]
+    },
+    {
+      "id": "reset_pose",
+      "name_zh": "Reset",
+      "description": "停止底盘，并将摄像头云台回到中心位置。",
+      "type": "reset_pose",
+      "aliases": [
+        "复位",
+        "重置",
+        "回正",
+        "reset",
+        "云台回正"
+      ]
+    },
+    {
+      "id": "remote_shutdown",
+      "name_zh": "????",
+      "description": "?????????? sudo shutdown -h now????????????????",
+      "type": "system_shutdown",
+      "aliases": [
+        "??",
+        "?????",
+        "?????",
+        "shutdown",
+        "poweroff"
+      ]
+    },
+    {
       "id": "look_left",
       "name_zh": "向左看",
       "description": "驱动摄像头水平舵机向左偏转，改变摄像头观察方向。",
       "type": "camera_servo",
-      "aliases": ["左看", "看左边", "摄像头向左", "镜头向左", "舵机向左转", "向左转"],
-      "servo": {"id": 2, "position": 1800, "axis": "pan"}
+      "aliases": [
+        "左看",
+        "看左边",
+        "摄像头向左",
+        "镜头向左",
+        "舵机向左转"
+      ],
+      "servo": {
+        "id": 2,
+        "position": 1800,
+        "axis": "pan"
+      }
     },
     {
       "id": "look_right",
       "name_zh": "向右看",
       "description": "驱动摄像头水平舵机向右偏转，改变摄像头观察方向。",
       "type": "camera_servo",
-      "aliases": ["右看", "看右边", "摄像头向右", "镜头向右", "舵机向右转", "向右转"],
-      "servo": {"id": 2, "position": 1200, "axis": "pan"}
+      "aliases": [
+        "右看",
+        "看右边",
+        "摄像头向右",
+        "镜头向右",
+        "舵机向右转"
+      ],
+      "servo": {
+        "id": 2,
+        "position": 1200,
+        "axis": "pan"
+      }
     },
     {
       "id": "look_up",
       "name_zh": "向上看",
       "description": "驱动摄像头俯仰舵机向上偏转。",
       "type": "camera_servo",
-      "aliases": ["上看", "看上面", "摄像头向上", "镜头向上"],
-      "servo": {"id": 1, "position": 1000, "axis": "tilt"}
+      "aliases": [
+        "上看",
+        "看上面",
+        "摄像头向上",
+        "镜头向上"
+      ],
+      "servo": {
+        "id": 1,
+        "position": 1000,
+        "axis": "tilt"
+      }
     },
     {
       "id": "look_down",
       "name_zh": "向下看",
       "description": "驱动摄像头俯仰舵机向下偏转。",
       "type": "camera_servo",
-      "aliases": ["下看", "看下面", "摄像头向下", "镜头向下"],
-      "servo": {"id": 1, "position": 1700, "axis": "tilt"}
+      "aliases": [
+        "下看",
+        "看下面",
+        "摄像头向下",
+        "镜头向下"
+      ],
+      "servo": {
+        "id": 1,
+        "position": 1700,
+        "axis": "tilt"
+      }
     },
     {
       "id": "move_forward",
       "name_zh": "向前走",
-      "description": "底盘短距离向前移动。",
+      "description": "底盘按当前单位距离向前移动一次。",
       "type": "base_move",
-      "aliases": ["前进", "往前走", "向前移动"],
-      "twist": {"linear_x": 0.35, "linear_y": 0.0, "angular_z": 0.0}
+      "aliases": [
+        "前进",
+        "往前走",
+        "向前移动"
+      ],
+      "twist": {
+        "linear_x": 0.35,
+        "linear_y": 0.0,
+        "angular_z": 0.0
+      }
     },
     {
       "id": "move_backward",
       "name_zh": "向后走",
-      "description": "底盘短距离向后移动。",
+      "description": "底盘按当前单位距离向后移动一次。",
       "type": "base_move",
-      "aliases": ["后退", "往后走", "向后移动"],
-      "twist": {"linear_x": -0.35, "linear_y": 0.0, "angular_z": 0.0}
+      "aliases": [
+        "后退",
+        "往后走",
+        "向后移动"
+      ],
+      "twist": {
+        "linear_x": -0.35,
+        "linear_y": 0.0,
+        "angular_z": 0.0
+      }
     },
     {
       "id": "move_left",
       "name_zh": "向左走",
-      "description": "麦克纳姆轮底盘短距离向左平移。",
+      "description": "麦克纳姆轮底盘按当前单位距离向左平移一次。",
       "type": "base_move",
-      "aliases": ["左移", "往左走", "向左平移"],
-      "twist": {"linear_x": 0.0, "linear_y": 0.35, "angular_z": 0.0}
+      "aliases": [
+        "左移",
+        "往左走",
+        "向左平移"
+      ],
+      "twist": {
+        "linear_x": 0.0,
+        "linear_y": 0.35,
+        "angular_z": 0.0
+      }
     },
     {
       "id": "move_right",
       "name_zh": "向右走",
-      "description": "麦克纳姆轮底盘短距离向右平移。",
+      "description": "麦克纳姆轮底盘按当前单位距离向右平移一次。",
       "type": "base_move",
-      "aliases": ["右移", "往右走", "向右平移"],
-      "twist": {"linear_x": 0.0, "linear_y": -0.35, "angular_z": 0.0}
+      "aliases": [
+        "右移",
+        "往右走",
+        "向右平移"
+      ],
+      "twist": {
+        "linear_x": 0.0,
+        "linear_y": -0.35,
+        "angular_z": 0.0
+      }
+    },
+    {
+      "id": "turn_left",
+      "name_zh": "向左转",
+      "description": "底盘按当前角度单位向左改变朝向一次。",
+      "type": "base_turn",
+      "aliases": [
+        "左转",
+        "朝左转",
+        "向左旋转",
+        "往左转"
+      ],
+      "twist": {
+        "linear_x": 0.0,
+        "linear_y": 0.0,
+        "angular_z": 5.0
+      }
+    },
+    {
+      "id": "turn_right",
+      "name_zh": "向右转",
+      "description": "底盘按当前角度单位向右改变朝向一次。",
+      "type": "base_turn",
+      "aliases": [
+        "右转",
+        "朝右转",
+        "向右旋转",
+        "往右转"
+      ],
+      "twist": {
+        "linear_x": 0.0,
+        "linear_y": 0.0,
+        "angular_z": -5.0
+      }
     }
   ]
 }

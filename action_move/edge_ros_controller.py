@@ -1,0 +1,290 @@
+from __future__ import annotations
+
+import argparse
+import json
+import threading
+import time
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any
+
+import rclpy
+from geometry_msgs.msg import Twist
+from rclpy.node import Node
+from ros_robot_controller_msgs.msg import PWMServoState, SetPWMServoState
+
+
+BASE_DIR = Path(__file__).resolve().parent
+DEFAULT_CATALOG = BASE_DIR / "skill_catalog.json"
+
+
+def load_catalog(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def flatten_skills(catalog: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for skill in catalog.get("skills", []):
+        keys = [skill["id"], skill["name_zh"], *skill.get("aliases", [])]
+        for key in keys:
+            result[str(key).strip().lower()] = skill
+    return result
+
+
+def resolve_skill(catalog: dict[str, Any], text: str) -> dict[str, Any]:
+    key = text.strip().lower()
+    skills = flatten_skills(catalog)
+    if key in skills:
+        return skills[key]
+    for alias, skill in skills.items():
+        if alias and alias in key:
+            return skill
+    raise KeyError(f"unknown action: {text}")
+
+
+def clamp(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(maximum, value))
+
+
+def merged_defaults(catalog: dict[str, Any], params: dict[str, Any] | None = None) -> dict[str, Any]:
+    defaults = dict(catalog.get("defaults", {}))
+    for key in ("unit_distance_cm", "turn_angle_deg", "sensitivity"):
+        if params and key in params:
+            defaults[key] = params[key]
+    defaults["unit_distance_cm"] = clamp(float(defaults.get("unit_distance_cm", 5.0)), 1.0, 50.0)
+    defaults["turn_angle_deg"] = clamp(float(defaults.get("turn_angle_deg", 5.0)), 1.0, 90.0)
+    defaults["sensitivity"] = clamp(float(defaults.get("sensitivity", 1.0)), 0.2, 2.0)
+    return defaults
+
+
+def unit_duration_ms(defaults: dict[str, Any], kind: str) -> int:
+    sensitivity = max(float(defaults.get("sensitivity", 1.0)), 0.2)
+    if kind == "turn":
+        unit = float(defaults.get("turn_angle_deg", 5.0))
+        base = float(defaults.get("turn_duration_ms_at_5deg", 450))
+        lower = float(defaults.get("min_turn_duration_ms", 180))
+        upper = float(defaults.get("max_turn_duration_ms", 2500))
+    else:
+        unit = float(defaults.get("unit_distance_cm", 5.0))
+        base = float(defaults.get("move_duration_ms_at_5cm", 800))
+        lower = float(defaults.get("min_move_duration_ms", 180))
+        upper = float(defaults.get("max_move_duration_ms", 3000))
+    return int(round(clamp(base * (unit / 5.0) / sensitivity, lower, upper)))
+
+
+class TurboPiController(Node):
+    def __init__(self, catalog_path: Path) -> None:
+        super().__init__("action_move_edge_controller")
+        self.catalog_path = catalog_path
+        self.lock = threading.Lock()
+        catalog = load_catalog(catalog_path)
+        defaults = catalog.get("defaults", {})
+        self.cmd_vel_topic = str(defaults.get("cmd_vel_topic", "/cmd_vel"))
+        self.pwm_servo_topic = str(defaults.get("pwm_servo_topic", "/ros_robot_controller/pwm_servo/set_state"))
+        self.cmd_vel_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
+        self.servo_pub = self.create_publisher(SetPWMServoState, self.pwm_servo_topic, 10)
+        self.last_action = ""
+        self.last_executed_at = 0.0
+
+    def execute(self, action: str, settings: dict[str, Any] | None = None) -> dict[str, Any]:
+        started = time.time()
+        with self.lock:
+            catalog = load_catalog(self.catalog_path)
+            skill = resolve_skill(catalog, action)
+            defaults = merged_defaults(catalog, settings)
+            output: list[str] = [
+                f"[INFO] {skill['name_zh']} -> {skill['id']}",
+                "[INFO] transport=persistent_ros_controller",
+                "[INFO] unit_distance_cm={unit_distance_cm} turn_angle_deg={turn_angle_deg} sensitivity={sensitivity}".format(
+                    **defaults
+                ),
+            ]
+            try:
+                if skill["type"] == "base_stop":
+                    self.publish_stop(int(defaults.get("stop_publish_times", 3)))
+                elif skill["type"] == "reset_pose":
+                    self.publish_stop(int(defaults.get("stop_publish_times", 3)))
+                    self.publish_servo_reset(defaults)
+                    self.request_camera_capture(defaults)
+                elif skill["type"] == "camera_servo":
+                    self.publish_servo(skill, defaults)
+                    self.request_camera_capture(defaults)
+                elif skill["type"] == "base_move":
+                    duration_ms = unit_duration_ms(defaults, "move")
+                    output.append(f"[INFO] duration_ms={duration_ms}")
+                    self.publish_twist_burst(skill["twist"], duration_ms, int(defaults.get("stop_publish_times", 3)))
+                elif skill["type"] == "base_turn":
+                    duration_ms = unit_duration_ms(defaults, "turn")
+                    output.append(f"[INFO] duration_ms={duration_ms}")
+                    self.publish_twist_burst(skill["twist"], duration_ms, int(defaults.get("stop_publish_times", 3)))
+                else:
+                    raise ValueError(f"unsupported skill type: {skill['type']}")
+                self.last_action = skill["id"]
+                self.last_executed_at = time.time()
+                elapsed = round(time.time() - started, 3)
+                output.append(f"[INFO] elapsed_seconds={elapsed}")
+                return {
+                    "ok": True,
+                    "skill_id": skill["id"],
+                    "name_zh": skill["name_zh"],
+                    "elapsed_seconds": elapsed,
+                    "output": "\n".join(output),
+                }
+            except Exception:
+                if skill["type"] in {"base_move", "base_turn"}:
+                    self.publish_stop(5)
+                raise
+
+    def make_twist(self, twist: dict[str, Any]) -> Twist:
+        message = Twist()
+        message.linear.x = float(twist.get("linear_x", 0.0))
+        message.linear.y = float(twist.get("linear_y", 0.0))
+        message.linear.z = 0.0
+        message.angular.x = 0.0
+        message.angular.y = 0.0
+        message.angular.z = float(twist.get("angular_z", 0.0))
+        return message
+
+    def publish_twist_burst(self, twist: dict[str, Any], duration_ms: int, stop_times: int) -> None:
+        message = self.make_twist(twist)
+        rate_hz = 20.0
+        interval = 1.0 / rate_hz
+        deadline = time.monotonic() + max(duration_ms, 0) / 1000.0
+        while time.monotonic() < deadline:
+            self.cmd_vel_pub.publish(message)
+            rclpy.spin_once(self, timeout_sec=0.0)
+            time.sleep(interval)
+        self.publish_stop(stop_times)
+
+    def publish_stop(self, times: int = 3) -> None:
+        stop = Twist()
+        for _ in range(max(times, 1)):
+            self.cmd_vel_pub.publish(stop)
+            rclpy.spin_once(self, timeout_sec=0.0)
+            time.sleep(0.03)
+
+    def publish_servo(self, skill: dict[str, Any], defaults: dict[str, Any]) -> None:
+        servo = skill["servo"]
+        state = PWMServoState()
+        state.id = [int(servo["id"])]
+        state.position = [int(servo["position"])]
+        state.offset = []
+        message = SetPWMServoState()
+        message.duration = float(defaults.get("servo_duration_s", 0.35))
+        message.state = [state]
+        self.servo_pub.publish(message)
+        rclpy.spin_once(self, timeout_sec=0.0)
+        time.sleep(message.duration)
+
+    def publish_servo_reset(self, defaults: dict[str, Any]) -> None:
+        center = int(defaults.get("pwm_center", 1500))
+        message = SetPWMServoState()
+        message.duration = float(defaults.get("servo_duration_s", 0.35))
+        message.state = []
+        for servo_id in (1, 2):
+            state = PWMServoState()
+            state.id = [servo_id]
+            state.position = [center]
+            state.offset = []
+            message.state.append(state)
+        self.servo_pub.publish(message)
+        rclpy.spin_once(self, timeout_sec=0.0)
+        time.sleep(message.duration)
+
+    def request_camera_capture(self, defaults: dict[str, Any]) -> None:
+        if not bool(defaults.get("capture_after_servo", True)):
+            return
+        settle_ms = int(defaults.get("capture_settle_ms", 500))
+        server = str(defaults.get("camera_server", "")).rstrip("/")
+        if not server:
+            return
+
+        def worker() -> None:
+            try:
+                time.sleep(max(settle_ms, 0) / 1000.0)
+                body = json.dumps({"mode": "single"}).encode("utf-8")
+                request = urllib.request.Request(
+                    f"{server}/api/capture",
+                    data=body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                urllib.request.urlopen(request, timeout=3).read()
+            except Exception:
+                return
+
+        threading.Thread(target=worker, daemon=True).start()
+
+
+class Handler(BaseHTTPRequestHandler):
+    controller: TurboPiController
+
+    def do_GET(self) -> None:
+        if self.path != "/health":
+            self.send_json({"error": "not_found"}, status=404)
+            return
+        self.send_json(
+            {
+                "status": "ok",
+                "service": "TurboPi Action Move Edge ROS Controller",
+                "last_action": self.controller.last_action,
+                "last_executed_at": self.controller.last_executed_at,
+            }
+        )
+
+    def do_POST(self) -> None:
+        if self.path != "/execute":
+            self.send_json({"error": "not_found"}, status=404)
+            return
+        try:
+            length = int(self.headers.get("content-length") or 0)
+            payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+            action = str(payload.get("action") or "").strip()
+            settings = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
+            if not action:
+                self.send_json({"ok": False, "error": "missing action"}, status=400)
+                return
+            self.send_json(self.controller.execute(action, settings))
+        except KeyError as exc:
+            self.send_json({"ok": False, "error": str(exc)}, status=400)
+        except Exception as exc:
+            self.send_json({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, status=500)
+
+    def log_message(self, format: str, *args: object) -> None:
+        return
+
+    def send_json(self, payload: dict[str, Any], status: int = 200) -> None:
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+
+class ReusableThreadingHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = True
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Persistent ROS2 controller for TurboPi action_move.")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--catalog", type=Path, default=DEFAULT_CATALOG)
+    args = parser.parse_args()
+
+    rclpy.init()
+    Handler.controller = TurboPiController(args.catalog)
+    server = ReusableThreadingHTTPServer((args.host, args.port), Handler)
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
+        Handler.controller.destroy_node()
+        rclpy.shutdown()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

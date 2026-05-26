@@ -11,6 +11,7 @@ https://camera.wangyutang.cn/
 ## 功能
 
 - `单帧发送`：网页点击后，树莓派只上传 1 张 JPEG。
+- `截图上传`：网页点击后，树莓派立即上传当前截图（单帧任务）。
 - `持续发送`：网页点击后，树莓派按选择频率持续上传；再次点击停止。
 - 支持选择 GPIO 状态随帧返回；默认查询 `GPIO26 / LED2`，使用 `pinctrl get` 只读查询，不抢占 GPIO line。
 - GPIO 状态包含电平、数值、原始 `pinctrl` 输出和采样时间。
@@ -148,7 +149,7 @@ python3 pi_camera_sender.py --server https://camera.wangyutang.cn --token your-s
 - `GET /api/control`：读取当前拍照任务。
 - `GET /api/gpio`：读取最新 GPIO 状态。
 - `POST /api/gpio`：树莓派独立上报 GPIO 状态，body 为 JSON。
-- `POST /api/capture`：创建拍照任务，`mode` 为 `single` 或 `continuous`，可选 `query_gpio`，默认 `26`。
+- `POST /api/capture`：创建拍照任务，`mode` 为 `single`、`screenshot` 或 `continuous`，可选 `query_gpio`，默认 `26`。
 - `POST /api/stop`：停止当前持续发送任务。
 - `POST /api/frame`：树莓派上传 JPEG，body 为原始 JPEG，header 带 `X-Device-ID` / `X-Frame-ID` / `X-Task-ID`，可带 `X-Gpio-*` 状态 header。
 - `GET /api/latest`：读取最新帧元数据。

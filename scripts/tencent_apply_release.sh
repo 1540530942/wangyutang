@@ -72,6 +72,7 @@ for name in \
   remote-sensing \
   camera-snapshot \
   action-move \
+  audio-recognition \
   web-manager \
   pi5-robot
 do

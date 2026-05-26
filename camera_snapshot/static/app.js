@@ -14,6 +14,7 @@ const elements = {
   frameId: document.getElementById("frameId"),
   updatedAt: document.getElementById("updatedAt"),
   contentLength: document.getElementById("contentLength"),
+  captureSource: document.getElementById("captureSource"),
   gpioState: document.getElementById("gpioState"),
   gpioSampledAt: document.getElementById("gpioSampledAt"),
   deviceOnline: document.getElementById("deviceOnline"),
@@ -172,6 +173,13 @@ async function loadInspection() {
 }
 
 async function createTask(mode, extra = {}) {
+  const device = await loadDeviceStatus().catch(() => null);
+  if (!device || !device.online) {
+    setStatus("树莓派离线，无法发送", "bad");
+    await loadControl().catch(() => null);
+    await refreshLatest(false).catch(() => null);
+    return;
+  }
   setTaskButtonsBusy(mode !== "continuous");
   applyGpioMeta({ gpio: selectedGpio(), available: false, sampled_at: 0 });
   setStatus("任务已下发", "warn");
@@ -235,6 +243,14 @@ async function refreshLatest(forceImage) {
     elements.frameId.textContent = meta.frame_id || "-";
     elements.updatedAt.textContent = formatTime(meta.updated_at);
     elements.contentLength.textContent = meta.content_length ? `${Math.round(meta.content_length / 1024)} KB` : "-";
+    const captureSource = meta.capture_source || "-";
+    const captureError = meta.capture_error || "";
+    elements.captureSource.textContent = captureError ? `${captureSource}: ${captureError}` : captureSource;
+    if (captureSource === "screenshot-fallback") {
+      elements.captureSource.dataset.mode = "warn";
+    } else {
+      delete elements.captureSource.dataset.mode;
+    }
     applyGpioMeta(gpioMeta || meta.gpio || meta.led1);
     elements.emptyState.hidden = true;
     elements.cameraImage.hidden = false;
@@ -245,7 +261,11 @@ async function refreshLatest(forceImage) {
     }
 
     const ageSeconds = Date.now() / 1000 - Number(meta.updated_at || 0);
-    setStatus(ageSeconds < 5 ? "实时" : `${Math.round(ageSeconds)} 秒前`, ageSeconds < 5 ? "ok" : "warn");
+    if (captureSource === "screenshot-fallback") {
+      setStatus("相机不可用，已回退截图", "warn");
+    } else {
+      setStatus(ageSeconds < 5 ? "实时" : `${Math.round(ageSeconds)} 秒前`, ageSeconds < 5 ? "ok" : "warn");
+    }
     return meta;
   } catch (error) {
     setStatus("连接失败", "bad");

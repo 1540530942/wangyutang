@@ -1,0 +1,16 @@
+[Unit]
+Description=TurboPi Action Move Persistent ROS Controller
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=2
+ExecStartPre=/bin/bash -lc 'pids=$(/usr/bin/pgrep -f "[e]dge_ros_controller.py" || true); [ -z "$pids" ] || /usr/bin/kill -9 $pids'
+ExecStart=/usr/bin/docker exec -u ubuntu turbopi bash -lc 'source /opt/ros/humble/setup.bash && source /home/ubuntu/ros2_ws/install/setup.bash && python3 /home/ubuntu/action_move/edge_ros_controller.py --host 127.0.0.1 --port 8765 --catalog /home/ubuntu/action_move/skill_catalog.json'
+ExecStop=/bin/bash -lc 'pids=$(/usr/bin/pgrep -f "[e]dge_ros_controller.py" || true); [ -z "$pids" ] || /usr/bin/kill -9 $pids'
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

@@ -17,11 +17,23 @@ STATIC_DIR = BASE_DIR / "static"
 DATA_DIR = BASE_DIR / "data"
 CATALOG_PATH = BASE_DIR / "skill_catalog.json"
 TOKEN_FILE = DATA_DIR / ".action_token"
+SETTINGS_FILE = DATA_DIR / "settings.json"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 DEVICE_ONLINE_SECONDS = 15.0
 MAX_TASKS = 100
+CLAIM_TIMEOUT_SECONDS = 35.0
+MAX_LONG_POLL_SECONDS = 20.0
+LONG_POLL_TICK_SECONDS = 0.1
+DEFAULT_SETTINGS = {
+    "unit_distance_cm": 5.0,
+    "turn_angle_deg": 5.0,
+    "sensitivity": 1.0,
+    "voice_volume_percent": 90.0,
+}
+ACTIVE_STATUSES = {"pending", "claimed", "running"}
+MOTION_TYPES = {"base_move", "base_turn"}
 
 app = FastAPI(title="TurboPi Action Move", version="1.0.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -33,6 +45,10 @@ device_state: dict[str, Any] = {
     "current_task_id": "",
     "last_result": None,
     "status": "offline",
+    "hostname": "",
+    "ip_address": "",
+    "wifi_ssid": "",
+    "gateway": "",
 }
 
 
@@ -41,6 +57,14 @@ class ActionRequest(BaseModel):
     source: str = Field("web", max_length=40)
     note: str = Field("", max_length=200)
     ttl_seconds: int = Field(30, ge=5, le=300)
+    verification_code: str = Field("", max_length=20)
+
+
+class ActionSettings(BaseModel):
+    unit_distance_cm: float = Field(DEFAULT_SETTINGS["unit_distance_cm"], ge=1.0, le=50.0)
+    turn_angle_deg: float = Field(DEFAULT_SETTINGS["turn_angle_deg"], ge=1.0, le=90.0)
+    sensitivity: float = Field(DEFAULT_SETTINGS["sensitivity"], ge=0.2, le=2.0)
+    voice_volume_percent: float = Field(DEFAULT_SETTINGS["voice_volume_percent"], ge=0.0, le=100.0)
 
 
 class DeviceHeartbeat(BaseModel):
@@ -48,6 +72,10 @@ class DeviceHeartbeat(BaseModel):
     current_task_id: str = Field("", max_length=80)
     status: str = Field("idle", max_length=80)
     detail: str = Field("", max_length=300)
+    hostname: str = Field("", max_length=120)
+    ip_address: str = Field("", max_length=120)
+    wifi_ssid: str = Field("", max_length=120)
+    gateway: str = Field("", max_length=120)
 
 
 class TaskResult(BaseModel):
@@ -60,6 +88,32 @@ class TaskResult(BaseModel):
 
 def read_catalog() -> dict[str, Any]:
     return json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+
+
+def normalize_settings(data: dict[str, Any] | None = None) -> dict[str, float]:
+    merged = {**DEFAULT_SETTINGS, **(data or {})}
+    settings = ActionSettings(**merged)
+    return {
+        "unit_distance_cm": round(float(settings.unit_distance_cm), 2),
+        "turn_angle_deg": round(float(settings.turn_angle_deg), 2),
+        "sensitivity": round(float(settings.sensitivity), 2),
+        "voice_volume_percent": round(float(settings.voice_volume_percent), 2),
+    }
+
+
+def load_settings() -> dict[str, float]:
+    if not SETTINGS_FILE.exists():
+        return normalize_settings()
+    try:
+        return normalize_settings(json.loads(SETTINGS_FILE.read_text(encoding="utf-8")))
+    except (json.JSONDecodeError, OSError, ValueError):
+        return normalize_settings()
+
+
+def save_settings(settings: dict[str, Any]) -> dict[str, float]:
+    normalized = normalize_settings(settings)
+    SETTINGS_FILE.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
+    return normalized
 
 
 def flatten_skills() -> dict[str, dict[str, Any]]:
@@ -103,10 +157,35 @@ def refresh_tasks() -> None:
         if task["status"] == "pending" and now > float(task["deadline_at"]):
             task["status"] = "expired"
             task["updated_at"] = now
+        if task["status"] == "claimed" and now - float(task.get("claimed_at") or 0) > CLAIM_TIMEOUT_SECONDS:
+            task["status"] = "failed"
+            task["updated_at"] = now
+            task["completed_at"] = now
+            task["error"] = f"claimed task timed out after {int(CLAIM_TIMEOUT_SECONDS)}s"
 
 
 def public_task(task: dict[str, Any]) -> dict[str, Any]:
-    return dict(task)
+    result = dict(task)
+    requested_at = float(result.get("requested_at") or 0)
+    claimed_at = float(result.get("claimed_at") or 0)
+    completed_at = float(result.get("completed_at") or 0)
+    result["claim_latency_seconds"] = round(claimed_at - requested_at, 3) if requested_at and claimed_at else None
+    result["completion_latency_seconds"] = round(completed_at - requested_at, 3) if requested_at and completed_at else None
+    return result
+
+
+def has_active_motion_task() -> bool:
+    return any(task.get("type") in MOTION_TYPES and task.get("status") in ACTIVE_STATUSES for task in tasks)
+
+
+def expire_pending_motion_tasks(reason: str) -> None:
+    now = time.time()
+    for task in tasks:
+        if task.get("type") in MOTION_TYPES and task.get("status") == "pending":
+            task["status"] = "expired"
+            task["updated_at"] = now
+            task["completed_at"] = now
+            task["error"] = reason
 
 
 def current_device() -> dict[str, Any]:
@@ -133,6 +212,7 @@ def health() -> dict[str, Any]:
         "status": "ok",
         "service": "TurboPi Action Move",
         "device": current_device(),
+        "settings": load_settings(),
         "pending_tasks": sum(1 for task in tasks if task["status"] == "pending"),
         "skills": len(read_catalog().get("skills", [])),
     }
@@ -144,16 +224,45 @@ def skills() -> dict[str, Any]:
     return {"defaults": catalog.get("defaults", {}), "skills": catalog.get("skills", [])}
 
 
+@app.get("/api/settings")
+def get_settings() -> dict[str, Any]:
+    return {"settings": load_settings()}
+
+
+@app.post("/api/settings")
+def update_settings(payload: ActionSettings) -> dict[str, Any]:
+    return {"ok": True, "settings": save_settings(payload.model_dump())}
+
+
 @app.get("/api/tasks")
 def list_tasks() -> dict[str, Any]:
     refresh_tasks()
     return {"tasks": [public_task(task) for task in reversed(tasks[-MAX_TASKS:])]}
 
 
+@app.post("/api/tasks/clear")
+def clear_tasks() -> dict[str, Any]:
+    count = len(tasks)
+    tasks.clear()
+    device_state["current_task_id"] = ""
+    device_state["last_result"] = None
+    return {"ok": True, "cleared": count}
+
+
 @app.post("/api/tasks")
 def create_task(payload: ActionRequest) -> dict[str, Any]:
     skill = resolve_skill(payload.action)
+    refresh_tasks()
+    if skill["id"] == "emergency_stop":
+        expire_pending_motion_tasks("cancelled by emergency stop")
+    elif skill["id"] == "remote_shutdown":
+        if payload.verification_code != "123":
+            raise HTTPException(status_code=403, detail="invalid shutdown verification code")
+        expire_pending_motion_tasks("cancelled by remote shutdown")
+    elif skill["type"] in MOTION_TYPES and has_active_motion_task():
+        raise HTTPException(status_code=409, detail="a motion task is already active")
     now = time.time()
+    settings = load_settings()
     task = {
         "id": f"{int(now * 1000)}-{secrets.token_hex(3)}",
         "action": payload.action,
@@ -162,6 +271,11 @@ def create_task(payload: ActionRequest) -> dict[str, Any]:
         "type": skill["type"],
         "source": payload.source,
         "note": payload.note,
+        "settings": settings,
+        "unit_distance_cm": settings["unit_distance_cm"],
+        "turn_angle_deg": settings["turn_angle_deg"],
+        "sensitivity": settings["sensitivity"],
+        "voice_volume_percent": settings["voice_volume_percent"],
         "status": "pending",
         "requested_at": now,
         "updated_at": now,
@@ -178,18 +292,29 @@ def create_task(payload: ActionRequest) -> dict[str, Any]:
 
 
 @app.get("/api/tasks/next")
-def next_task(x_action_token: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+def next_task(
+    wait_seconds: float = 0.0,
+    x_action_token: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
     require_token(x_action_token)
-    refresh_tasks()
-    now = time.time()
-    for task in tasks:
-        if task["status"] == "pending":
-            task["status"] = "claimed"
-            task["claimed_at"] = now
-            task["updated_at"] = now
-            device_state["current_task_id"] = task["id"]
-            return {"task": public_task(task)}
-    return {"task": None}
+    deadline = time.monotonic() + min(max(wait_seconds, 0.0), MAX_LONG_POLL_SECONDS)
+
+    while True:
+        refresh_tasks()
+        now = time.time()
+        pending_tasks = [task for task in tasks if task["status"] == "pending"]
+        pending_tasks.sort(key=lambda task: 0 if task.get("skill_id") == "emergency_stop" else 1)
+        for task in pending_tasks:
+            if task["status"] == "pending":
+                task["status"] = "claimed"
+                task["claimed_at"] = now
+                task["updated_at"] = now
+                device_state["current_task_id"] = task["id"]
+                return {"task": public_task(task)}
+
+        if time.monotonic() >= deadline:
+            return {"task": None}
+        time.sleep(LONG_POLL_TICK_SECONDS)
 
 
 @app.post("/api/tasks/result")
@@ -228,7 +353,10 @@ def heartbeat(payload: DeviceHeartbeat, x_action_token: Annotated[str | None, He
             "current_task_id": payload.current_task_id,
             "status": payload.status,
             "detail": payload.detail,
+            "hostname": payload.hostname,
+            "ip_address": payload.ip_address,
+            "wifi_ssid": payload.wifi_ssid,
+            "gateway": payload.gateway,
         }
     )
     return {"ok": True, "device": current_device()}
-

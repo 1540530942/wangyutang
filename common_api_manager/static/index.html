@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>公共 ASR 在线识别</title>
+    <link rel="stylesheet" href="./static/style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Common API / DashScope Qwen ASR</p>
+          <h1>语音转文本</h1>
+        </div>
+        <div class="status" id="status">检查中</div>
+      </header>
+
+      <section class="workbench">
+        <div class="controls">
+          <button id="recordBtn" class="primary" type="button">开始录音</button>
+          <button id="stopBtn" type="button" disabled>停止并识别</button>
+          <span id="timer" class="timer">00:00.0</span>
+        </div>
+        <canvas id="meter" width="960" height="92"></canvas>
+        <audio id="preview" controls></audio>
+      </section>
+
+      <section class="upload-band">
+        <input id="fileInput" type="file" accept=".wav,audio/wav" />
+        <button id="uploadBtn" type="button">上传 WAV 识别</button>
+      </section>
+
+      <section class="api-panel">
+        <span>接口地址</span>
+        <code>POST /common/api/asr/transcribe</code>
+      </section>
+
+      <section class="result-grid">
+        <div class="result-panel">
+          <div class="panel-title">
+            <h2>识别结果</h2>
+            <span id="elapsed"></span>
+          </div>
+          <textarea id="result" readonly placeholder="识别文本会显示在这里"></textarea>
+        </div>
+        <div class="result-panel">
+          <div class="panel-title">
+            <h2>接口返回</h2>
+          </div>
+          <pre id="raw">{}</pre>
+        </div>
+      </section>
+    </main>
+    <script src="./static/app.js"></script>
+  </body>
+</html>

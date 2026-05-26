@@ -1,0 +1,23 @@
+[Unit]
+Description=Common API tunnel to LV qwen3.5-9b
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=common-api
+ExecStart=/usr/bin/ssh -N -T \
+  -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 \
+  -o ServerAliveCountMax=3 \
+  -o StrictHostKeyChecking=accept-new \
+  -i /etc/common_api/lv_server_tunnel_key \
+  -L 127.0.0.1:18002:127.0.0.1:8002 \
+  -L 127.0.0.1:18080:127.0.0.1:18080 \
+  -p 58889 \
+  centos@39.156.151.204
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

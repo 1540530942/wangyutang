@@ -49,15 +49,31 @@ class Picamera2Backend(CameraBackend):
 
         self.quality = quality
         self.camera = Picamera2()
-        config = self.camera.create_still_configuration(main={"size": (width, height)})
+        config = self.camera.create_still_configuration(main={"size": (width, height), "format": "RGB888"})
         self.camera.configure(config)
         self.camera.start()
         time.sleep(1.0)
 
     def capture_jpeg(self) -> bytes:
+        try:
+            stream = io.BytesIO()
+            self.camera.capture_file(stream, format="jpeg")
+            data = stream.getvalue()
+            if data.startswith(b"\xff\xd8"):
+                return data
+        except Exception as exc:
+            print(f"[WARN] picamera2 jpeg encoder unavailable: {exc}", flush=True)
+
+        from PIL import Image
+
+        frame = self.camera.capture_array()
+        image = Image.fromarray(frame).convert("RGB")
         stream = io.BytesIO()
-        self.camera.capture_file(stream, format="jpeg")
-        return stream.getvalue()
+        image.save(stream, "JPEG", quality=self.quality)
+        data = stream.getvalue()
+        if not data.startswith(b"\xff\xd8"):
+            raise RuntimeError("picamera2 did not produce JPEG data")
+        return data
 
     def close(self) -> None:
         self.camera.stop()
@@ -127,6 +143,60 @@ class WebVideoServerBackend(CameraBackend):
         self.session.close()
 
 
+class RpicamStillBackend(CameraBackend):
+    def __init__(self, width: int, height: int, quality: int, timeout: float) -> None:
+        super().__init__("rpicam-still")
+        self.width = width
+        self.height = height
+        self.quality = quality
+        self.timeout = timeout
+        self.command = self._find_command()
+        if not self.command:
+            raise RuntimeError("rpicam-still/libcamera-still not found")
+
+    @staticmethod
+    def _find_command() -> str:
+        for command in ("rpicam-still", "libcamera-still"):
+            if subprocess.run(["sh", "-lc", f"command -v {command}"], capture_output=True, text=True).returncode == 0:
+                return command
+        return ""
+
+    def capture_jpeg(self) -> bytes:
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as handle:
+            jpg_path = Path(handle.name)
+        jpg_path.unlink(missing_ok=True)
+        try:
+            subprocess.run(
+                [
+                    self.command,
+                    "--nopreview",
+                    "--timeout",
+                    "1000",
+                    "--width",
+                    str(self.width),
+                    "--height",
+                    str(self.height),
+                    "--quality",
+                    str(self.quality),
+                    "-o",
+                    str(jpg_path),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+            )
+            data = jpg_path.read_bytes()
+            if not data.startswith(b"\xff\xd8"):
+                raise RuntimeError("rpicam-still did not produce JPEG data")
+            return data
+        finally:
+            try:
+                jpg_path.unlink()
+            except FileNotFoundError:
+                pass
+
+
 def stamp_image(image: object, label: str, quality: int) -> bytes:
     from PIL import ImageDraw
 
@@ -167,13 +237,13 @@ def build_camera(args: argparse.Namespace) -> CameraBackend:
                 raise
             print(f"[WARN] web_video_server unavailable: {exc}", flush=True)
 
-    if args.backend in {"auto", "opencv"}:
+    if args.backend in {"auto", "rpicam-still"}:
         try:
-            return OpenCvBackend(args.camera_index, args.width, args.height, args.quality)
+            return RpicamStillBackend(args.width, args.height, args.quality, args.rpicam_timeout)
         except Exception as exc:
-            if args.backend == "opencv":
+            if args.backend == "rpicam-still":
                 raise
-            print(f"[WARN] opencv unavailable: {exc}", flush=True)
+            print(f"[WARN] rpicam-still unavailable: {exc}", flush=True)
 
     if args.backend in {"auto", "picamera2"}:
         try:
@@ -182,6 +252,14 @@ def build_camera(args: argparse.Namespace) -> CameraBackend:
             if args.backend == "picamera2":
                 raise
             print(f"[WARN] picamera2 unavailable: {exc}", flush=True)
+
+    if args.backend in {"auto", "opencv"}:
+        try:
+            return OpenCvBackend(args.camera_index, args.width, args.height, args.quality)
+        except Exception as exc:
+            if args.backend == "opencv":
+                raise
+            print(f"[WARN] opencv unavailable: {exc}", flush=True)
 
     raise RuntimeError(f"unsupported backend: {args.backend}")
 
@@ -238,6 +316,32 @@ def capture_screenshot_jpeg(quality: int) -> bytes:
                 path.unlink()
             except FileNotFoundError:
                 pass
+
+
+def capture_camera_or_screenshot_fallback(
+    camera: CameraBackend | None,
+    args: argparse.Namespace,
+) -> tuple[bytes, CameraBackend | None, str, str]:
+    try:
+        if camera is None:
+            camera = build_camera(args)
+            print(f"[INFO] camera backend: {camera.name}", flush=True)
+        jpeg = camera.capture_jpeg()
+        capture_source = camera.name
+        try:
+            camera.close()
+        except Exception as close_exc:
+            print(f"[WARN] camera close failed: {close_exc}", flush=True)
+        return stamp_jpeg(jpeg, "Camera", args.quality), None, capture_source, ""
+    except Exception as exc:
+        error = str(exc)
+        print(f"[WARN] camera capture unavailable, falling back to screenshot: {error}", flush=True)
+        if camera is not None:
+            try:
+                camera.close()
+            except Exception as close_exc:
+                print(f"[WARN] camera close failed: {close_exc}", flush=True)
+        return capture_screenshot_jpeg(args.quality), None, "screenshot-fallback", error
 
 
 def fetch_control(session: requests.Session, server: str) -> dict[str, object]:
@@ -349,12 +453,16 @@ def upload_frame(
     task_id: str,
     jpeg: bytes,
     gpio_status: dict[str, object],
+    capture_source: str,
+    capture_error: str = "",
 ) -> None:
     headers = {
         "Content-Type": "image/jpeg",
         "X-Device-ID": device_id,
         "X-Frame-ID": str(frame_id),
         "X-Task-ID": task_id,
+        "X-Capture-Source": capture_source,
+        "X-Capture-Error": capture_error[:300],
     }
     if gpio_status:
         headers["X-Gpio-Available"] = "1" if gpio_status.get("available") else "0"
@@ -413,13 +521,14 @@ def main() -> None:
     parser.add_argument("--server", default=DEFAULT_SERVER, help="Camera snapshot server base URL.")
     parser.add_argument("--token", default=DEFAULT_TOKEN, help="Optional upload token matching .camera_token on server.")
     parser.add_argument("--device-id", default=os.environ.get("CAMERA_DEVICE_ID", "turbopi"))
-    parser.add_argument("--backend", choices=["auto", "web-video-server", "picamera2", "opencv"], default="auto")
+    parser.add_argument("--backend", choices=["auto", "web-video-server", "rpicam-still", "picamera2", "opencv"], default="auto")
     parser.add_argument(
         "--web-video-snapshot-url",
         default=os.environ.get("CAMERA_WEB_VIDEO_SNAPSHOT_URL", "http://127.0.0.1:8080/snapshot?topic=/image_raw"),
         help="web_video_server snapshot URL for an already-running ROS camera stream.",
     )
     parser.add_argument("--web-video-timeout", type=float, default=2.0)
+    parser.add_argument("--rpicam-timeout", type=float, default=10.0)
     parser.add_argument("--camera-index", type=int, default=0)
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=480)
@@ -481,12 +590,20 @@ def main() -> None:
                 try:
                     if mode in {"screenshot", "inspect"}:
                         jpeg = capture_screenshot_jpeg(args.quality)
+                        capture_source = mode
+                        capture_error = ""
+                    elif mode == "single":
+                        jpeg, camera, capture_source, capture_error = capture_camera_or_screenshot_fallback(camera, args)
+                        if capture_source == "screenshot-fallback":
+                            print(f"[INFO] task {task_id} used {capture_source}", flush=True)
                     else:
                         if camera is None:
                             camera = build_camera(args)
                             print(f"[INFO] camera backend: {camera.name}", flush=True)
                         jpeg = camera.capture_jpeg()
                         jpeg = stamp_jpeg(jpeg, "Camera", args.quality)
+                        capture_source = camera.name
+                        capture_error = ""
                     gpio_status = read_gpio_status(query_gpio)
                     if mode == "inspect":
                         upload_inspection(
@@ -495,7 +612,7 @@ def main() -> None:
                             args.token,
                             collect_inspection(args.device_id, task_id),
                         )
-                    upload_frame(session, server, args.token, args.device_id, frame_id, task_id, jpeg, gpio_status)
+                    upload_frame(session, server, args.token, args.device_id, frame_id, task_id, jpeg, gpio_status, capture_source, capture_error)
                     uploaded += 1
                     total_label = "continuous" if max_frames == 0 else str(max_frames)
                     print(f"[ OK ] uploaded task {task_id} frame {uploaded}/{total_label}", flush=True)

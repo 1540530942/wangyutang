@@ -111,6 +111,7 @@ button,
   display: inline-flex;
   align-items: end;
   gap: 0.12rem;
+  padding-inline: 0.15rem;
 }
 
 .running-pig {
@@ -120,7 +121,7 @@ button,
   width: 46px;
   height: 36px;
   transform-origin: 50% 80%;
-  animation: pig-bounce 0.78s ease-in-out infinite;
+  animation: pig-bounce 0.78s ease-in-out infinite, pig-parade 2.4s ease-in-out infinite;
 }
 
 .side-pig-right {
@@ -177,6 +178,7 @@ button,
   width: 8px;
   height: 8px;
   opacity: 0;
+  animation: heart-pop 1.9s ease-out infinite;
   transform: translate(-50%, 0) rotate(45deg) scale(0.5);
 }
 
@@ -200,14 +202,17 @@ button,
 
 .heart-burst span:nth-child(1) {
   left: -8px;
+  animation-delay: 0.1s;
 }
 
 .heart-burst span:nth-child(2) {
   left: 2px;
+  animation-delay: 0.55s;
 }
 
 .heart-burst span:nth-child(3) {
   left: 12px;
+  animation-delay: 1s;
 }
 
 .pop-hearts .heart-burst span {
@@ -495,37 +500,46 @@ button,
   transform: rotate(-8deg);
 }
 
+.worker-pig .pig-hair,
+.worker-pig .pig-brow,
 .is-worker .pig-hair,
 .is-worker .pig-brow {
   opacity: 1;
 }
 
+.worker-pig .pig-eye,
 .is-worker .pig-eye {
   height: 3px;
   border-radius: 999px;
   transform: rotate(-8deg);
 }
 
+.worker-pig .pig-face,
 .is-worker .pig-face {
   background: #f3a0ad;
 }
 
+.wink-pig .pig-bow,
+.wink-pig .pig-glasses,
 .is-wink .pig-bow,
 .is-wink .pig-glasses {
   opacity: 1;
 }
 
+.wink-pig .pig-eye-right,
 .is-wink .pig-eye-right {
   height: 2px;
   border-radius: 999px;
   transform: rotate(-12deg);
 }
 
+.wink-pig .pig-lash,
 .is-wink .pig-lash {
   opacity: 1;
   animation: wink-lash 0.9s ease-in-out infinite;
 }
 
+.wink-pig .pig-face,
 .is-wink .pig-face {
   background: #f8a9c0;
 }
@@ -537,6 +551,16 @@ button,
   }
   50% {
     transform: translateX(7px) translateY(-5px) rotate(4deg);
+  }
+}
+
+@keyframes pig-parade {
+  0%,
+  100% {
+    left: -2px;
+  }
+  50% {
+    left: 5px;
   }
 }
 
@@ -629,26 +653,93 @@ button,
 
 .module-card {
   display: grid;
-  gap: 0.7rem;
+  gap: 0.42rem;
+  align-content: start;
+  line-height: 1.32;
 }
 
 .module-card h3 {
   margin-bottom: 0;
+  line-height: 1.2;
+}
+
+.module-card p {
+  margin-bottom: 0;
+}
+
+.idea-panel {
+  margin-top: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem;
+  background: var(--surface);
+}
+
+.idea-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.idea-form label {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.idea-form .wide,
+.idea-actions {
+  grid-column: 1 / -1;
+}
+
+.idea-form input,
+.idea-form textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem;
+  color: var(--ink);
+  background: #fff;
+  font: inherit;
+}
+
+.idea-form textarea {
+  resize: vertical;
+}
+
+.idea-form .consent {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.idea-form .consent input {
+  width: auto;
+}
+
+.idea-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.25rem;
 }
 
 .chip {
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  padding: 0.14rem 0.36rem;
   color: var(--accent-3);
   background: #f8fbfb;
-  font-size: 0.8rem;
+  font-size: 0.72rem;
+  line-height: 1.15;
   font-weight: 700;
 }
 
@@ -702,9 +793,11 @@ code {
   color: var(--accent);
   text-decoration: underline;
 }
+
 @media (max-width: 800px) {
   .topbar,
-  .overview {
+  .overview,
+  .idea-form {
     grid-template-columns: 1fr;
   }
 

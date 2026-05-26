@@ -27,8 +27,6 @@ function renderModules(modules) {
       .map((capability) => `<span class="chip">${escapeHtml(capability)}</span>`)
       .join('');
     const publicUrl = module.public_url || module.local_url || module.path_prefix || '#';
-    const pathPrefix = module.path_prefix || '/';
-    const routeStrategy = module.route_strategy || 'subdomain-first';
 
     card.innerHTML = `
       <p class="eyebrow ${statusClass}">${escapeHtml(module.status)}</p>
@@ -36,8 +34,6 @@ function renderModules(modules) {
       <p class="muted">${escapeHtml(module.summary)}</p>
       <div class="chips">${capabilities}</div>
       <p><strong>Public:</strong> <code>${escapeHtml(publicUrl)}</code></p>
-      <p><strong>Prefix:</strong> <code>${escapeHtml(pathPrefix)}</code></p>
-      <p><strong>Strategy:</strong> <code>${escapeHtml(routeStrategy)}</code></p>
       <p><strong>Health:</strong> <code class="${escapeHtml(healthClass)}">${escapeHtml(healthStatus)}</code></p>
       <p><strong>Image:</strong> <code>${escapeHtml(module.image || 'not assigned')}</code></p>
       <a class="module-link" href="${escapeHtml(publicUrl)}">Open module</a>

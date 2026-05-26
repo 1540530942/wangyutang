@@ -2,15 +2,120 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
+import shutil
+import socket
 import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_SERVER = "https://www.wangyutang.cn/action"
+IDLE_HEARTBEAT_SECONDS = 5.0
+ACTION_TIMEOUT_SECONDS = 20
+VOICE_PROMPT_DIR = BASE_DIR / "voice_prompts"
+DEFAULT_TTS_URL = "https://www.wangyutang.cn/common/api/tts/speech"
+DEFAULT_TTS_MODEL = "qwen3-tts-12hz-1.7b-customvoice"
+DEFAULT_TTS_VOICE = "vivian"
+DEFAULT_TTS_LANGUAGE = "chinese"
+VOICE_ACTION_TEXT = {
+    "move_forward": "前进",
+    "move_backward": "后退",
+    "move_left": "左移",
+    "move_right": "右移",
+    "turn_left": "左转",
+    "turn_right": "右转",
+    "look_left": "向左看",
+    "look_right": "向右看",
+    "look_up": "向上看",
+    "look_down": "向下看",
+    "reset_pose": "复位",
+    "emergency_stop": "停止",
+}
+
+
+def fetch_tts_audio(text: str, url: str, model: str, voice: str, language: str, timeout: float = 30.0) -> bytes:
+    payload = {
+        "model": model,
+        "input": text,
+        "voice": voice,
+        "language": language,
+        "instructions": "用自然、清晰的语气说",
+        "response_format": "wav",
+    }
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        audio = response.read()
+    if not audio.startswith(b"RIFF") and not audio.startswith(b"ID3"):
+        raise RuntimeError("TTS response is not an audio payload")
+    return audio
+
+
+def play_audio_file(path: Path, player: str, device: str = "") -> tuple[bool, str]:
+    selected_device = device or os.getenv("ACTION_VOICE_DEVICE", "").strip()
+    if not selected_device and Path(player).name == "aplay":
+        selected_device = detect_usb_audio_device()
+    if Path(player).name == "aplay":
+        command = [player, "-q"]
+        if selected_device:
+            command.extend(["-D", selected_device])
+        command.append(str(path))
+    else:
+        command = [player, str(path)]
+    completed = subprocess.run(command, text=True, capture_output=True, timeout=8)
+    device_label = selected_device or "default"
+    if completed.returncode != 0:
+        stderr = (completed.stderr or completed.stdout or "").strip()
+        return False, f"rc={completed.returncode}: {stderr[:300]}"
+    return True, device_label
+
+
+def apply_voice_volume(device: str, volume_percent: object) -> str:
+    try:
+        volume = max(0, min(100, int(round(float(volume_percent)))))
+    except (TypeError, ValueError):
+        return ""
+    card = ""
+    match = re.match(r"(?:plug)?hw:(\d+),", device or "")
+    if match:
+        card = match.group(1)
+    command = ["amixer"]
+    if card:
+        command.extend(["-c", card])
+    command.extend(["set", "Speaker", f"{volume}%", "unmute"])
+    try:
+        completed = subprocess.run(command, text=True, capture_output=True, timeout=3)
+    except (subprocess.SubprocessError, OSError) as exc:
+        return f"[WARN] voice volume set failed: {exc}"
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "").strip()
+        return f"[WARN] voice volume set failed rc={completed.returncode}: {detail[:200]}"
+    return f"[INFO] voice_volume_percent={volume}"
+
+
+def detect_usb_audio_device() -> str:
+    try:
+        result = subprocess.run(["aplay", "-l"], text=True, capture_output=True, timeout=2)
+    except (subprocess.SubprocessError, OSError):
+        return ""
+    for line in result.stdout.splitlines():
+        if "USB" not in line and "Device" not in line:
+            continue
+        match = re.search(r"card\s+(\d+):.*device\s+(\d+):", line)
+        if match:
+            return f"plughw:{match.group(1)},{match.group(2)}"
+    return ""
 
 
 def request_json(url: str, method: str = "GET", payload: dict | None = None, token: str = "", timeout: float = 12) -> dict:
@@ -23,13 +128,174 @@ def request_json(url: str, method: str = "GET", payload: dict | None = None, tok
         return json.loads(response.read().decode("utf-8"))
 
 
-def run_action(action: str) -> tuple[bool, str, str]:
-    command = ["python3", str(BASE_DIR / "action_move_executor.py"), action]
-    completed = subprocess.run(command, text=True, capture_output=True, timeout=60)
+def command_text(command: list[str], timeout: float = 2.0) -> str:
+    try:
+        return subprocess.check_output(command, text=True, stderr=subprocess.DEVNULL, timeout=timeout).strip()
+    except (subprocess.SubprocessError, OSError):
+        return ""
+
+
+def announce_completion(
+    action: str,
+    enabled: bool = True,
+    device: str = "",
+    tts_url: str = "",
+    tts_model: str = DEFAULT_TTS_MODEL,
+    tts_voice: str = DEFAULT_TTS_VOICE,
+    tts_language: str = DEFAULT_TTS_LANGUAGE,
+    volume_percent: object = None,
+) -> str:
+    if not enabled:
+        return ""
+    text = f"{VOICE_ACTION_TEXT.get(action, action)}完成"
+    prompt = VOICE_PROMPT_DIR / f"{action}_complete.wav"
+    player = shutil.which("aplay") or ""
+    if not player:
+        player = shutil.which("paplay") or ""
+    if not player:
+        return "[WARN] no audio playback command found"
+    selected_device = device or os.getenv("ACTION_VOICE_DEVICE", "").strip()
+    if not selected_device and Path(player).name == "aplay":
+        selected_device = detect_usb_audio_device()
+    volume_output = apply_voice_volume(selected_device, volume_percent)
+
+    tts_endpoint = tts_url or os.getenv("ACTION_TTS_URL", DEFAULT_TTS_URL).strip()
+    if tts_endpoint:
+        try:
+            audio = fetch_tts_audio(text, tts_endpoint, tts_model, tts_voice, tts_language)
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+                handle.write(audio)
+                temp_path = Path(handle.name)
+            try:
+                ok, detail = play_audio_file(temp_path, player, selected_device)
+            finally:
+                temp_path.unlink(missing_ok=True)
+            if ok:
+                return "\n".join(
+                    part
+                    for part in [
+                        volume_output,
+                        f"[INFO] tts_prompt_played model={tts_model} voice={tts_voice} device={detail} text={text}",
+                    ]
+                    if part
+                )
+            return f"[WARN] tts prompt playback failed: {detail}"
+        except Exception as exc:  # noqa: BLE001 - fallback to the static prompt below
+            fallback_reason = f"[WARN] tts prompt failed: {exc}"
+    else:
+        fallback_reason = "[WARN] tts prompt disabled"
+
+    if not prompt.exists():
+        return f"{fallback_reason}\n[WARN] voice prompt missing: {prompt}"
+    try:
+        ok, detail = play_audio_file(prompt, player, selected_device)
+        if not ok:
+            return f"{fallback_reason}\n[WARN] voice prompt playback failed: {detail}"
+    except (subprocess.SubprocessError, OSError) as exc:
+        return f"{fallback_reason}\n[WARN] voice prompt playback failed: {exc}"
+    suffix = f" device={detail}" if detail else " device=default"
+    return "\n".join(part for part in [fallback_reason, volume_output, f"[INFO] voice_prompt_played={prompt.name}{suffix}"] if part)
+
+
+def first_ip_address() -> str:
+    hostname_ips = command_text(["hostname", "-I"])
+    for item in hostname_ips.split():
+        if ":" not in item:
+            return item
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as handle:
+            handle.settimeout(1)
+            handle.connect(("8.8.8.8", 80))
+            return str(handle.getsockname()[0])
+    except OSError:
+        return ""
+
+
+def wifi_ssid() -> str:
+    ssid = command_text(["iwgetid", "-r"])
+    if ssid:
+        return ssid
+    nmcli = command_text(["nmcli", "-t", "-f", "active,ssid", "dev", "wifi"])
+    for line in nmcli.splitlines():
+        active, _, name = line.partition(":")
+        if active == "yes" and name:
+            return name
+    iw = command_text(["iw", "dev"])
+    for line in iw.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("ssid "):
+            return stripped[5:].strip()
+    return ""
+
+
+def network_status() -> dict[str, str]:
+    route = command_text(["ip", "route"])
+    gateway = ""
+    for line in route.splitlines():
+        parts = line.split()
+        if parts[:1] == ["default"] and "via" in parts:
+            gateway = parts[parts.index("via") + 1]
+            break
+    return {
+        "hostname": socket.gethostname(),
+        "ip_address": first_ip_address(),
+        "wifi_ssid": wifi_ssid(),
+        "gateway": gateway,
+    }
+
+
+def controller_execute(controller_url: str, action: str, settings: dict[str, Any] | None = None) -> tuple[bool, str, str]:
+    started = time.time()
+    payload = {"action": action, "settings": settings or {}}
+    try:
+        result = request_json(
+            f"{controller_url.rstrip('/')}/execute",
+            method="POST",
+            payload=payload,
+            timeout=ACTION_TIMEOUT_SECONDS,
+        )
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return False, "", f"controller unavailable: {exc}"
+    elapsed = round(time.time() - started, 3)
+    output = str(result.get("output") or "")
+    output = f"{output}\n[INFO] poller_controller_roundtrip_seconds={elapsed}".strip()
+    if bool(result.get("ok")):
+        return True, output, ""
+    return False, output, str(result.get("error") or "controller rejected action")
+
+
+def run_action(action: str, settings: dict | None = None) -> tuple[bool, str, str]:
+    command = [
+        "python3",
+        str(BASE_DIR / "action_move_executor.py"),
+        action,
+        "--params-json",
+        json.dumps(settings or {}, ensure_ascii=False),
+    ]
+    try:
+        completed = subprocess.run(command, text=True, capture_output=True, timeout=ACTION_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout or ""
+        stderr = exc.stderr or ""
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", errors="replace")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        return False, str(stdout), f"action timed out after {ACTION_TIMEOUT_SECONDS}s\n{stderr}"
     return completed.returncode == 0, completed.stdout, completed.stderr
 
 
+def run_remote_shutdown() -> tuple[bool, str, str]:
+    command = ["sudo", "shutdown", "-h", "now"]
+    try:
+        subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError as exc:
+        return False, "", f"failed to start shutdown: {exc}"
+    return True, "[INFO] remote shutdown requested with: sudo shutdown -h now", ""
+
+
 def heartbeat(server: str, token: str, device_id: str, status: str, detail: str = "", current_task_id: str = "") -> None:
+    network = network_status()
     request_json(
         f"{server.rstrip('/')}/api/device/heartbeat",
         method="POST",
@@ -38,6 +304,7 @@ def heartbeat(server: str, token: str, device_id: str, status: str, detail: str 
             "status": status,
             "detail": detail[:300],
             "current_task_id": current_task_id,
+            **network,
         },
         token=token,
     )
@@ -48,20 +315,58 @@ def main() -> int:
     parser.add_argument("--server", default=DEFAULT_SERVER)
     parser.add_argument("--token", default="")
     parser.add_argument("--device-id", default="turbopi-01")
-    parser.add_argument("--interval", type=float, default=2.0)
+    parser.add_argument("--interval", type=float, default=0.35)
+    parser.add_argument("--long-poll-seconds", type=float, default=10.0)
+    parser.add_argument("--controller-url", default="http://127.0.0.1:8765")
+    parser.add_argument("--no-controller", action="store_true")
+    parser.add_argument("--no-voice", action="store_true", help="Disable local completion voice prompt playback.")
+    parser.add_argument("--voice-device", default="", help="Audio output device for aplay, for example plughw:2,0.")
+    parser.add_argument("--tts-url", default=DEFAULT_TTS_URL)
+    parser.add_argument("--tts-model", default=DEFAULT_TTS_MODEL)
+    parser.add_argument("--tts-voice", default=DEFAULT_TTS_VOICE)
+    parser.add_argument("--tts-language", default=DEFAULT_TTS_LANGUAGE)
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
+    last_idle_heartbeat = 0.0
 
     while True:
         try:
-            heartbeat(args.server, args.token, args.device_id, "idle")
-            data = request_json(f"{args.server.rstrip('/')}/api/tasks/next", token=args.token)
+            wait_seconds = max(args.long_poll_seconds, 0.0)
+            data = request_json(
+                f"{args.server.rstrip('/')}/api/tasks/next?wait_seconds={wait_seconds:.2f}",
+                token=args.token,
+                timeout=max(12.0, wait_seconds + 5.0),
+            )
             task = data.get("task")
             if task:
                 task_id = str(task["id"])
                 action = str(task["skill_id"])
+                settings = task.get("settings") if isinstance(task.get("settings"), dict) else {}
                 heartbeat(args.server, args.token, args.device_id, "running", current_task_id=task_id)
-                ok, stdout, stderr = run_action(action)
+                if action == "remote_shutdown":
+                    ok, stdout, stderr = run_remote_shutdown()
+                elif args.no_controller:
+                    ok, stdout, stderr = run_action(action, settings)
+                else:
+                    ok, stdout, stderr = controller_execute(args.controller_url, action, settings)
+                    if not ok and stderr.startswith("controller unavailable:"):
+                        fallback_ok, fallback_stdout, fallback_stderr = run_action(action, settings)
+                        stdout = "\n".join(part for part in [stdout, fallback_stdout] if part)
+                        stderr = "\n".join(part for part in [stderr, fallback_stderr] if part)
+                        ok = fallback_ok
+                if ok:
+                    voice_output = announce_completion(
+                        action,
+                        enabled=not args.no_voice,
+                        device=args.voice_device,
+                        tts_url=args.tts_url,
+                        tts_model=args.tts_model,
+                        tts_voice=args.tts_voice,
+                        tts_language=args.tts_language,
+                        volume_percent=settings.get("voice_volume_percent"),
+                    )
+                    if voice_output:
+                        stdout = "\n".join(part for part in [stdout, voice_output] if part)
                 request_json(
                     f"{args.server.rstrip('/')}/api/tasks/result",
                     method="POST",
@@ -74,11 +379,15 @@ def main() -> int:
                     },
                     token=args.token,
                 )
+                last_idle_heartbeat = 0.0
+            elif time.monotonic() - last_idle_heartbeat >= IDLE_HEARTBEAT_SECONDS:
+                heartbeat(args.server, args.token, args.device_id, "idle")
+                last_idle_heartbeat = time.monotonic()
         except (urllib.error.URLError, TimeoutError, subprocess.SubprocessError, OSError) as exc:
             print(f"[WARN] {exc}", flush=True)
         if args.once:
             return 0
-        time.sleep(max(args.interval, 0.5))
+        time.sleep(max(args.interval, 0.05))
 
 
 if __name__ == "__main__":

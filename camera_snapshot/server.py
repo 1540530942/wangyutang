@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import secrets
 import time
+import json
 from pathlib import Path
 from typing import Annotated
 
@@ -15,6 +16,7 @@ STATIC_DIR = BASE_DIR / "static"
 DATA_DIR = BASE_DIR / "data"
 LATEST_IMAGE = DATA_DIR / "latest.jpg"
 STATE_FILE = DATA_DIR / "control_state.json"
+INSPECTION_FILE = DATA_DIR / "inspection_state.json"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -38,6 +40,8 @@ latest_meta = {
     "frame_id": "",
     "content_length": 0,
     "task_id": "",
+    "capture_source": "",
+    "capture_error": "",
     "gpio": {
         "available": False,
         "gpio": 26,
@@ -57,12 +61,32 @@ latest_meta = {
         "raw": "",
     },
 }
+if LATEST_IMAGE.exists():
+    latest_meta.update(
+        {
+            "has_image": True,
+            "updated_at": LATEST_IMAGE.stat().st_mtime,
+            "content_length": LATEST_IMAGE.stat().st_size,
+            "capture_source": "server-cache",
+        }
+    )
 
 gpio_status = {
     "available": False,
     "gpio": 26,
     "level": "",
     "value": None,
+    "source": "",
+    "sampled_at": 0.0,
+    "reported_at": 0.0,
+    "device_id": "",
+    "raw": "",
+}
+
+sonar_status = {
+    "available": False,
+    "front_distance_estimate_cm": None,
+    "confidence": 0.0,
     "source": "",
     "sampled_at": 0.0,
     "reported_at": 0.0,
@@ -86,6 +110,13 @@ latest_inspection = {
     "sender_service": "",
     "load_average": "",
 }
+if INSPECTION_FILE.exists():
+    try:
+        saved_inspection = json.loads(INSPECTION_FILE.read_text(encoding="utf-8"))
+        if isinstance(saved_inspection, dict):
+            latest_inspection.update(saved_inspection)
+    except (OSError, json.JSONDecodeError):
+        pass
 
 
 def require_token(x_camera_token: str | None) -> None:
@@ -111,6 +142,13 @@ def refresh_task_status() -> None:
     if time.time() > float(task.get("deadline_at") or 0):
         task["status"] = "expired"
         state["updated_at"] = time.time()
+
+
+def sonar_snapshot() -> dict[str, object]:
+    data = dict(sonar_status)
+    reported_at = float(data.get("reported_at") or 0)
+    data["age_seconds"] = time.time() - reported_at if reported_at else 0.0
+    return data
 
 
 def normalize_gpio(value: object, default: int = 26) -> int:
@@ -143,7 +181,7 @@ def index() -> FileResponse:
 
 @app.get("/api/health")
 def health() -> dict[str, object]:
-    return {"status": "ok", "has_image": latest_meta["has_image"], "device": device_status()}
+    return {"status": "ok", "has_image": latest_meta["has_image"], "device": device_status(), "sonar": sonar_snapshot()}
 
 
 @app.get("/api/control")
@@ -160,6 +198,46 @@ def latest_gpio() -> dict[str, object]:
 @app.get("/api/device")
 def latest_device() -> dict[str, object]:
     return device_status()
+
+
+@app.get("/api/sonar")
+def latest_sonar() -> dict[str, object]:
+    return sonar_snapshot()
+
+
+@app.post("/api/sonar")
+async def upload_sonar_status(
+    payload: dict[str, object],
+    x_camera_token: Annotated[str | None, Header()] = None,
+) -> dict[str, object]:
+    require_token(x_camera_token)
+    distance_raw = payload.get("front_distance_estimate_cm")
+    distance_cm = None
+    if distance_raw is not None:
+        try:
+            distance_cm = float(distance_raw)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="front_distance_estimate_cm must be numeric")
+        if distance_cm < 0 or distance_cm > 1000:
+            raise HTTPException(status_code=400, detail="front_distance_estimate_cm must be between 0 and 1000")
+    try:
+        confidence = float(payload.get("confidence") or 0.0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+    confidence = max(0.0, min(confidence, 1.0))
+    sonar_status.update(
+        {
+            "available": bool(payload.get("available")) and distance_cm is not None,
+            "front_distance_estimate_cm": distance_cm,
+            "confidence": confidence,
+            "source": str(payload.get("source") or ""),
+            "sampled_at": float(payload.get("sampled_at") or 0),
+            "reported_at": time.time(),
+            "device_id": str(payload.get("device_id") or ""),
+            "raw": str(payload.get("raw") or payload.get("error") or "")[:300],
+        }
+    )
+    return {"ok": True, "sonar": sonar_snapshot()}
 
 
 @app.get("/api/inspection")
@@ -223,6 +301,7 @@ async def upload_inspection(
             "load_average": str(payload.get("load_average") or ""),
         }
     )
+    INSPECTION_FILE.write_text(json.dumps(latest_inspection, ensure_ascii=False), encoding="utf-8")
     return {"ok": True, "inspection": dict(latest_inspection)}
 
 
@@ -291,6 +370,8 @@ async def upload_frame(
     x_led1_source: Annotated[str | None, Header()] = None,
     x_led1_sampled_at: Annotated[str | None, Header()] = None,
     x_led1_raw: Annotated[str | None, Header()] = None,
+    x_capture_source: Annotated[str | None, Header()] = None,
+    x_capture_error: Annotated[str | None, Header()] = None,
     x_camera_token: Annotated[str | None, Header()] = None,
 ) -> dict[str, object]:
     require_token(x_camera_token)
@@ -346,8 +427,11 @@ async def upload_frame(
             "frame_id": x_frame_id,
             "task_id": x_task_id,
             "content_length": len(raw),
+            "capture_source": (x_capture_source or "")[:80],
+            "capture_error": (x_capture_error or "")[:300],
             "gpio": gpio_meta,
             "led1": led1_meta,
+            "sonar": sonar_snapshot(),
         }
     )
     gpio_status.update({**gpio_meta, "reported_at": time.time(), "device_id": x_device_id})

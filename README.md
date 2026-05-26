@@ -14,6 +14,7 @@ This directory gathers the projects deployed behind `110.40.154.41` and the `wan
 | `camera_snapshot/` | TurboPi / Raspberry Pi camera snapshot service | `/camera/` |
 | `llm_manager/` | Web Manager dashboard for module webpage status, development progress, and large-model API management | `/web/`, `/llm/` |
 | `pi5_robot/` | Raspberry Pi 5 patrol robot MVP console, simulation robotd/visiond/harnessd, and hardware integration scaffold | `/robot/` |
+| `smile_face/` | Synchronized Wall-E-like robot expression screen for web and Raspberry Pi LCD kiosk display | `/face/` |
 | `pi_slam/` | Raspberry Pi / robot SLAM research placeholder; no runtime service yet | `/modules/` extension entry |
 
 The path routes above are served from both gateway hosts:
@@ -58,6 +59,7 @@ http://127.0.0.1:8090/              remote-sensing scaffold
 http://127.0.0.1:8099/              camera snapshot service
 http://127.0.0.1:8092/              Web Manager
 http://127.0.0.1:8093/              Pi5 robot console
+http://127.0.0.1:8096/              Smile Face robot expression screen
 http://127.0.0.1/api/health         Caddy gateway to platform, when port 80 is available
 ```
 

@@ -4,22 +4,81 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>TurboPi Action Move</title>
-    <link rel="stylesheet" href="./style.css" />
+    <link rel="stylesheet" href="./static/style.css" />
   </head>
   <body>
     <main class="shell">
       <section class="topbar">
         <div>
           <h1>TurboPi Action Move</h1>
-          <p>Raspberry Pi 5 / TurboPi motion and camera pan command queue.</p>
+          <p>树莓派 5 / TurboPi 运动、朝向和摄像头云台控制队列。</p>
         </div>
-        <div class="status" id="deviceStatus">checking...</div>
+        <div class="device-block">
+          <div class="status" id="deviceStatus">检查中...</div>
+          <div class="device-meta" id="deviceInfo">等待网络信息</div>
+        </div>
       </section>
 
       <section class="panel">
         <div class="panel-title">
-          <h2>Camera Pan</h2>
-          <span>servo2 horizontal axis</span>
+          <h2>安全控制</h2>
+          <span id="unitSummary">距离 5 cm · 转向 5°</span>
+        </div>
+        <div class="safety-grid">
+          <button class="danger" data-action="emergency_stop">急停</button>
+          <button class="secondary" data-action="reset_pose">Reset</button>
+          <button class="danger" data-action="remote_shutdown">远程关机</button>
+        </div>
+      </section>
+
+      <section class="panel camera-panel">
+        <div class="panel-title">
+          <h2>相机小窗</h2>
+          <label class="toggle-line">
+            <input id="cameraPreviewToggle" type="checkbox" />
+            <span>开启</span>
+          </label>
+        </div>
+        <div class="camera-preview disabled" id="cameraPreview">
+          <div class="camera-frame">
+            <img id="cameraPreviewImage" alt="相机最新画面" />
+            <div class="camera-symbol" id="cameraSymbol" aria-hidden="true">
+              <span class="camera-body"><span class="camera-lens"></span></span>
+            </div>
+          </div>
+          <div class="camera-status" id="cameraPreviewStatus">未开启</div>
+          <canvas id="cameraCompareCanvas" width="80" height="60"></canvas>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
+          <h2>单位设置</h2>
+          <button class="small" id="saveSettingsBtn" type="button">保存</button>
+        </div>
+        <form class="settings-form" id="settingsForm">
+          <label>
+            <span>运动单位距离</span>
+            <input id="unitDistanceInput" type="number" min="1" max="50" step="1" value="5" />
+            <em>cm</em>
+          </label>
+          <label>
+            <span>转向角度单位</span>
+            <input id="turnAngleInput" type="number" min="1" max="90" step="1" value="5" />
+            <em>°</em>
+          </label>
+          <label>
+            <span>灵敏度</span>
+            <input id="sensitivityInput" type="number" min="0.2" max="2" step="0.1" value="1" />
+            <em>x</em>
+          </label>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
+          <h2>摄像头朝向</h2>
+          <span>水平舵机和俯仰舵机</span>
         </div>
         <div class="grid">
           <button data-action="look_left">向左看</button>
@@ -31,8 +90,8 @@
 
       <section class="panel">
         <div class="panel-title">
-          <h2>Base Move</h2>
-          <span>timed /cmd_vel burst with stop</span>
+          <h2>前后左右运动</h2>
+          <span id="moveUnitLabel">按一次执行 5 cm</span>
         </div>
         <div class="pad">
           <span></span>
@@ -46,12 +105,23 @@
 
       <section class="panel">
         <div class="panel-title">
-          <h2>Tasks</h2>
+          <h2>朝向</h2>
+          <span id="turnUnitLabel">按一次转 5°</span>
+        </div>
+        <div class="grid two">
+          <button data-action="turn_left">向左转</button>
+          <button data-action="turn_right">向右转</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
+          <h2>任务</h2>
           <button class="small" id="refreshBtn">刷新</button>
         </div>
         <div class="tasks" id="tasks"></div>
       </section>
     </main>
-    <script src="./app.js"></script>
+    <script src="./static/app.js"></script>
   </body>
 </html>

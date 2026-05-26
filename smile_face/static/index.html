@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Smile Face</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <canvas id="face" aria-label="可爱机器人表情屏"></canvas>
+
+  <section id="controlPanel" class="control-panel" aria-label="表情控制台">
+    <div class="brand">
+      <span class="brand-kicker">CUTE SYNC FACE</span>
+      <strong>Smile Face</strong>
+      <small id="statusText">connecting...</small>
+    </div>
+
+    <p class="group-title">表情</p>
+    <div class="button-grid">
+      <button data-emotion="neutral">乖巧</button>
+      <button data-emotion="happy">开心</button>
+      <button data-emotion="joy">星星眼</button>
+      <button data-emotion="sad">委屈</button>
+      <button data-emotion="angry">小生气</button>
+      <button id="blinkButton">眨眼</button>
+      <button id="speakButton" class="wide">说话测试</button>
+      <button id="resetButton">重置</button>
+    </div>
+
+    <p class="group-title">类型</p>
+    <div class="style-grid">
+      <button data-style="mochi">糯米团</button>
+      <button data-style="bunny">兔兔屏</button>
+      <button data-style="star">星云糖</button>
+      <button data-style="panda">熊猫机</button>
+    </div>
+
+    <input id="speakText" value="你好呀，我变可爱啦" maxlength="60" aria-label="说话文本">
+  </section>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

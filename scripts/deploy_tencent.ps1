@@ -56,6 +56,7 @@ $Images = @(
   @{ Name = "remote-sensing-system:local"; File = "remote-sensing-system_local.tar" },
   @{ Name = "camera-snapshot:local"; File = "camera-snapshot_local.tar" },
   @{ Name = "action-move:local"; File = "action-move_local.tar" },
+  @{ Name = "audio-recognition:local"; File = "audio-recognition_local.tar" },
   @{ Name = "web-manager:local"; File = "web-manager_local.tar" },
   @{ Name = "pi5-robot:local"; File = "pi5-robot_local.tar" }
 )
@@ -70,7 +71,7 @@ if ($GitStatus -and -not $AllowDirty) {
 }
 
 Write-Step "Running local checks"
-Invoke-Checked "python" @("-m", "compileall", "-q", "control_platform", "camera_snapshot", "action_move", "llm_manager", "pi5_robot", "remote_sensing", "paper_learning_system", "remote_control_cloud")
+Invoke-Checked "python" @("-m", "compileall", "-q", "control_platform", "camera_snapshot", "action_move", "audio_recognition", "llm_manager", "pi5_robot", "remote_sensing", "paper_learning_system", "remote_control_cloud")
 Invoke-Checked "python" @("-m", "json.tool", "control_platform\modules\registry.json")
 Invoke-Checked "docker" @("compose", "config", "--quiet")
 
@@ -155,11 +156,15 @@ if (-not $SkipVerify) {
     "https://www.wangyutang.cn/camera/api/health",
     "https://www.wangyutang.cn/action/",
     "https://www.wangyutang.cn/action/api/health",
+    "https://www.wangyutang.cn/audio/",
+    "https://www.wangyutang.cn/audio/api/health",
     "http://110.40.154.41/",
     "http://110.40.154.41/camera/",
     "http://110.40.154.41/camera/api/health",
     "http://110.40.154.41/action/",
-    "http://110.40.154.41/action/api/health"
+    "http://110.40.154.41/action/api/health",
+    "http://110.40.154.41/audio/",
+    "http://110.40.154.41/audio/api/health"
   )
   foreach ($url in $Checks) {
     try {
