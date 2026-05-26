@@ -33,6 +33,14 @@ From the repository root on Windows:
 powershell -ExecutionPolicy Bypass -File scripts\deploy_tencent.ps1
 ```
 
+For camera-only changes, use the narrower camera release path:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\deploy_camera_snapshot.ps1
+```
+
+This updates both sides of the camera chain: the Tencent Cloud `camera-snapshot` container and the Raspberry Pi `camera-snapshot-sender.service`.
+
 The deployment script performs these steps:
 
 ```text
@@ -46,6 +54,20 @@ The deployment script performs these steps:
 8. Run scripts/tencent_apply_release.sh on the server.
 9. Verify public URLs.
 10. Write docs/logs/<date>-tencent-deploy-<timestamp>.md.
+```
+
+The camera-only script performs these extra checks:
+
+```text
+1. Compile camera_snapshot/server.py and camera_snapshot/pi_camera_sender.py.
+2. Upload the exact source files to Tencent Cloud and rebuild camera-snapshot:local.
+3. Restart only the camera-snapshot container.
+4. Install the Raspberry Pi sender and systemd unit from this repository.
+5. Verify the public page contains 摄像机截图, 屏幕截图, 表情截图.
+6. Trigger all three modes and require these sources:
+   single -> opencv
+   screenshot -> screenshot
+   face -> face-screenshot
 ```
 
 ## Emergency Fix Policy
@@ -104,3 +126,4 @@ curl -fsS http://127.0.0.1/camera/api/health
 - Tencent Cloud SSH may close rapid repeated connections. Wait 45 to 120 seconds before retrying.
 - Docker Hub access from the server has been unreliable, so releases include local image archives and use `docker load`.
 - The server may keep historical image tags such as `control-platform:deployed-<timestamp>` for emergency recovery, but the normal runtime tags are the `:local` names used by Compose.
+- The Raspberry Pi camera sender must be managed by systemd only. Do not start manual `nohup python3 pi_camera_sender.py ...` copies; the sender has a lock file to reject duplicate instances.

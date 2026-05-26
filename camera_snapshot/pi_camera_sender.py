@@ -20,6 +20,7 @@ DEFAULT_QUERY_GPIO = int(os.environ.get("CAMERA_SNAPSHOT_DEFAULT_GPIO", "26"))
 
 
 running = True
+lock_handle: object | None = None
 
 
 def handle_signal(signum: int, frame: object) -> None:
@@ -29,6 +30,24 @@ def handle_signal(signum: int, frame: object) -> None:
 
 signal.signal(signal.SIGINT, handle_signal)
 signal.signal(signal.SIGTERM, handle_signal)
+
+
+def acquire_single_instance_lock(lock_file: str) -> None:
+    global lock_handle
+    if os.name != "posix":
+        return
+    import fcntl
+
+    handle = open(lock_file, "w", encoding="utf-8")
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        raise RuntimeError(f"another pi_camera_sender.py instance already holds {lock_file}") from None
+    handle.seek(0)
+    handle.truncate()
+    handle.write(str(os.getpid()))
+    handle.flush()
+    lock_handle = handle
 
 
 @dataclass
@@ -534,9 +553,11 @@ def main() -> None:
     parser.add_argument("--height", type=int, default=480)
     parser.add_argument("--quality", type=int, default=78)
     parser.add_argument("--idle-poll-ms", type=int, default=1000)
+    parser.add_argument("--lock-file", default="/tmp/camera_snapshot_sender.lock")
     args = parser.parse_args()
 
     server = args.server.rstrip("/")
+    acquire_single_instance_lock(args.lock_file)
     session = requests.Session()
     camera: CameraBackend | None = None
     print(f"[INFO] server: {server}", flush=True)
