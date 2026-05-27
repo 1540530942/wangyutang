@@ -61,11 +61,32 @@ jobs:
             -czf camera_snapshot-${GITHUB_SHA}.tgz \
             camera_snapshot scripts/github_deploy_camera_snapshot.sh
 
-      - name: Configure SSH
+      - name: Check deployment secrets
+        id: deploy_secrets
         run: |
-          test -n "$TENCENT_HOST"
-          test -n "$TENCENT_USER"
-          test -n "$TENCENT_SSH_PRIVATE_KEY"
+          cloud_ready=false
+          if [ -n "$TENCENT_HOST" ] && [ -n "$TENCENT_USER" ] && [ -n "$TENCENT_SSH_PRIVATE_KEY" ]; then
+            cloud_ready=true
+          fi
+
+          pi_ready=false
+          if [ -n "$PI_HOST" ] && [ -n "$PI_USER" ] && [ -n "$PI_SSH_PRIVATE_KEY" ]; then
+            pi_ready=true
+          fi
+
+          echo "cloud_ready=$cloud_ready" >> "$GITHUB_OUTPUT"
+          echo "pi_ready=$pi_ready" >> "$GITHUB_OUTPUT"
+
+          if [ "$cloud_ready" != "true" ]; then
+            echo "::notice::Tencent Cloud secrets are not configured; skipping remote camera deployment."
+          fi
+          if [ "$DEPLOY_PI" = "true" ] && [ "$pi_ready" != "true" ]; then
+            echo "::notice::Raspberry Pi secrets are not configured; skipping Pi sender update."
+          fi
+
+      - name: Configure SSH
+        if: steps.deploy_secrets.outputs.cloud_ready == 'true'
+        run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           printf '%s\n' "$TENCENT_SSH_PRIVATE_KEY" > ~/.ssh/tencent_key
@@ -77,10 +98,7 @@ jobs:
             echo "  IdentityFile ~/.ssh/tencent_key"
             echo "  StrictHostKeyChecking accept-new"
           } > ~/.ssh/config
-          if [ "$DEPLOY_PI" = "true" ]; then
-            test -n "$PI_HOST"
-            test -n "$PI_USER"
-            test -n "$PI_SSH_PRIVATE_KEY"
+          if [ "$DEPLOY_PI" = "true" ] && [ "${{ steps.deploy_secrets.outputs.pi_ready }}" = "true" ]; then
             printf '%s\n' "$PI_SSH_PRIVATE_KEY" > ~/.ssh/pi_key
             chmod 600 ~/.ssh/pi_key
             {
@@ -94,18 +112,20 @@ jobs:
           fi
 
       - name: Upload release to Tencent Cloud
+        if: steps.deploy_secrets.outputs.cloud_ready == 'true'
         run: |
           ssh tencent-prod "mkdir -p /tmp/wangyutang-camera-deploy"
           scp camera_snapshot-${GITHUB_SHA}.tgz tencent-prod:/tmp/wangyutang-camera-deploy/
 
       - name: Apply cloud release
+        if: steps.deploy_secrets.outputs.cloud_ready == 'true'
         run: |
           ssh tencent-prod \
             "bash -s -- '/tmp/wangyutang-camera-deploy/camera_snapshot-${GITHUB_SHA}.tgz' '${GITHUB_SHA}'" \
             < scripts/github_deploy_camera_snapshot.sh
 
       - name: Update Raspberry Pi sender
-        if: env.DEPLOY_PI == 'true'
+        if: env.DEPLOY_PI == 'true' && steps.deploy_secrets.outputs.cloud_ready == 'true' && steps.deploy_secrets.outputs.pi_ready == 'true'
         run: |
           scp camera_snapshot/pi_camera_sender.py pi-camera:/tmp/pi_camera_sender.py
           scp camera_snapshot/systemd/camera-snapshot-sender.service pi-camera:/tmp/camera-snapshot-sender.service
@@ -123,6 +143,7 @@ jobs:
           '
 
       - name: Verify public camera flow
+        if: steps.deploy_secrets.outputs.cloud_ready == 'true'
         run: |
           python - <<'PY'
           import json
