@@ -15,6 +15,7 @@ on:
     branches:
       - "**"
     paths:
+      # Deploy whenever camera_snapshot code or its deployment path changes.
       - "camera_snapshot/**"
       - "scripts/github_deploy_camera_snapshot.sh"
       - ".github/workflows/deploy-camera-snapshot.yml"
