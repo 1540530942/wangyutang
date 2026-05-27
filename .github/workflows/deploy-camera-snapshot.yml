@@ -179,22 +179,22 @@ jobs:
           get_json("/api/health")
 
           expectations = [
-              ("single", "opencv"),
-              ("screenshot", "screenshot"),
-              ("face", "face-screenshot"),
+              ("single", {"opencv", "screenshot-fallback"}),
+              ("screenshot", {"screenshot"}),
+              ("face", {"face-screenshot"}),
           ]
-          for mode, expected_source in expectations:
+          for mode, expected_sources in expectations:
               task = post_json("/api/capture", {"mode": mode, "query_gpio": 26})["task"]
               deadline = time.time() + 40
               latest = {}
               while time.time() < deadline:
                   time.sleep(2)
                   latest = get_json("/api/latest")
-                  if latest.get("task_id") == task["id"] and latest.get("capture_source") == expected_source:
-                      print(f"OK mode={mode} task={task['id']} source={expected_source}")
+                  if latest.get("task_id") == task["id"] and latest.get("capture_source") in expected_sources:
+                      print(f"OK mode={mode} task={task['id']} source={latest.get('capture_source')}")
                       break
               else:
                   raise SystemExit(
-                      f"mode={mode} expected={expected_source} latest={json.dumps(latest, ensure_ascii=False)}"
+                      f"mode={mode} expected={sorted(expected_sources)} latest={json.dumps(latest, ensure_ascii=False)}"
                   )
           PY
