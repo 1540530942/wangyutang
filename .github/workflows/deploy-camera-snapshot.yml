@@ -12,8 +12,6 @@ on:
           - "true"
           - "false"
   push:
-    branches:
-      - "**"
     paths:
       # Deploy whenever camera_snapshot code or its deployment path changes.
       - "camera_snapshot/**"
