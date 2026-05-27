@@ -35,6 +35,7 @@ jobs:
       PI_HOST: ${{ secrets.PI_HOST }}
       PI_USER: ${{ secrets.PI_USER }}
       PI_SSH_PRIVATE_KEY: ${{ secrets.PI_SSH_PRIVATE_KEY }}
+      PI_PORT: ${{ secrets.PI_PORT || '10022' }}
       DEPLOY_PI: ${{ github.event_name == 'push' && 'false' || inputs.deploy_pi }}
 
     steps:
@@ -69,7 +70,7 @@ jobs:
           fi
 
           pi_ready=false
-          if [ -n "$PI_HOST" ] && [ -n "$PI_USER" ] && [ -n "$PI_SSH_PRIVATE_KEY" ]; then
+          if [ -n "$PI_HOST" ] && [ -n "$PI_USER" ] && [ -n "$PI_SSH_PRIVATE_KEY" ] && [ -n "$PI_PORT" ]; then
             pi_ready=true
           fi
 
@@ -104,6 +105,7 @@ jobs:
               echo "Host pi-camera"
               echo "  HostName $PI_HOST"
               echo "  User $PI_USER"
+              echo "  Port $PI_PORT"
               echo "  IdentityFile ~/.ssh/pi_key"
               echo "  ProxyJump tencent-prod"
               echo "  StrictHostKeyChecking accept-new"
