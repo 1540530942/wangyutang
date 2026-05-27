@@ -7,7 +7,7 @@ commit_sha="${2:-unknown}"
 deploy_root="${CAMERA_DEPLOY_ROOT:-/root/camera_snapshot}"
 release_root="${CAMERA_RELEASE_ROOT:-/root/camera_snapshot/releases}"
 platform_root="${PLATFORM_ROOT:-/root/control_platform}"
-compose_file="${CAMERA_COMPOSE_FILE:-/root/control_platform/infra/docker-compose.platform.yml}"
+compose_file="${CAMERA_COMPOSE_FILE:-}"
 release_dir="$release_root/$commit_sha"
 
 if [ ! -f "$archive_path" ]; then
@@ -46,7 +46,24 @@ docker build \
 
 echo "==> Restarting camera-snapshot container"
 cd "$platform_root"
-docker compose -f "$compose_file" up -d --no-deps --force-recreate camera-snapshot
+if [ -z "$compose_file" ]; then
+  if [ -f "$platform_root/docker-compose.yml" ]; then
+    compose_file="$platform_root/docker-compose.yml"
+  elif [ -f "$platform_root/infra/docker-compose.platform.yml" ]; then
+    compose_file="$platform_root/infra/docker-compose.platform.yml"
+  else
+    echo "camera compose file not found under $platform_root" >&2
+    exit 1
+  fi
+fi
+
+compose_args=(-f "$compose_file")
+if [ -f "$platform_root/.env" ]; then
+  compose_args=(--env-file "$platform_root/.env" "${compose_args[@]}")
+fi
+
+docker compose "${compose_args[@]}" config --quiet
+docker compose "${compose_args[@]}" up -d --no-build --no-deps --force-recreate camera-snapshot
 
 echo "==> Cloud health check"
 for _ in $(seq 1 20); do
