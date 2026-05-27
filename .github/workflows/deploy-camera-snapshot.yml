@@ -36,7 +36,7 @@ jobs:
       PI_USER: ${{ secrets.PI_USER }}
       PI_SSH_PRIVATE_KEY: ${{ secrets.PI_SSH_PRIVATE_KEY }}
       PI_PORT: ${{ secrets.PI_PORT || '10022' }}
-      DEPLOY_PI: ${{ github.event_name == 'push' && 'false' || inputs.deploy_pi }}
+      DEPLOY_PI: ${{ github.event_name == 'push' && 'true' || inputs.deploy_pi }}
 
     steps:
       - name: Checkout
