@@ -153,9 +153,12 @@ jobs:
         if: steps.deploy_secrets.outputs.cloud_ready == 'true'
         run: |
           python - <<'PY'
+          import io
           import json
+          import pathlib
           import time
           import urllib.request
+          from PIL import Image
 
           base = "https://www.wangyutang.cn/camera"
 
@@ -174,6 +177,22 @@ jobs:
               with urllib.request.urlopen(request, timeout=20) as response:
                   return json.loads(response.read().decode("utf-8"))
 
+          def get_jpeg(path):
+              with urllib.request.urlopen(base + path, timeout=20) as response:
+                  return response.read()
+
+          def similarity_score(a_bytes, b_bytes):
+              image_a = Image.open(io.BytesIO(a_bytes)).convert("RGB").resize((320, 240))
+              image_b = Image.open(io.BytesIO(b_bytes)).convert("RGB").resize((320, 240))
+              pixels_a = list(image_a.getdata())
+              pixels_b = list(image_b.getdata())
+              total = 0
+              for (ar, ag, ab), (br, bg, bb) in zip(pixels_a, pixels_b):
+                  total += abs(ar - br) + abs(ag - bg) + abs(ab - bb)
+              mean_abs = total / (len(pixels_a) * 3)
+              score = 1.0 - (mean_abs / 255.0)
+              return max(0.0, min(1.0, score))
+
           html = urllib.request.urlopen(base + "/", timeout=20).read().decode("utf-8")
           labels = (
               "".join(chr(value) for value in (0x6444, 0x50CF, 0x673A, 0x622A, 0x56FE)),
@@ -184,25 +203,114 @@ jobs:
               if label not in html:
                   raise SystemExit(f"missing button label: {label}")
 
-          get_json("/api/health")
+          health = get_json("/api/health")
+          if health.get("status") != "ok":
+              raise SystemExit(f"/api/health invalid response: {json.dumps(health, ensure_ascii=False)}")
 
-          expectations = [
-              ("single", {"web-video-server", "rpicam-still", "picamera2", "opencv", "screenshot-fallback"}),
-              ("screenshot", {"screenshot"}),
-              ("face", {"face-screenshot"}),
-          ]
-          for mode, expected_sources in expectations:
+          golden_dir = pathlib.Path("camera_snapshot/tests/golden")
+          golden_paths = {
+              "single": golden_dir / "golden_camerashot.jpg",
+              "screenshot": golden_dir / "golden_screenshot.jpg",
+              "face": golden_dir / "golden_face.jpg",
+          }
+          for mode, path in golden_paths.items():
+              if not path.exists():
+                  raise SystemExit(f"missing golden image for {mode}: {path}")
+
+          golden_bytes = {mode: path.read_bytes() for mode, path in golden_paths.items()}
+
+          camera_sources = {"web-video-server", "rpicam-still", "picamera2", "opencv"}
+          exact_source = {
+              "screenshot": "screenshot",
+              "face": "face-screenshot",
+          }
+          actual = {}
+
+          for mode in ("single", "screenshot", "face"):
               task = post_json("/api/capture", {"mode": mode, "query_gpio": 26})["task"]
               deadline = time.time() + 40
               latest = {}
               while time.time() < deadline:
                   time.sleep(2)
                   latest = get_json("/api/latest")
-                  if latest.get("task_id") == task["id"] and latest.get("capture_source") in expected_sources:
-                      print(f"OK mode={mode} task={task['id']} source={latest.get('capture_source')}")
-                      break
+                  if latest.get("task_id") != task["id"]:
+                      continue
+                  source = latest.get("capture_source") or ""
+                  if mode == "single":
+                      if source not in camera_sources:
+                          raise SystemExit(f"single capture_source invalid: {source}")
+                  else:
+                      if source != exact_source[mode]:
+                          raise SystemExit(f"{mode} capture_source invalid: {source}")
+                  frame = get_jpeg(f"/api/latest.jpg?t={int(time.time()*1000)}")
+                  actual[mode] = {
+                      "source": source,
+                      "bytes": frame,
+                      "task_id": task["id"],
+                  }
+                  print(f"OK mode={mode} task={task['id']} source={source} size={len(frame)}")
+                  break
               else:
                   raise SystemExit(
-                      f"mode={mode} expected={sorted(expected_sources)} latest={json.dumps(latest, ensure_ascii=False)}"
+                      f"mode={mode} no valid frame in time: latest={json.dumps(latest, ensure_ascii=False)}"
                   )
+
+          # Layer 3: actual vs matching golden image similarity thresholds.
+          score_screen = similarity_score(actual["screenshot"]["bytes"], golden_bytes["screenshot"])
+          score_face = similarity_score(actual["face"]["bytes"], golden_bytes["face"])
+          if score_screen < 0.85:
+              raise SystemExit(f"screenshot similarity too low: {score_screen:.4f} < 0.85")
+          if score_face < 0.85:
+              raise SystemExit(f"face similarity too low: {score_face:.4f} < 0.85")
+
+          # Layer 4: anti-mode-mixing checks.
+          cam_vs_cam = similarity_score(actual["single"]["bytes"], golden_bytes["single"])
+          cam_vs_screen = similarity_score(actual["single"]["bytes"], golden_bytes["screenshot"])
+          cam_vs_face = similarity_score(actual["single"]["bytes"], golden_bytes["face"])
+          if cam_vs_screen >= cam_vs_cam:
+              raise SystemExit(
+                  f"camera shot too close to screenshot: cam_vs_screen={cam_vs_screen:.4f} cam_vs_cam={cam_vs_cam:.4f}"
+              )
+          if cam_vs_face >= cam_vs_cam:
+              raise SystemExit(
+                  f"camera shot too close to face: cam_vs_face={cam_vs_face:.4f} cam_vs_cam={cam_vs_cam:.4f}"
+              )
+
+          screen_vs_cam = similarity_score(actual["screenshot"]["bytes"], golden_bytes["single"])
+          if screen_vs_cam >= score_screen:
+              raise SystemExit(
+                  f"screenshot too close to camera shot: screen_vs_cam={screen_vs_cam:.4f} "
+                  f"screen_vs_screen={score_screen:.4f}"
+              )
+
+          face_vs_cam = similarity_score(actual["face"]["bytes"], golden_bytes["single"])
+          if face_vs_cam >= score_face:
+              raise SystemExit(
+                  f"face too close to camera shot: face_vs_cam={face_vs_cam:.4f} face_vs_face={score_face:.4f}"
+              )
+
+          # Layer 5: golden-set self-check.
+          golden_cam_vs_screen = similarity_score(golden_bytes["single"], golden_bytes["screenshot"])
+          golden_cam_vs_face = similarity_score(golden_bytes["single"], golden_bytes["face"])
+          if golden_cam_vs_screen > 0.50:
+              raise SystemExit(
+                  f"golden camera and screenshot are too similar: {golden_cam_vs_screen:.4f} (must be <= 0.50)"
+              )
+          if golden_cam_vs_face > 0.50:
+              raise SystemExit(
+                  f"golden camera and face are too similar: {golden_cam_vs_face:.4f} (must be <= 0.50)"
+              )
+
+          summary = {
+              "screen_vs_golden_screen": round(score_screen, 4),
+              "face_vs_golden_face": round(score_face, 4),
+              "camera_vs_golden_camera": round(cam_vs_cam, 4),
+              "camera_vs_golden_screen": round(cam_vs_screen, 4),
+              "camera_vs_golden_face": round(cam_vs_face, 4),
+              "screen_vs_golden_camera": round(screen_vs_cam, 4),
+              "face_vs_golden_camera": round(face_vs_cam, 4),
+              "golden_camera_vs_golden_screen": round(golden_cam_vs_screen, 4),
+              "golden_camera_vs_golden_face": round(golden_cam_vs_face, 4),
+          }
+          print("VERIFICATION_SUMMARY", json.dumps(summary, ensure_ascii=False))
           PY
