@@ -4,6 +4,7 @@ import argparse
 import io
 import os
 import signal
+import shlex
 import subprocess
 import sys
 import time
@@ -139,13 +140,37 @@ class OpenCvBackend(CameraBackend):
             self.cap.release()
 
 
+ROS_SETUP = "source /opt/ros/humble/setup.bash && source /home/ubuntu/ros2_ws/install/setup.bash"
+
+
 class WebVideoServerBackend(CameraBackend):
-    def __init__(self, snapshot_url: str, timeout: float) -> None:
+    def __init__(
+        self,
+        snapshot_url: str,
+        timeout: float,
+        ros_container: str,
+        ros_image_topic: str,
+        autostart_usb_cam: bool,
+    ) -> None:
         super().__init__("web-video-server")
         self.snapshot_url = snapshot_url
         self.timeout = timeout
+        self.ros_container = ros_container
+        self.ros_image_topic = ros_image_topic
+        self.autostart_usb_cam = autostart_usb_cam
         self.session = requests.Session()
-        self.capture_jpeg()
+        try:
+            self.capture_jpeg()
+        except Exception as first_exc:
+            if not self.autostart_usb_cam:
+                raise
+            diagnostics = self.ensure_ros_camera_publisher()
+            try:
+                self.capture_jpeg()
+            except Exception as second_exc:
+                raise RuntimeError(
+                    f"web_video_server unavailable after ROS camera check: {second_exc}; {diagnostics}"
+                ) from second_exc
 
     def capture_jpeg(self) -> bytes:
         response = self.session.get(self.snapshot_url, timeout=self.timeout)
@@ -160,6 +185,70 @@ class WebVideoServerBackend(CameraBackend):
 
     def close(self) -> None:
         self.session.close()
+
+    def ensure_ros_camera_publisher(self) -> str:
+        if not self.ros_container:
+            return "ROS container is not configured"
+        topic_info = self._docker_ros(f"ros2 topic info {shlex.quote(self.ros_image_topic)} -v", timeout=8)
+        if not topic_info.returncode and "Publisher count: 0" not in topic_info.stdout:
+            return f"{self.ros_image_topic} already has a publisher"
+
+        video_check = self._docker_shell("test -e /dev/video0 && echo /dev/video0-present || true", timeout=5)
+        if "/dev/video0-present" not in video_check.stdout:
+            return (
+                f"{self.ros_image_topic} has no publisher and /dev/video0 is not present in "
+                f"container {self.ros_container}"
+            )
+
+        start = subprocess.run(
+            [
+                "docker",
+                "exec",
+                "-u",
+                "ubuntu",
+                "-d",
+                self.ros_container,
+                "bash",
+                "-lc",
+                (
+                    f"{ROS_SETUP} && export need_compile=False && "
+                    "ros2 launch peripherals usb_cam.launch.py "
+                    ">> /tmp/camera_snapshot_usb_cam.log 2>&1"
+                ),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+        if start.returncode:
+            return f"failed to start usb_cam.launch.py: {start.stderr.strip() or start.stdout.strip()}"
+
+        deadline = time.time() + 8
+        while time.time() < deadline:
+            time.sleep(1)
+            topic_info = self._docker_ros(f"ros2 topic info {shlex.quote(self.ros_image_topic)} -v", timeout=8)
+            if not topic_info.returncode and "Publisher count: 0" not in topic_info.stdout:
+                return f"started usb_cam publisher for {self.ros_image_topic}"
+        return f"started usb_cam.launch.py but {self.ros_image_topic} still has no publisher"
+
+    def _docker_ros(self, command: str, timeout: float) -> subprocess.CompletedProcess[str]:
+        return self._docker_shell(f"{ROS_SETUP} && {command}", timeout=timeout)
+
+    def _docker_shell(self, command: str, timeout: float) -> subprocess.CompletedProcess[str]:
+        try:
+            return subprocess.run(
+                ["docker", "exec", self.ros_container, "bash", "-lc", command],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return subprocess.CompletedProcess(
+                args=["docker", "exec", self.ros_container],
+                returncode=1,
+                stdout="",
+                stderr=str(exc),
+            )
 
 
 class RpicamStillBackend(CameraBackend):
@@ -250,7 +339,13 @@ def stamp_jpeg(jpeg: bytes, label_prefix: str, quality: int) -> bytes:
 def build_camera(args: argparse.Namespace) -> CameraBackend:
     if args.backend in {"auto", "web-video-server"}:
         try:
-            return WebVideoServerBackend(args.web_video_snapshot_url, args.web_video_timeout)
+            return WebVideoServerBackend(
+                args.web_video_snapshot_url,
+                args.web_video_timeout,
+                args.ros_container,
+                args.ros_image_topic,
+                args.ros_usb_cam_autostart,
+            )
         except Exception as exc:
             if args.backend == "web-video-server":
                 raise
@@ -547,6 +642,15 @@ def main() -> None:
         help="web_video_server snapshot URL for an already-running ROS camera stream.",
     )
     parser.add_argument("--web-video-timeout", type=float, default=2.0)
+    parser.add_argument("--ros-container", default=os.environ.get("CAMERA_ROS_CONTAINER", "turbopi"))
+    parser.add_argument("--ros-image-topic", default=os.environ.get("CAMERA_ROS_IMAGE_TOPIC", "/image_raw"))
+    parser.add_argument(
+        "--no-ros-usb-cam-autostart",
+        dest="ros_usb_cam_autostart",
+        action="store_false",
+        help="Do not try to start TurboPi peripherals usb_cam.launch.py when /image_raw has no publisher.",
+    )
+    parser.set_defaults(ros_usb_cam_autostart=os.environ.get("CAMERA_ROS_USB_CAM_AUTOSTART", "1") != "0")
     parser.add_argument("--rpicam-timeout", type=float, default=10.0)
     parser.add_argument("--camera-index", type=int, default=0)
     parser.add_argument("--width", type=int, default=640)

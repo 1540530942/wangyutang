@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -98,6 +99,24 @@ class CameraSnapshotSmokeTests(unittest.TestCase):
         self.assertEqual(source, "screenshot-fallback")
         self.assertIn("no camera", error)
         self.assertEqual(jpeg, JPEG_BYTES)
+
+    def test_ros_web_video_backend_reports_missing_usb_camera_device(self) -> None:
+        backend = pi_camera_sender.WebVideoServerBackend.__new__(pi_camera_sender.WebVideoServerBackend)
+        backend.ros_container = "turbopi"
+        backend.ros_image_topic = "/image_raw"
+
+        def fake_run(command, **kwargs):
+            joined = " ".join(command)
+            if "ros2 topic info" in joined:
+                return subprocess.CompletedProcess(command, 0, stdout="Publisher count: 0\n", stderr="")
+            if "test -e /dev/video0" in joined:
+                return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+            raise AssertionError(f"unexpected command: {command}")
+
+        with patch.object(pi_camera_sender.subprocess, "run", side_effect=fake_run):
+            diagnostics = backend.ensure_ros_camera_publisher()
+        self.assertIn("/image_raw has no publisher", diagnostics)
+        self.assertIn("/dev/video0 is not present", diagnostics)
 
 
 if __name__ == "__main__":
