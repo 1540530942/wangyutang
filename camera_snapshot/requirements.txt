@@ -1,7 +1,6 @@
 fastapi
-httpx
 pillow
-uvicorn[standard]
+uvicorn
 requests
 
 # Raspberry Pi sender backend options:
