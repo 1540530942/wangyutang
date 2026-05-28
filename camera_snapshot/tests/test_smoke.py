@@ -41,6 +41,18 @@ class FakeCamera(pi_camera_sender.CameraBackend):
 
 
 class CameraSnapshotSmokeTests(unittest.TestCase):
+    def test_static_page_exposes_capture_controls(self) -> None:
+        index_html = (MODULE_DIR / "static" / "index.html").read_text(encoding="utf-8")
+        app_js = (MODULE_DIR / "static" / "app.js").read_text(encoding="utf-8")
+        static_text = index_html + app_js
+
+        for label in ("摄像机截图", "屏幕截图", "表情截图"):
+            self.assertIn(label, index_html)
+        for status_text in ("相机异常", "屏幕截图", "图片已更新", "等待上传超时"):
+            self.assertIn(status_text, app_js)
+        for mojibake in ("�", "鍒", "鎽", "绛", "鐩", "鏍戣帗"):
+            self.assertNotIn(mojibake, static_text)
+
     def test_server_records_capture_sources_for_each_mode(self) -> None:
         with TestClient(server.app) as client:
             for mode, source in (
