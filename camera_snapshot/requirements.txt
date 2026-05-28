@@ -1,4 +1,6 @@
 fastapi
+httpx
+pillow
 uvicorn[standard]
 requests
 
