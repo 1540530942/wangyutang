@@ -151,9 +151,22 @@ jobs:
       - name: Update Raspberry Pi sender
         if: env.DEPLOY_PI == 'true' && steps.deploy_secrets.outputs.cloud_ready == 'true' && steps.deploy_secrets.outputs.pi_ready == 'true'
         run: |
-          scp camera_snapshot/pi_camera_sender.py pi-camera:/tmp/pi_camera_sender.py
-          scp camera_snapshot/systemd/camera-snapshot-sender.service pi-camera:/tmp/camera-snapshot-sender.service
-          ssh pi-camera '
+          retry_pi() {
+            local attempt
+            for attempt in 1 2 3; do
+              if "$@"; then
+                return 0
+              fi
+              echo "Pi update command failed on attempt ${attempt}; retrying..."
+              sleep $((attempt * 10))
+            done
+            "$@"
+          }
+
+          ssh_opts=(-o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
+          retry_pi scp "${ssh_opts[@]}" camera_snapshot/pi_camera_sender.py pi-camera:/tmp/pi_camera_sender.py
+          retry_pi scp "${ssh_opts[@]}" camera_snapshot/systemd/camera-snapshot-sender.service pi-camera:/tmp/camera-snapshot-sender.service
+          retry_pi ssh "${ssh_opts[@]}" pi-camera '
             set -euo pipefail
             install -m 0644 /tmp/pi_camera_sender.py /home/pi/pi_camera_sender.py
             sudo install -m 0644 /tmp/camera-snapshot-sender.service /etc/systemd/system/camera-snapshot-sender.service
