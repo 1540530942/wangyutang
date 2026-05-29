@@ -10,14 +10,15 @@ https://camera.wangyutang.cn/
 
 ## 功能
 
-- `单帧发送`：网页点击后，树莓派只上传 1 张 JPEG。
-- `截图上传`：网页点击后，树莓派立即上传当前截图（单帧任务）。
-- `持续发送`：网页点击后，树莓派按选择频率持续上传；再次点击停止。
+- `摄像机截图`：树莓派上传 1 张真实摄像机 JPEG，失败时只报告失败，不回退成桌面截图。
+- `屏幕截图`：树莓派立即上传当前桌面截图（单帧任务）。
+- `表情截图`：树莓派从 `smile_face` 离屏渲染接口拉取 JPEG 后上传，不依赖桌面窗口。
+- `持续发送`：摄像机通道按选择频率持续上传；再次点击停止。
 - 支持选择 GPIO 状态随帧返回；默认查询 `GPIO26 / LED2`，使用 `pinctrl get` 只读查询，不抢占 GPIO line。
 - GPIO 状态包含电平、数值、原始 `pinctrl` 输出和采样时间。
 - GPIO 状态通过独立 `/api/gpio` 通道持续上报；不依赖图片上传。
 - 支持频率：5 fps、2 fps、1 fps、0.5 fps、0.2 fps。
-- 云端只保存并展示最新一帧，适合轻量预览和远程确认相机状态。
+- 云端按 `camera` / `screen` / `face` 三个 kind 分别保存最新一帧，三路互不覆盖。
 - 树莓派主动访问云端，不需要公网 IP，也不需要云端反连树莓派。
 
 ## 数据链路
@@ -31,12 +32,12 @@ https://camera.wangyutang.cn/
 树莓派
   -> pi_camera_sender.py
   -> GET /api/control 轮询任务
-  -> 采集相机 JPEG
-  -> POST /api/frame 上传照片
+  -> 按 kind 采集 camera/screen/face JPEG
+  -> POST /api/frame 上传照片（X-Capture-Kind）
 
 网页
-  -> GET /api/latest 和 /api/latest.jpg
-  -> 显示最新照片和任务状态
+  -> GET /api/latest?kind=camera|screen|face 和 /api/latest.jpg?kind=...
+  -> 三张卡片分别显示最新照片和任务状态
 ```
 
 ## 本地开发启动
@@ -149,8 +150,10 @@ python3 pi_camera_sender.py --server https://camera.wangyutang.cn --token your-s
 - `GET /api/control`：读取当前拍照任务。
 - `GET /api/gpio`：读取最新 GPIO 状态。
 - `POST /api/gpio`：树莓派独立上报 GPIO 状态，body 为 JSON。
-- `POST /api/capture`：创建截图任务，`mode` 为 `single`（摄像机截图）、`screenshot`（屏幕截图）、`face`（表情截图）或 `continuous`，可选 `query_gpio`，默认 `26`。
-- `POST /api/stop`：停止当前持续发送任务。
-- `POST /api/frame`：树莓派上传 JPEG，body 为原始 JPEG，header 带 `X-Device-ID` / `X-Frame-ID` / `X-Task-ID`，可带 `X-Gpio-*` 状态 header。
-- `GET /api/latest`：读取最新帧元数据。
-- `GET /api/latest.jpg`：读取最新 JPEG。
+- `POST /api/capture`：创建截图任务，推荐传 `kind=camera|screen|face` 和 `mode=single|continuous|inspect`；兼容旧 `mode=single/screenshot/face/continuous/inspect`。
+- `POST /api/stop?kind=camera|screen|face`：停止指定通道任务；不传 kind 时默认停止摄像机通道。
+- `POST /api/frame`：树莓派上传 JPEG，body 为原始 JPEG，header 带 `X-Capture-Kind` / `X-Device-ID` / `X-Frame-ID` / `X-Task-ID`，可带 `X-Gpio-*` 状态 header。
+- `POST /api/task-status`：树莓派上报指定通道任务状态，主要用于 `failed + capture_error`，失败不再跨类型回退伪装。
+- `GET /api/control`：读取三通道任务状态，返回 `tasks.camera/screen/face`，并保留旧字段 `task` 作为摄像机任务别名。
+- `GET /api/latest?kind=camera|screen|face`：读取指定通道最新帧元数据；不传 kind 默认 camera。
+- `GET /api/latest.jpg?kind=camera|screen|face`：读取指定通道最新 JPEG；不传 kind 默认 camera。

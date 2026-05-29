@@ -31,18 +31,38 @@ cp "$release_dir/work/camera_snapshot/README.md" "$deploy_root/README.md"
 cp "$release_dir/work/camera_snapshot/static/"* "$deploy_root/static/"
 cp "$release_dir/work/camera_snapshot/systemd/camera-snapshot-sender.service" "$deploy_root/systemd/camera-snapshot-sender.service"
 
+deploy_smile_face="${DEPLOY_SMILE_FACE:-false}"
+
+if [ "$deploy_smile_face" = "true" ] && [ -d "$release_dir/work/smile_face" ]; then
+  echo "==> Installing smile_face source"
+  mkdir -p "$platform_root/smile_face"
+  rm -rf "$platform_root/smile_face"
+  cp -a "$release_dir/work/smile_face" "$platform_root/smile_face"
+fi
+
 echo "commit_sha=$commit_sha" > "$deploy_root/RELEASE_INFO"
 date -Is >> "$deploy_root/RELEASE_INFO"
 
 echo "==> Validating Python files"
 cd "$deploy_root"
 python3 -m py_compile server.py pi_camera_sender.py
+if [ -f "$platform_root/smile_face/server.py" ]; then
+  cd "$platform_root"
+  python3 -m py_compile smile_face/server.py smile_face/fb_renderer.py smile_face/face_render.py
+fi
 
 echo "==> Building camera-snapshot:local"
 docker build \
   --build-arg PYTHON_IMAGE="${PYTHON_IMAGE:-docker.m.daocloud.io/library/python:3.12-slim}" \
   -t camera-snapshot:local \
   "$deploy_root"
+if [ "$deploy_smile_face" = "true" ] && [ -f "$platform_root/smile_face/Dockerfile" ]; then
+  echo "==> Building smile-face:local"
+  docker build \
+    --build-arg PYTHON_IMAGE="${PYTHON_IMAGE:-docker.m.daocloud.io/library/python:3.12-slim}" \
+    -t smile-face:local \
+    "$platform_root/smile_face"
+fi
 
 echo "==> Restarting camera-snapshot container"
 cd "$platform_root"
@@ -63,6 +83,9 @@ if [ -f "$platform_root/.env" ]; then
 fi
 
 docker compose "${compose_args[@]}" config --quiet
+if [ "$deploy_smile_face" = "true" ] && docker compose "${compose_args[@]}" config --services | grep -qx 'smile-face'; then
+  docker compose "${compose_args[@]}" up -d --no-build --no-deps --force-recreate smile-face
+fi
 docker compose "${compose_args[@]}" up -d --no-build --no-deps --force-recreate camera-snapshot
 
 echo "==> Cloud health check"
@@ -72,7 +95,17 @@ import urllib.request
 urllib.request.urlopen("http://127.0.0.1:8099/api/health", timeout=3).read()
 PY
   then
+    if docker ps --filter name=smile-face --format '{{.Names}}' | grep -qx smile-face; then
+      docker exec smile-face python - <<'PY'
+import urllib.request
+response = urllib.request.urlopen("http://127.0.0.1:8096/api/face/render.jpg", timeout=5)
+data = response.read(2)
+if data != b"\xff\xd8":
+    raise SystemExit("smile-face render endpoint did not return JPEG")
+PY
+    fi
     docker ps --filter name=camera-snapshot --format '{{.Names}} {{.Status}}'
+    docker ps --filter name=smile-face --format '{{.Names}} {{.Status}}' || true
     echo "CAMERA_CLOUD_DEPLOY_OK=$commit_sha"
     exit 0
   fi

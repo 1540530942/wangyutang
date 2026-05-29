@@ -11,32 +11,98 @@
     <header class="topbar">
       <div>
         <p class="eyebrow">TurboPi</p>
-        <h1>Camera Snapshot</h1>
+        <h1>Snapshot Console</h1>
       </div>
       <div id="statusBadge" class="badge">初始化</div>
     </header>
 
-    <section class="viewer">
-      <img id="cameraImage" alt="TurboPi camera latest frame" hidden>
-      <div id="emptyState" class="empty">等待树莓派上传画面</div>
+    <section class="channel-grid" aria-label="截图通道">
+      <article class="channel-card" data-kind="camera">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Camera</p>
+            <h2>摄像机截图</h2>
+          </div>
+          <strong id="cameraStatus" class="status-pill">待命</strong>
+        </div>
+        <div class="viewer compact">
+          <img id="cameraImage" alt="摄像机最新画面" hidden>
+          <div id="cameraEmpty" class="empty">等待摄像机真帧</div>
+        </div>
+        <div class="card-controls">
+          <button id="singleButton" class="primary" type="button">摄像机截图</button>
+          <button id="continuousButton" type="button">连续发送</button>
+          <button id="cameraDownloadButton" type="button">保存</button>
+          <label class="field compact-field">
+            <span>频率</span>
+            <select id="intervalSelect">
+              <option value="200">5 fps</option>
+              <option value="500">2 fps</option>
+              <option value="1000" selected>1 fps</option>
+              <option value="2000">0.5 fps</option>
+              <option value="5000">0.2 fps</option>
+            </select>
+          </label>
+        </div>
+        <dl class="channel-meta">
+          <div><dt>来源</dt><dd id="cameraSource">-</dd></div>
+          <div><dt>更新时间</dt><dd id="cameraUpdatedAt">-</dd></div>
+          <div><dt>图片大小</dt><dd id="cameraContentLength">-</dd></div>
+          <div><dt>任务</dt><dd id="cameraTaskState">-</dd></div>
+        </dl>
+      </article>
+
+      <article class="channel-card" data-kind="screen">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Screen</p>
+            <h2>屏幕截图</h2>
+          </div>
+          <strong id="screenStatus" class="status-pill">待命</strong>
+        </div>
+        <div class="viewer compact">
+          <img id="screenImage" alt="屏幕最新截图" hidden>
+          <div id="screenEmpty" class="empty">等待屏幕截图</div>
+        </div>
+        <div class="card-controls">
+          <button id="screenshotButton" class="primary secondary" type="button">屏幕截图</button>
+          <button id="inspectButton" type="button">远程巡检</button>
+          <button id="screenDownloadButton" type="button">保存</button>
+        </div>
+        <dl class="channel-meta">
+          <div><dt>来源</dt><dd id="screenSource">-</dd></div>
+          <div><dt>更新时间</dt><dd id="screenUpdatedAt">-</dd></div>
+          <div><dt>图片大小</dt><dd id="screenContentLength">-</dd></div>
+          <div><dt>任务</dt><dd id="screenTaskState">-</dd></div>
+        </dl>
+      </article>
+
+      <article class="channel-card" data-kind="face">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Face</p>
+            <h2>表情截图</h2>
+          </div>
+          <strong id="faceStatus" class="status-pill">待命</strong>
+        </div>
+        <div class="viewer compact">
+          <img id="faceImage" alt="表情离屏渲染图" hidden>
+          <div id="faceEmpty" class="empty">等待表情渲染</div>
+        </div>
+        <div class="card-controls">
+          <button id="faceButton" class="primary face" type="button">表情截图</button>
+          <button id="faceDownloadButton" type="button">保存</button>
+        </div>
+        <dl class="channel-meta">
+          <div><dt>来源</dt><dd id="faceSource">-</dd></div>
+          <div><dt>更新时间</dt><dd id="faceUpdatedAt">-</dd></div>
+          <div><dt>图片大小</dt><dd id="faceContentLength">-</dd></div>
+          <div><dt>任务</dt><dd id="faceTaskState">-</dd></div>
+        </dl>
+      </article>
     </section>
 
-    <section class="controls">
-      <button id="singleButton" class="primary" type="button">摄像机截图</button>
-      <button id="screenshotButton" type="button">屏幕截图</button>
-      <button id="faceButton" type="button">表情截图</button>
-      <button id="continuousButton" type="button">连续发送</button>
-      <button id="downloadButton" type="button">保存图片</button>
-      <label class="field">
-        <span>频率</span>
-        <select id="intervalSelect">
-          <option value="200">5 fps</option>
-          <option value="500">2 fps</option>
-          <option value="1000" selected>1 fps</option>
-          <option value="2000">0.5 fps</option>
-          <option value="5000">0.2 fps</option>
-        </select>
-      </label>
+    <section class="controls global-controls">
       <label class="field">
         <span>GPIO</span>
         <select id="gpioSelect">
@@ -55,20 +121,15 @@
           <option value="27">GPIO27</option>
         </select>
       </label>
-      <button id="refreshButton" type="button">刷新</button>
+      <button id="refreshButton" type="button">刷新全部</button>
     </section>
 
     <section class="meta">
       <div><span>树莓派</span><strong id="deviceOnline">-</strong></div>
-      <div><span>相机状态</span><strong id="cameraHealth">-</strong></div>
-      <div><span>采集来源</span><strong id="captureSource">-</strong></div>
-      <div><span>更新时间</span><strong id="updatedAt">-</strong></div>
-      <div><span>图片大小</span><strong id="contentLength">-</strong></div>
-      <div><span>设备 ID</span><strong id="deviceId">-</strong></div>
-      <div><span>帧 ID</span><strong id="frameId">-</strong></div>
       <div><span>GPIO 状态</span><strong id="gpioState">-</strong></div>
       <div><span>GPIO 采样</span><strong id="gpioSampledAt">-</strong></div>
-      <div><span>任务</span><strong id="taskState">-</strong></div>
+      <div><span>设备 ID</span><strong id="deviceId">-</strong></div>
+      <div><span>帧 ID</span><strong id="frameId">-</strong></div>
     </section>
 
     <section class="inspection">
@@ -90,6 +151,6 @@
       </div>
     </section>
   </main>
-  <script src="./static/app.js?v=20260526-camera-status"></script>
+  <script src="./static/app.js?v=20260530-three-channels"></script>
 </body>
 </html>

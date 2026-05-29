@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import io
 import time
 from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
+
+from face_render import FaceState as RenderFaceState
+from face_render import draw_face
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -116,6 +120,28 @@ def health() -> dict[str, object]:
 @app.get("/api/state")
 def get_state() -> dict[str, object]:
     return snapshot()
+
+
+@app.get("/api/face/render.jpg")
+def render_face_jpeg() -> Response:
+    current = now()
+    render_state = RenderFaceState(
+        emotion=state.emotion,
+        intensity=state.intensity,
+        speaking_until=state.speaking_until,
+        mouth_open_until=state.mouth_open_until,
+        blink_nonce=state.blink_nonce,
+        message=state.message,
+        now=current,
+    )
+    image = draw_face(render_state, frame_started=0.0, blink=0.0)
+    stream = io.BytesIO()
+    image.save(stream, "JPEG", quality=88)
+    return Response(
+        content=stream.getvalue(),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.post("/api/face/emotion")

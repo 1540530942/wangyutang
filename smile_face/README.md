@@ -8,6 +8,7 @@
 - Random and forced blinking
 - Mouth-open and speaking animation
 - Shared backend state so the web page and Raspberry Pi LCD stay synchronized
+- Offscreen JPEG rendering at `/api/face/render.jpg` for camera_snapshot face captures
 - Display mode with `?display=1` for full-screen LCD use
 
 ## Run locally
@@ -31,6 +32,7 @@ http://127.0.0.1:8096/?display=1
 ```text
 GET  /api/health
 GET  /api/state
+GET  /api/face/render.jpg
 POST /api/face/emotion
 POST /api/face/speak
 POST /api/face/mouth
