@@ -13,6 +13,7 @@ RUN if [ -n "$PIP_INDEX_URL" ]; then python -m pip config set global.index-url "
     && pip install --no-cache-dir -r requirements.txt
 
 COPY server.py ./server.py
+COPY face_render.py ./face_render.py
 COPY static ./static
 
 EXPOSE 8096

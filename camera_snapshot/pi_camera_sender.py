@@ -18,6 +18,8 @@ import requests
 DEFAULT_SERVER = os.environ.get("CAMERA_SNAPSHOT_SERVER", "http://127.0.0.1:8099")
 DEFAULT_TOKEN = os.environ.get("CAMERA_SNAPSHOT_TOKEN", "")
 DEFAULT_QUERY_GPIO = int(os.environ.get("CAMERA_SNAPSHOT_DEFAULT_GPIO", "26"))
+DEFAULT_FACE_RENDER_URL = os.environ.get("CAMERA_SNAPSHOT_FACE_RENDER_URL", "https://www.wangyutang.cn/face/api/face/render.jpg")
+CAPTURE_KINDS = ("screen", "face", "camera")
 
 
 running = True
@@ -400,7 +402,6 @@ def capture_screenshot_jpeg(quality: int, label_prefix: str = "Screenshot") -> b
                 env=env,
             )
             from PIL import Image
-            from PIL import ImageDraw
 
             image = Image.open(png_path).convert("RGB")
         else:
@@ -414,7 +415,6 @@ def capture_screenshot_jpeg(quality: int, label_prefix: str = "Screenshot") -> b
                 env=env,
             )
             from PIL import Image
-            from PIL import ImageDraw
 
             image = Image.open(jpg_path).convert("RGB")
         label = time.strftime(f"{label_prefix} %Y-%m-%d %H:%M:%S")
@@ -432,30 +432,47 @@ def capture_screenshot_jpeg(quality: int, label_prefix: str = "Screenshot") -> b
                 pass
 
 
-def capture_camera_or_screenshot_fallback(
-    camera: CameraBackend | None,
-    args: argparse.Namespace,
-) -> tuple[bytes, CameraBackend | None, str, str]:
+def capture_camera_frame(camera: CameraBackend | None, args: argparse.Namespace) -> tuple[bytes, CameraBackend | None, str]:
     try:
         if camera is None:
             camera = build_camera(args)
             print(f"[INFO] camera backend: {camera.name}", flush=True)
         jpeg = camera.capture_jpeg()
         capture_source = camera.name
-        try:
-            camera.close()
-        except Exception as close_exc:
-            print(f"[WARN] camera close failed: {close_exc}", flush=True)
-        return stamp_jpeg(jpeg, "Camera", args.quality), None, capture_source, ""
-    except Exception as exc:
-        error = str(exc)
-        print(f"[WARN] camera capture unavailable, falling back to screenshot: {error}", flush=True)
+        if args.close_camera_after_frame:
+            try:
+                camera.close()
+            except Exception as close_exc:
+                print(f"[WARN] camera close failed: {close_exc}", flush=True)
+            camera = None
+        return stamp_jpeg(jpeg, "Camera", args.quality), camera, capture_source
+    except Exception:
         if camera is not None:
             try:
                 camera.close()
             except Exception as close_exc:
                 print(f"[WARN] camera close failed: {close_exc}", flush=True)
-        return capture_screenshot_jpeg(args.quality, "Camera fallback"), None, "screenshot-fallback", error
+        raise
+
+
+def capture_camera_or_screenshot_fallback(
+    camera: CameraBackend | None,
+    args: argparse.Namespace,
+) -> tuple[bytes, CameraBackend | None, str, str]:
+    jpeg, camera, source = capture_camera_frame(camera, args)
+    return jpeg, camera, source, ""
+
+
+def capture_face_render_jpeg(session: requests.Session, args: argparse.Namespace) -> bytes:
+    response = session.get(args.face_render_url, timeout=args.face_render_timeout)
+    response.raise_for_status()
+    content_type = response.headers.get("content-type", "").lower()
+    data = response.content
+    if "image/jpeg" not in content_type and "image/jpg" not in content_type:
+        raise RuntimeError(f"face render endpoint returned {content_type or 'unknown content type'}")
+    if not data.startswith(b"\xff\xd8"):
+        raise RuntimeError("face render endpoint did not return JPEG data")
+    return stamp_jpeg(data, "Face", args.quality)
 
 
 def fetch_control(session: requests.Session, server: str) -> dict[str, object]:
@@ -465,7 +482,43 @@ def fetch_control(session: requests.Session, server: str) -> dict[str, object]:
         return response.json()
     except requests.RequestException as exc:
         print(f"[WARN] control poll failed: {exc}", flush=True)
-        return {"task": None}
+        return {"task": None, "tasks": {}}
+
+
+def control_tasks(control: dict[str, object]) -> dict[str, dict[str, object] | None]:
+    raw_tasks = control.get("tasks")
+    tasks: dict[str, dict[str, object] | None] = {kind: None for kind in CAPTURE_KINDS}
+    if isinstance(raw_tasks, dict):
+        for kind in ("camera", "screen", "face"):
+            task = raw_tasks.get(kind)
+            tasks[kind] = task if isinstance(task, dict) else None
+    else:
+        task = control.get("task")
+        if isinstance(task, dict):
+            kind = normalize_capture_kind(task.get("kind") or kind_from_mode(str(task.get("mode") or "single")))
+            tasks[kind] = task
+    return tasks
+
+
+def kind_from_mode(mode: str) -> str:
+    if mode == "screenshot" or mode == "inspect":
+        return "screen"
+    if mode == "face":
+        return "face"
+    return "camera"
+
+
+def normalize_capture_kind(value: object) -> str:
+    kind = str(value or "camera").strip().lower()
+    if kind == "screenshot":
+        return "screen"
+    if kind in {"camera", "screen", "face"}:
+        return kind
+    return "camera"
+
+
+def is_task_active(task: dict[str, object] | None) -> bool:
+    return bool(task and task.get("id") and task.get("status") not in {"complete", "expired", "stopped", "failed"})
 
 
 def run_text(command: list[str], timeout: float = 3.0) -> str:
@@ -565,6 +618,7 @@ def upload_frame(
     device_id: str,
     frame_id: int,
     task_id: str,
+    capture_kind: str,
     jpeg: bytes,
     gpio_status: dict[str, object],
     capture_source: str,
@@ -575,6 +629,7 @@ def upload_frame(
         "X-Device-ID": device_id,
         "X-Frame-ID": str(frame_id),
         "X-Task-ID": task_id,
+        "X-Capture-Kind": capture_kind,
         "X-Capture-Source": capture_source,
         "X-Capture-Error": capture_error[:300],
     }
@@ -630,6 +685,73 @@ def upload_inspection(
     response.raise_for_status()
 
 
+def upload_task_status(
+    session: requests.Session,
+    server: str,
+    token: str,
+    device_id: str,
+    task_id: str,
+    kind: str,
+    status: str,
+    capture_source: str,
+    capture_error: str,
+) -> None:
+    payload = {
+        "device_id": device_id,
+        "task_id": task_id,
+        "kind": kind,
+        "status": status,
+        "capture_source": capture_source,
+        "capture_error": capture_error[:300],
+    }
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["X-Camera-Token"] = token
+    response = session.post(f"{server}/api/task-status", headers=headers, json=payload, timeout=8)
+    response.raise_for_status()
+
+
+def should_send_task_frame(task: dict[str, object], sent_at_by_task: dict[str, float]) -> bool:
+    task_id = str(task.get("id") or "")
+    interval_ms = int(task.get("interval_ms") or 0)
+    if interval_ms <= 0:
+        return True
+    return time.time() - sent_at_by_task.get(task_id, 0) >= interval_ms / 1000
+
+
+def handle_task(
+    kind: str,
+    task: dict[str, object],
+    args: argparse.Namespace,
+    session: requests.Session,
+    server: str,
+    frame_id: int,
+    camera: CameraBackend | None,
+) -> tuple[int, CameraBackend | None, bool]:
+    task_id = str(task["id"])
+    query_gpio = normalize_gpio(task.get("query_gpio"))
+    mode = str(task.get("mode") or "single")
+    print(f"[INFO] running task {task_id} kind={kind} mode={mode} query_gpio={query_gpio}", flush=True)
+
+    if kind == "screen":
+        label = "Screen"
+        jpeg = capture_screenshot_jpeg(args.quality, label)
+        capture_source = "inspect" if mode == "inspect" else "screenshot"
+    elif kind == "face":
+        jpeg = capture_face_render_jpeg(session, args)
+        capture_source = "smile-face-render"
+    else:
+        jpeg, camera, capture_source = capture_camera_frame(camera, args)
+
+    gpio_meta = read_gpio_status(query_gpio)
+    if kind == "screen" and mode == "inspect":
+        upload_inspection(session, server, args.token, collect_inspection(args.device_id, task_id))
+    frame_id += 1
+    upload_frame(session, server, args.token, args.device_id, frame_id, task_id, kind, jpeg, gpio_meta, capture_source)
+    print(f"[ OK ] uploaded task {task_id} kind={kind}", flush=True)
+    return frame_id, camera, True
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Upload Raspberry Pi camera snapshots to the cloud dashboard.")
     parser.add_argument("--server", default=DEFAULT_SERVER, help="Camera snapshot server base URL.")
@@ -645,19 +767,29 @@ def main() -> None:
     parser.add_argument("--ros-container", default=os.environ.get("CAMERA_ROS_CONTAINER", "turbopi"))
     parser.add_argument("--ros-image-topic", default=os.environ.get("CAMERA_ROS_IMAGE_TOPIC", "/image_raw"))
     parser.add_argument(
+        "--ros-usb-cam-autostart",
+        dest="ros_usb_cam_autostart",
+        action="store_true",
+        help="Try to start TurboPi peripherals usb_cam.launch.py when /image_raw has no publisher.",
+    )
+    parser.add_argument(
         "--no-ros-usb-cam-autostart",
         dest="ros_usb_cam_autostart",
         action="store_false",
         help="Do not try to start TurboPi peripherals usb_cam.launch.py when /image_raw has no publisher.",
     )
-    parser.set_defaults(ros_usb_cam_autostart=os.environ.get("CAMERA_ROS_USB_CAM_AUTOSTART", "1") != "0")
+    parser.set_defaults(ros_usb_cam_autostart=os.environ.get("CAMERA_ROS_USB_CAM_AUTOSTART", "0") == "1")
     parser.add_argument("--rpicam-timeout", type=float, default=10.0)
     parser.add_argument("--camera-index", type=int, default=0)
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=480)
     parser.add_argument("--quality", type=int, default=78)
+    parser.add_argument("--face-render-url", default=DEFAULT_FACE_RENDER_URL)
+    parser.add_argument("--face-render-timeout", type=float, default=5.0)
     parser.add_argument("--idle-poll-ms", type=int, default=1000)
     parser.add_argument("--lock-file", default="/tmp/camera_snapshot_sender.lock")
+    parser.add_argument("--keep-camera-open", dest="close_camera_after_frame", action="store_false")
+    parser.set_defaults(close_camera_after_frame=True)
     args = parser.parse_args()
 
     server = args.server.rstrip("/")
@@ -668,14 +800,15 @@ def main() -> None:
 
     frame_id = 0
     completed_tasks: set[str] = set()
+    failed_one_shots: set[str] = set()
+    sent_at_by_task: dict[str, float] = {}
     last_gpio_upload_at = 0.0
     try:
         while running:
             control = fetch_control(session, server)
-            task = control.get("task")
-            query_gpio = DEFAULT_QUERY_GPIO
-            if isinstance(task, dict):
-                query_gpio = normalize_gpio(task.get("query_gpio"))
+            tasks = control_tasks(control)
+            active_tasks = [task for task in tasks.values() if is_task_active(task)]
+            query_gpio = normalize_gpio(active_tasks[0].get("query_gpio")) if active_tasks else DEFAULT_QUERY_GPIO
             now = time.time()
             if now - last_gpio_upload_at >= 1.0:
                 try:
@@ -683,70 +816,29 @@ def main() -> None:
                     last_gpio_upload_at = now
                 except Exception as exc:
                     print(f"[WARN] gpio status upload failed: {exc}", flush=True)
-            if not isinstance(task, dict) or not task.get("id"):
-                time.sleep(max(args.idle_poll_ms, 250) / 1000)
-                continue
 
-            task_id = str(task["id"])
-            if task_id in completed_tasks or task.get("status") in {"complete", "expired", "stopped"}:
-                time.sleep(max(args.idle_poll_ms, 250) / 1000)
-                continue
+            did_work = False
+            for kind in CAPTURE_KINDS:
+                task = tasks.get(kind)
+                if not is_task_active(task):
+                    continue
+                task_id = str(task["id"])
+                if task_id in completed_tasks or task_id in failed_one_shots:
+                    continue
+                if time.time() > float(task.get("deadline_at") or 0):
+                    continue
+                if not should_send_task_frame(task, sent_at_by_task):
+                    continue
 
-            max_frames = int(task.get("max_frames") or 1)
-            interval_ms = int(task.get("interval_ms") or 0)
-            deadline_at = float(task.get("deadline_at") or 0)
-            mode = str(task.get("mode") or "single")
-            uploaded = 0
-            print(
-                f"[INFO] running task {task_id} mode={mode} "
-                f"max_frames={max_frames} query_gpio={query_gpio}",
-                flush=True,
-            )
-
-            while running and (max_frames == 0 or uploaded < max_frames) and time.time() <= deadline_at:
-                latest_control = fetch_control(session, server)
-                latest_task = latest_control.get("task")
-                if not isinstance(latest_task, dict) or latest_task.get("id") != task_id:
-                    break
-                if latest_task.get("status") in {"complete", "expired", "stopped"}:
-                    break
-
-                frame_id += 1
                 try:
-                    if mode in {"screenshot", "inspect"}:
-                        jpeg = capture_screenshot_jpeg(args.quality, "Screen")
-                        capture_source = mode
-                        capture_error = ""
-                    elif mode == "face":
-                        jpeg = capture_screenshot_jpeg(args.quality, "Face")
-                        capture_source = "face-screenshot"
-                        capture_error = ""
-                    elif mode == "single":
-                        jpeg, camera, capture_source, capture_error = capture_camera_or_screenshot_fallback(camera, args)
-                        if capture_source == "screenshot-fallback":
-                            print(f"[INFO] task {task_id} used {capture_source}", flush=True)
-                    else:
-                        if camera is None:
-                            camera = build_camera(args)
-                            print(f"[INFO] camera backend: {camera.name}", flush=True)
-                        jpeg = camera.capture_jpeg()
-                        jpeg = stamp_jpeg(jpeg, "Camera", args.quality)
-                        capture_source = camera.name
-                        capture_error = ""
-                    gpio_status = read_gpio_status(query_gpio)
-                    if mode == "inspect":
-                        upload_inspection(
-                            session,
-                            server,
-                            args.token,
-                            collect_inspection(args.device_id, task_id),
-                        )
-                    upload_frame(session, server, args.token, args.device_id, frame_id, task_id, jpeg, gpio_status, capture_source, capture_error)
-                    uploaded += 1
-                    total_label = "continuous" if max_frames == 0 else str(max_frames)
-                    print(f"[ OK ] uploaded task {task_id} frame {uploaded}/{total_label}", flush=True)
+                    frame_id, camera, uploaded = handle_task(kind, task, args, session, server, frame_id, camera)
+                    if uploaded:
+                        sent_at_by_task[task_id] = time.time()
+                        did_work = True
+                        if int(task.get("max_frames") or 1) > 0:
+                            completed_tasks.add(task_id)
                 except Exception as exc:
-                    print(f"[WARN] upload failed: {exc}", flush=True)
+                    print(f"[WARN] {kind} task {task_id} failed: {exc}", flush=True)
                     if camera is not None:
                         try:
                             camera.close()
@@ -758,16 +850,24 @@ def main() -> None:
                         last_gpio_upload_at = time.time()
                     except Exception as heartbeat_exc:
                         print(f"[WARN] gpio status upload failed: {heartbeat_exc}", flush=True)
-                    if mode in {"screenshot", "face", "inspect"}:
-                        break
-                    if max_frames != 0:
-                        break
-                    time.sleep(max(args.idle_poll_ms, 250) / 1000)
-                if (max_frames == 0 or uploaded < max_frames) and interval_ms > 0:
-                    time.sleep(max(interval_ms, 150) / 1000)
+                    if int(task.get("max_frames") or 1) > 0:
+                        try:
+                            upload_task_status(
+                                session,
+                                server,
+                                args.token,
+                                args.device_id,
+                                task_id,
+                                kind,
+                                "failed",
+                                f"{kind}-error",
+                                str(exc),
+                            )
+                        except Exception as status_exc:
+                            print(f"[WARN] task status upload failed: {status_exc}", flush=True)
+                        failed_one_shots.add(task_id)
 
-            completed_tasks.add(task_id)
-            time.sleep(max(args.idle_poll_ms, 250) / 1000)
+            time.sleep(0.05 if did_work else max(args.idle_poll_ms, 250) / 1000)
     finally:
         if camera is not None:
             camera.close()
