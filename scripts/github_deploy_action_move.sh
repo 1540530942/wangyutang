@@ -66,7 +66,21 @@ docker build \
 
 echo "==> Restarting action-move container"
 docker compose "${compose_args[@]}" config --quiet
-docker compose "${compose_args[@]}" up -d --no-build --no-deps --force-recreate action-move
+if docker compose "${compose_args[@]}" config --services | grep -qx 'action-move'; then
+  docker compose "${compose_args[@]}" up -d --no-build --no-deps --force-recreate action-move
+else
+  echo "compose service action-move not found; recreating standalone container"
+  network="${ACTION_MOVE_DOCKER_NETWORK:-infra_default}"
+  data_dir="${ACTION_MOVE_DATA_DIR:-$platform_root/action_move/data}"
+  mkdir -p "$data_dir"
+  docker rm -f action-move >/dev/null 2>&1 || true
+  docker run -d \
+    --name action-move \
+    --network "$network" \
+    --restart unless-stopped \
+    -v "$data_dir:/app/data" \
+    action-move:local
+fi
 
 echo "==> Cloud health check"
 for _ in $(seq 1 30); do
