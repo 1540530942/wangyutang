@@ -380,6 +380,39 @@ def build_camera(args: argparse.Namespace) -> CameraBackend:
     raise RuntimeError(f"unsupported backend: {args.backend}")
 
 
+def systemctl_is_active(service: str) -> bool:
+    try:
+        return subprocess.run(
+            ["systemctl", "is-active", "--quiet", service],
+            check=False,
+            timeout=3,
+        ).returncode == 0
+    except Exception:
+        return False
+
+
+def systemctl_action(action: str, service: str) -> bool:
+    try:
+        return subprocess.run(
+            ["sudo", "-n", "systemctl", action, service],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=8,
+        ).returncode == 0
+    except Exception as exc:
+        print(f"[WARN] systemctl {action} {service} failed: {exc}", flush=True)
+        return False
+
+
+def wait_service_state(service: str, active: bool, timeout_seconds: float = 5.0) -> None:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        if systemctl_is_active(service) == active:
+            return
+        time.sleep(0.2)
+
+
 def capture_screenshot_jpeg(quality: int, label_prefix: str = "Screenshot") -> bytes:
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
         png_path = Path(handle.name)
@@ -461,6 +494,28 @@ def capture_camera_or_screenshot_fallback(
 ) -> tuple[bytes, CameraBackend | None, str, str]:
     jpeg, camera, source = capture_camera_frame(camera, args)
     return jpeg, camera, source, ""
+
+
+def capture_desktop_screenshot_jpeg(args: argparse.Namespace) -> bytes:
+    service = str(getattr(args, "screen_hide_service", "") or "")
+    was_active = False
+    if service and getattr(args, "screen_hide_face_service", True):
+        was_active = systemctl_is_active(service)
+        if was_active:
+            print(f"[INFO] stopping {service} before screen capture", flush=True)
+            if systemctl_action("stop", service):
+                wait_service_state(service, False, timeout_seconds=5.0)
+            else:
+                print(f"[WARN] could not stop {service}; screen capture may include foreground face window", flush=True)
+    try:
+        return capture_screenshot_jpeg(args.quality, "Screen")
+    finally:
+        if service and was_active:
+            print(f"[INFO] restarting {service} after screen capture", flush=True)
+            if systemctl_action("start", service):
+                wait_service_state(service, True, timeout_seconds=8.0)
+            else:
+                print(f"[WARN] could not restart {service}; run sudo systemctl start {service}", flush=True)
 
 
 def capture_face_render_jpeg(session: requests.Session, args: argparse.Namespace) -> bytes:
@@ -734,8 +789,7 @@ def handle_task(
     print(f"[INFO] running task {task_id} kind={kind} mode={mode} query_gpio={query_gpio}", flush=True)
 
     if kind == "screen":
-        label = "Screen"
-        jpeg = capture_screenshot_jpeg(args.quality, label)
+        jpeg = capture_desktop_screenshot_jpeg(args)
         capture_source = "inspect" if mode == "inspect" else "screenshot"
     elif kind == "face":
         jpeg = capture_face_render_jpeg(session, args)
@@ -786,6 +840,9 @@ def main() -> None:
     parser.add_argument("--quality", type=int, default=78)
     parser.add_argument("--face-render-url", default=DEFAULT_FACE_RENDER_URL)
     parser.add_argument("--face-render-timeout", type=float, default=5.0)
+    parser.add_argument("--screen-hide-service", default=os.environ.get("CAMERA_SNAPSHOT_SCREEN_HIDE_SERVICE", "smile-face-lcd.service"))
+    parser.add_argument("--no-screen-hide-face-service", dest="screen_hide_face_service", action="store_false")
+    parser.set_defaults(screen_hide_face_service=os.environ.get("CAMERA_SNAPSHOT_SCREEN_HIDE_FACE_SERVICE", "1") != "0")
     parser.add_argument("--idle-poll-ms", type=int, default=1000)
     parser.add_argument("--lock-file", default="/tmp/camera_snapshot_sender.lock")
     parser.add_argument("--keep-camera-open", dest="close_camera_after_frame", action="store_false")

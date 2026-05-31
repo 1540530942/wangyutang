@@ -8,6 +8,7 @@ import shutil
 import socket
 import subprocess
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -37,6 +38,8 @@ VOICE_ACTION_TEXT = {
     "look_down": "向下看",
     "reset_pose": "复位",
     "emergency_stop": "停止",
+    "rgb_on": "开灯",
+    "rgb_off": "关灯",
 }
 
 
@@ -294,6 +297,63 @@ def run_remote_shutdown() -> tuple[bool, str, str]:
     return True, "[INFO] remote shutdown requested with: sudo shutdown -h now", ""
 
 
+def execute_action(
+    action: str,
+    settings: dict[str, Any],
+    controller_url: str,
+    no_controller: bool,
+) -> tuple[bool, str, str]:
+    if action == "remote_shutdown":
+        return run_remote_shutdown()
+    if no_controller:
+        return run_action(action, settings)
+    ok, stdout, stderr = controller_execute(controller_url, action, settings)
+    if not ok and stderr.startswith("controller unavailable:"):
+        fallback_ok, fallback_stdout, fallback_stderr = run_action(action, settings)
+        stdout = "\n".join(part for part in [stdout, fallback_stdout] if part)
+        stderr = "\n".join(part for part in [stderr, fallback_stderr] if part)
+        ok = fallback_ok
+    return ok, stdout, stderr
+
+
+def execute_with_running_heartbeats(
+    server: str,
+    token: str,
+    device_id: str,
+    task_id: str,
+    action: str,
+    settings: dict[str, Any],
+    controller_url: str,
+    no_controller: bool,
+) -> tuple[bool, str, str]:
+    result: dict[str, object] = {"ok": False, "stdout": "", "stderr": ""}
+    done = threading.Event()
+
+    def worker() -> None:
+        try:
+            ok, stdout, stderr = execute_action(action, settings, controller_url, no_controller)
+            result.update({"ok": ok, "stdout": stdout, "stderr": stderr})
+        except Exception as exc:  # noqa: BLE001 - keep poller alive and report task failure
+            result.update({"ok": False, "stdout": "", "stderr": f"{type(exc).__name__}: {exc}"})
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+    last_running_heartbeat = 0.0
+    while not done.is_set():
+        now = time.monotonic()
+        if now - last_running_heartbeat >= IDLE_HEARTBEAT_SECONDS:
+            try:
+                heartbeat(server, token, device_id, "running", current_task_id=task_id)
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                print(f"[WARN] running heartbeat failed: {exc}", flush=True)
+            last_running_heartbeat = now
+        done.wait(0.2)
+    thread.join(timeout=0.1)
+    return bool(result["ok"]), str(result["stdout"]), str(result["stderr"])
+
+
 def heartbeat(server: str, token: str, device_id: str, status: str, detail: str = "", current_task_id: str = "") -> None:
     network = network_status()
     request_json(
@@ -342,18 +402,20 @@ def main() -> int:
                 task_id = str(task["id"])
                 action = str(task["skill_id"])
                 settings = task.get("settings") if isinstance(task.get("settings"), dict) else {}
-                heartbeat(args.server, args.token, args.device_id, "running", current_task_id=task_id)
                 if action == "remote_shutdown":
+                    heartbeat(args.server, args.token, args.device_id, "running", current_task_id=task_id)
                     ok, stdout, stderr = run_remote_shutdown()
-                elif args.no_controller:
-                    ok, stdout, stderr = run_action(action, settings)
                 else:
-                    ok, stdout, stderr = controller_execute(args.controller_url, action, settings)
-                    if not ok and stderr.startswith("controller unavailable:"):
-                        fallback_ok, fallback_stdout, fallback_stderr = run_action(action, settings)
-                        stdout = "\n".join(part for part in [stdout, fallback_stdout] if part)
-                        stderr = "\n".join(part for part in [stderr, fallback_stderr] if part)
-                        ok = fallback_ok
+                    ok, stdout, stderr = execute_with_running_heartbeats(
+                        args.server,
+                        args.token,
+                        args.device_id,
+                        task_id,
+                        action,
+                        settings,
+                        args.controller_url,
+                        args.no_controller,
+                    )
                 if ok:
                     voice_output = announce_completion(
                         action,

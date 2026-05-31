@@ -198,6 +198,51 @@ p,
   accent-color: var(--accent);
 }
 
+.rgb-panel {
+  border-color: #d6e2e6;
+}
+
+.rgb-controls {
+  display: grid;
+  gap: 12px;
+}
+
+.rgb-picker-line {
+  display: grid;
+  grid-template-columns: 42px 1fr 132px;
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfc;
+  color: var(--muted);
+}
+
+.rgb-swatch {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #000;
+  box-shadow: inset 0 0 0 4px #fff;
+}
+
+.rgb-picker-line input[type="color"] {
+  width: 100%;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.rgb-settings {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .camera-preview {
   display: grid;
   grid-template-columns: minmax(220px, 360px) 1fr;
@@ -405,6 +450,14 @@ button.small {
 
   .safety-grid {
     grid-template-columns: 1fr;
+  }
+
+  .rgb-picker-line {
+    grid-template-columns: 42px 1fr;
+  }
+
+  .rgb-picker-line input[type="color"] {
+    grid-column: 1 / -1;
   }
 
   .camera-preview {

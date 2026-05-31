@@ -75,6 +75,41 @@
         </form>
       </section>
 
+      <section class="panel rgb-panel">
+        <div class="panel-title">
+          <h2>RGB 灯光</h2>
+          <span id="rgbSummary">默认关闭</span>
+        </div>
+        <div class="rgb-controls">
+          <label class="rgb-picker-line">
+            <span class="rgb-swatch" id="rgbSwatch" aria-hidden="true"></span>
+            <span>选择颜色</span>
+            <input id="rgbColorInput" type="color" value="#000000" />
+          </label>
+          <form class="settings-form rgb-settings" id="rgbSettingsForm">
+            <label>
+              <span>红</span>
+              <input id="rgbRedInput" type="number" min="0" max="255" step="1" value="0" />
+              <em>R</em>
+            </label>
+            <label>
+              <span>绿</span>
+              <input id="rgbGreenInput" type="number" min="0" max="255" step="1" value="0" />
+              <em>G</em>
+            </label>
+            <label>
+              <span>蓝</span>
+              <input id="rgbBlueInput" type="number" min="0" max="255" step="1" value="0" />
+              <em>B</em>
+            </label>
+          </form>
+          <div class="grid two">
+            <button data-action="rgb_on">开灯 / 应用颜色</button>
+            <button class="secondary" data-action="rgb_off">关灯</button>
+          </div>
+        </div>
+      </section>
+
       <section class="panel">
         <div class="panel-title">
           <h2>摄像头朝向</h2>

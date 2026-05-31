@@ -17,6 +17,8 @@ REQUIRED_SKILLS = {
     "emergency_stop",
     "reset_pose",
     "remote_shutdown",
+    "rgb_on",
+    "rgb_off",
     "look_left",
     "look_right",
     "look_up",
@@ -91,6 +93,10 @@ def local_guard(guard: Guard) -> None:
     )
 
     tasks.clear()
+    rgb_task = client.post("/api/tasks", json={"action": "rgb_on", "source": "guard-local"})
+    guard.check(rgb_task.status_code == 200 and rgb_task.json()["task"]["skill_id"] == "rgb_on", "RGB task can be created locally")
+
+    tasks.clear()
     first_motion = client.post("/api/tasks", json={"action": "move_forward", "source": "guard-local"})
     second_motion = client.post("/api/tasks", json={"action": "move_backward", "source": "guard-local"})
     guard.check(first_motion.status_code == 200 and second_motion.status_code == 409, "motion queue rejects overlapping motion")
@@ -101,11 +107,11 @@ def static_guard(guard: Guard) -> None:
     app_js = (BASE_DIR / "static" / "app.js").read_text(encoding="utf-8")
     style = (BASE_DIR / "static" / "style.css").read_text(encoding="utf-8")
 
-    for token in ("cameraPreviewToggle", "cameraPreviewImage", "cameraSymbol", "相机小窗"):
+    for token in ("cameraPreviewToggle", "cameraPreviewImage", "cameraSymbol", "相机小窗", "rgbColorInput", "rgbRedInput", "rgb_on", "rgb_off"):
         guard.check(token in index, f"index contains {token}")
-    for token in ("monitorCameraOnce", "CAMERA_HEARTBEAT_MS", "/camera/api/latest", "changedRatio"):
+    for token in ("monitorCameraOnce", "CAMERA_HEARTBEAT_MS", "/camera/api/latest", "changedRatio", "hexToRgb", "rgbColorInput"):
         guard.check(token in app_js, f"app.js contains {token}")
-    for token in (".camera-preview", ".camera-symbol", ".toggle-line"):
+    for token in (".camera-preview", ".camera-symbol", ".toggle-line", ".rgb-panel", ".rgb-swatch"):
         guard.check(token in style, f"style contains {token}")
 
     # Cheap syntax sentries for environments without node.
@@ -134,8 +140,14 @@ def cloud_guard(guard: Guard) -> None:
 
     action_html = urllib.request.urlopen(f"{ACTION_SERVER}/", timeout=12).read().decode("utf-8")
     app_js = urllib.request.urlopen(f"{ACTION_SERVER}/static/app.js", timeout=12).read().decode("utf-8")
-    guard.check("cameraPreviewToggle" in action_html and "远程关机" in action_html, "cloud page contains camera toggle and shutdown button")
-    guard.check("monitorCameraOnce" in app_js and "CAMERA_HEARTBEAT_MS" in app_js, "cloud app.js contains camera monitor")
+    guard.check(
+        "cameraPreviewToggle" in action_html and "远程关机" in action_html and "rgbColorInput" in action_html,
+        "cloud page contains camera toggle, shutdown button, and RGB controls",
+    )
+    guard.check(
+        "monitorCameraOnce" in app_js and "CAMERA_HEARTBEAT_MS" in app_js and "hexToRgb" in app_js,
+        "cloud app.js contains camera monitor and RGB helpers",
+    )
 
     status, camera = request_json(f"{CAMERA_SERVER}/api/health")
     guard.check(status == 200 and camera.get("status") == "ok" and camera.get("has_image") is True, "cloud camera health has image")

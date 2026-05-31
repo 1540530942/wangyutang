@@ -12,7 +12,7 @@ from typing import Any
 import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
-from ros_robot_controller_msgs.msg import PWMServoState, SetPWMServoState
+from ros_robot_controller_msgs.msg import PWMServoState, RGBState, RGBStates, SetPWMServoState
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -49,12 +49,15 @@ def clamp(value: float, minimum: float, maximum: float) -> float:
 
 def merged_defaults(catalog: dict[str, Any], params: dict[str, Any] | None = None) -> dict[str, Any]:
     defaults = dict(catalog.get("defaults", {}))
-    for key in ("unit_distance_cm", "turn_angle_deg", "sensitivity"):
+    for key in ("unit_distance_cm", "turn_angle_deg", "sensitivity", "rgb_red", "rgb_green", "rgb_blue"):
         if params and key in params:
             defaults[key] = params[key]
     defaults["unit_distance_cm"] = clamp(float(defaults.get("unit_distance_cm", 5.0)), 1.0, 50.0)
     defaults["turn_angle_deg"] = clamp(float(defaults.get("turn_angle_deg", 5.0)), 1.0, 90.0)
     defaults["sensitivity"] = clamp(float(defaults.get("sensitivity", 1.0)), 0.2, 2.0)
+    defaults["rgb_red"] = int(round(clamp(float(defaults.get("rgb_red", 0)), 0.0, 255.0)))
+    defaults["rgb_green"] = int(round(clamp(float(defaults.get("rgb_green", 0)), 0.0, 255.0)))
+    defaults["rgb_blue"] = int(round(clamp(float(defaults.get("rgb_blue", 0)), 0.0, 255.0)))
     return defaults
 
 
@@ -78,43 +81,65 @@ class TurboPiController(Node):
         super().__init__("action_move_edge_controller")
         self.catalog_path = catalog_path
         self.lock = threading.Lock()
+        self.publish_lock = threading.Lock()
         catalog = load_catalog(catalog_path)
         defaults = catalog.get("defaults", {})
         self.cmd_vel_topic = str(defaults.get("cmd_vel_topic", "/cmd_vel"))
         self.pwm_servo_topic = str(defaults.get("pwm_servo_topic", "/ros_robot_controller/pwm_servo/set_state"))
+        self.rgb_topic = str(defaults.get("rgb_topic", "/ros_robot_controller/set_rgb"))
         self.cmd_vel_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
         self.servo_pub = self.create_publisher(SetPWMServoState, self.pwm_servo_topic, 10)
+        self.rgb_pub = self.create_publisher(RGBStates, self.rgb_topic, 10)
+        self.stop_event = threading.Event()
         self.last_action = ""
         self.last_executed_at = 0.0
 
     def execute(self, action: str, settings: dict[str, Any] | None = None) -> dict[str, Any]:
         started = time.time()
+        catalog = load_catalog(self.catalog_path)
+        skill = resolve_skill(catalog, action)
+        defaults = merged_defaults(catalog, settings)
+        output: list[str] = [
+            f"[INFO] {skill['name_zh']} -> {skill['id']}",
+            "[INFO] transport=persistent_ros_controller",
+            "[INFO] unit_distance_cm={unit_distance_cm} turn_angle_deg={turn_angle_deg} sensitivity={sensitivity}".format(
+                **defaults
+            ),
+        ]
+        if skill["type"] == "base_stop":
+            self.stop_event.set()
+            self.publish_stop(int(defaults.get("stop_publish_times", 3)))
+            self.last_action = skill["id"]
+            self.last_executed_at = time.time()
+            elapsed = round(time.time() - started, 3)
+            output.append(f"[INFO] elapsed_seconds={elapsed}")
+            return {
+                "ok": True,
+                "skill_id": skill["id"],
+                "name_zh": skill["name_zh"],
+                "elapsed_seconds": elapsed,
+                "output": "\n".join(output),
+            }
+        if skill["type"] == "reset_pose":
+            self.stop_event.set()
+            self.publish_stop(int(defaults.get("stop_publish_times", 3)))
         with self.lock:
-            catalog = load_catalog(self.catalog_path)
-            skill = resolve_skill(catalog, action)
-            defaults = merged_defaults(catalog, settings)
-            output: list[str] = [
-                f"[INFO] {skill['name_zh']} -> {skill['id']}",
-                "[INFO] transport=persistent_ros_controller",
-                "[INFO] unit_distance_cm={unit_distance_cm} turn_angle_deg={turn_angle_deg} sensitivity={sensitivity}".format(
-                    **defaults
-                ),
-            ]
             try:
-                if skill["type"] == "base_stop":
-                    self.publish_stop(int(defaults.get("stop_publish_times", 3)))
-                elif skill["type"] == "reset_pose":
-                    self.publish_stop(int(defaults.get("stop_publish_times", 3)))
+                if skill["type"] == "reset_pose":
                     self.publish_servo_reset(defaults)
                     self.request_camera_capture(defaults)
                 elif skill["type"] == "camera_servo":
                     self.publish_servo(skill, defaults)
                     self.request_camera_capture(defaults)
+                elif skill["type"] == "rgb_light":
+                    self.publish_rgb(skill, defaults)
                 elif skill["type"] == "base_move":
+                    self.stop_event.clear()
                     duration_ms = unit_duration_ms(defaults, "move")
                     output.append(f"[INFO] duration_ms={duration_ms}")
                     self.publish_twist_burst(skill["twist"], duration_ms, int(defaults.get("stop_publish_times", 3)))
                 elif skill["type"] == "base_turn":
+                    self.stop_event.clear()
                     duration_ms = unit_duration_ms(defaults, "turn")
                     output.append(f"[INFO] duration_ms={duration_ms}")
                     self.publish_twist_burst(skill["twist"], duration_ms, int(defaults.get("stop_publish_times", 3)))
@@ -151,17 +176,19 @@ class TurboPiController(Node):
         rate_hz = 20.0
         interval = 1.0 / rate_hz
         deadline = time.monotonic() + max(duration_ms, 0) / 1000.0
-        while time.monotonic() < deadline:
-            self.cmd_vel_pub.publish(message)
-            rclpy.spin_once(self, timeout_sec=0.0)
+        while time.monotonic() < deadline and not self.stop_event.is_set():
+            with self.publish_lock:
+                self.cmd_vel_pub.publish(message)
+                rclpy.spin_once(self, timeout_sec=0.0)
             time.sleep(interval)
         self.publish_stop(stop_times)
 
     def publish_stop(self, times: int = 3) -> None:
         stop = Twist()
         for _ in range(max(times, 1)):
-            self.cmd_vel_pub.publish(stop)
-            rclpy.spin_once(self, timeout_sec=0.0)
+            with self.publish_lock:
+                self.cmd_vel_pub.publish(stop)
+                rclpy.spin_once(self, timeout_sec=0.0)
             time.sleep(0.03)
 
     def publish_servo(self, skill: dict[str, Any], defaults: dict[str, Any]) -> None:
@@ -191,6 +218,27 @@ class TurboPiController(Node):
         self.servo_pub.publish(message)
         rclpy.spin_once(self, timeout_sec=0.0)
         time.sleep(message.duration)
+
+    def publish_rgb(self, skill: dict[str, Any], defaults: dict[str, Any]) -> None:
+        mode = str(skill.get("rgb", {}).get("mode", "settings"))
+        if mode == "off":
+            red = green = blue = 0
+        else:
+            red = int(defaults.get("rgb_red", 0))
+            green = int(defaults.get("rgb_green", 0))
+            blue = int(defaults.get("rgb_blue", 0))
+        indices = defaults.get("rgb_led_indices", [1, 2])
+        message = RGBStates()
+        message.states = []
+        for index in indices if isinstance(indices, list) else [1, 2]:
+            state = RGBState()
+            state.index = int(index)
+            state.red = red
+            state.green = green
+            state.blue = blue
+            message.states.append(state)
+        self.rgb_pub.publish(message)
+        rclpy.spin_once(self, timeout_sec=0.0)
 
     def request_camera_capture(self, defaults: dict[str, Any]) -> None:
         if not bool(defaults.get("capture_after_servo", True)):
