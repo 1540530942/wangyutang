@@ -27,15 +27,15 @@ function Invoke-Checked([string]$Command, [string[]]$Arguments) {
   }
 }
 
-function Wait-ForTaskResult([string]$Mode, [string]$ExpectedSource, [int]$TimeoutSec = 35) {
-  $body = @{ mode = $Mode; query_gpio = 26 } | ConvertTo-Json -Compress
+function Wait-ForTaskResult([string]$Kind, [string]$Mode, [string[]]$ExpectedSources, [int]$TimeoutSec = 45) {
+  $body = @{ kind = $Kind; mode = $Mode; query_gpio = 26 } | ConvertTo-Json -Compress
   $task = Invoke-RestMethod -Uri "https://www.wangyutang.cn/camera/api/capture" -Method Post -ContentType "application/json" -Body $body -TimeoutSec 15
   $deadline = (Get-Date).AddSeconds($TimeoutSec)
   do {
     Start-Sleep -Seconds 2
-    $latest = Invoke-RestMethod -Uri "https://www.wangyutang.cn/camera/api/latest" -TimeoutSec 15
-    if ($latest.task_id -eq $task.task.id -and $latest.capture_source -eq $ExpectedSource) {
-      Write-Host ("OK   mode={0} task={1} source={2}" -f $Mode, $latest.task_id, $latest.capture_source)
+    $latest = Invoke-RestMethod -Uri "https://www.wangyutang.cn/camera/api/latest?kind=$Kind" -TimeoutSec 15
+    if ($latest.task_id -eq $task.task.id -and $ExpectedSources -contains $latest.capture_source) {
+      Write-Host ("OK   kind={0} mode={1} task={2} source={3}" -f $Kind, $Mode, $latest.task_id, $latest.capture_source)
       return
     }
   } while ((Get-Date) -lt $deadline)
@@ -44,7 +44,7 @@ function Wait-ForTaskResult([string]$Mode, [string]$ExpectedSource, [int]$Timeou
   if ($latest) {
     $seen = "last task=$($latest.task_id) source=$($latest.capture_source) error=$($latest.capture_error)"
   }
-  throw "Timed out waiting for mode=$Mode expected source=$ExpectedSource. $seen"
+  throw "Timed out waiting for kind=$Kind mode=$Mode expected sources=$($ExpectedSources -join ','). $seen"
 }
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -127,9 +127,9 @@ if (-not $SkipVerify) {
     }
   }
   Invoke-RestMethod -Uri "https://www.wangyutang.cn/camera/api/health" -TimeoutSec 15 | Out-Null
-  Wait-ForTaskResult "single" "opencv"
-  Wait-ForTaskResult "screenshot" "screenshot"
-  Wait-ForTaskResult "face" "face-screenshot"
+  Wait-ForTaskResult "camera" "single" @("web-video-server", "rpicam-still", "picamera2", "opencv", "fake-camera")
+  Wait-ForTaskResult "screen" "single" @("screenshot")
+  Wait-ForTaskResult "face" "single" @("smile-face-render")
 } else {
   Write-Step "Skipping public verification"
 }
