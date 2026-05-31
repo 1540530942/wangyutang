@@ -127,6 +127,7 @@ def render_face_jpeg() -> Response:
     current = now()
     render_state = RenderFaceState(
         emotion=state.emotion,
+        style=state.style,
         intensity=state.intensity,
         speaking_until=state.speaking_until,
         mouth_open_until=state.mouth_open_until,

@@ -56,12 +56,15 @@ def clamp(value: float, minimum: float, maximum: float) -> float:
 
 def merged_defaults(catalog: dict[str, Any], params: dict[str, Any] | None = None) -> dict[str, Any]:
     defaults = dict(catalog.get("defaults", {}))
-    for key in ("unit_distance_cm", "turn_angle_deg", "sensitivity"):
+    for key in ("unit_distance_cm", "turn_angle_deg", "sensitivity", "rgb_red", "rgb_green", "rgb_blue"):
         if params and key in params:
             defaults[key] = params[key]
     defaults["unit_distance_cm"] = clamp(float(defaults.get("unit_distance_cm", 5.0)), 1.0, 50.0)
     defaults["turn_angle_deg"] = clamp(float(defaults.get("turn_angle_deg", 5.0)), 1.0, 90.0)
     defaults["sensitivity"] = clamp(float(defaults.get("sensitivity", 1.0)), 0.2, 2.0)
+    defaults["rgb_red"] = int(round(clamp(float(defaults.get("rgb_red", 0)), 0.0, 255.0)))
+    defaults["rgb_green"] = int(round(clamp(float(defaults.get("rgb_green", 0)), 0.0, 255.0)))
+    defaults["rgb_blue"] = int(round(clamp(float(defaults.get("rgb_blue", 0)), 0.0, 255.0)))
     return defaults
 
 
@@ -176,6 +179,26 @@ def execute_base_turn(skill: dict[str, Any], defaults: dict[str, Any], dry_run: 
     run_in_container(str(defaults.get("ros_container", "turbopi")), command, dry_run)
 
 
+def execute_rgb_light(skill: dict[str, Any], defaults: dict[str, Any], dry_run: bool) -> None:
+    mode = str(skill.get("rgb", {}).get("mode", "settings"))
+    if mode == "off":
+        red = green = blue = 0
+    else:
+        red = int(defaults.get("rgb_red", 0))
+        green = int(defaults.get("rgb_green", 0))
+        blue = int(defaults.get("rgb_blue", 0))
+    indices = defaults.get("rgb_led_indices", [1, 2])
+    if not isinstance(indices, list):
+        indices = [1, 2]
+    states = ", ".join(
+        f"{{index: {int(index)}, red: {red}, green: {green}, blue: {blue}}}" for index in indices
+    )
+    topic = str(defaults.get("rgb_topic", "/ros_robot_controller/set_rgb"))
+    message = f"{{states: [{states}]}}"
+    command = f"{ROS_SETUP} && ros2 topic pub --once --wait-matching-subscriptions 0 {topic} ros_robot_controller_msgs/msg/RGBStates '{message}'"
+    run_in_container(str(defaults.get("ros_container", "turbopi")), command, dry_run)
+
+
 def execute_skill(skill: dict[str, Any], catalog: dict[str, Any], dry_run: bool, params: dict[str, Any] | None = None) -> None:
     defaults = merged_defaults(catalog, params)
     print(
@@ -197,6 +220,8 @@ def execute_skill(skill: dict[str, Any], catalog: dict[str, Any], dry_run: bool,
             request_camera_capture(defaults, dry_run)
     elif skill["type"] == "base_stop":
         execute_base_stop(defaults, dry_run)
+    elif skill["type"] == "rgb_light":
+        execute_rgb_light(skill, defaults, dry_run)
     elif skill["type"] == "reset_pose":
         execute_reset_pose(defaults, dry_run)
         if bool(defaults.get("capture_after_servo", True)):

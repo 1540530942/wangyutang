@@ -7,6 +7,12 @@ const turnUnitLabelEl = document.querySelector("#turnUnitLabel");
 const unitDistanceInput = document.querySelector("#unitDistanceInput");
 const turnAngleInput = document.querySelector("#turnAngleInput");
 const sensitivityInput = document.querySelector("#sensitivityInput");
+const rgbSummaryEl = document.querySelector("#rgbSummary");
+const rgbSwatchEl = document.querySelector("#rgbSwatch");
+const rgbColorInput = document.querySelector("#rgbColorInput");
+const rgbRedInput = document.querySelector("#rgbRedInput");
+const rgbGreenInput = document.querySelector("#rgbGreenInput");
+const rgbBlueInput = document.querySelector("#rgbBlueInput");
 const cameraPreviewToggle = document.querySelector("#cameraPreviewToggle");
 const cameraPreview = document.querySelector("#cameraPreview");
 const cameraPreviewImage = document.querySelector("#cameraPreviewImage");
@@ -27,8 +33,11 @@ let currentSettings = {
   unit_distance_cm: 5,
   turn_angle_deg: 5,
   sensitivity: 1,
+  rgb_red: 0,
+  rgb_green: 0,
+  rgb_blue: 0,
 };
-const settingsInputs = [unitDistanceInput, turnAngleInput, sensitivityInput];
+const settingsInputs = [unitDistanceInput, turnAngleInput, sensitivityInput, rgbRedInput, rgbGreenInput, rgbBlueInput];
 const MOTION_ACTIONS = new Set([
   "move_forward",
   "move_backward",
@@ -66,6 +75,26 @@ function fmtNumber(value) {
 function fmtTime(value) {
   if (!value) return "";
   return new Date(value * 1000).toLocaleTimeString();
+}
+
+function clampRgb(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 0;
+  return Math.max(0, Math.min(255, Math.round(number)));
+}
+
+function rgbToHex(red, green, blue) {
+  return [red, green, blue].map((value) => clampRgb(value).toString(16).padStart(2, "0")).join("");
+}
+
+function hexToRgb(hex) {
+  const clean = String(hex || "#000000").replace("#", "");
+  if (!/^[0-9a-fA-F]{6}$/.test(clean)) return { red: 0, green: 0, blue: 0 };
+  return {
+    red: parseInt(clean.slice(0, 2), 16),
+    green: parseInt(clean.slice(2, 4), 16),
+    blue: parseInt(clean.slice(4, 6), 16),
+  };
 }
 
 function fmtLatency(task) {
@@ -219,6 +248,9 @@ function getFormSettings() {
     unit_distance_cm: Number(unitDistanceInput.value || 5),
     turn_angle_deg: Number(turnAngleInput.value || 5),
     sensitivity: Number(sensitivityInput.value || 1),
+    rgb_red: clampRgb(rgbRedInput.value),
+    rgb_green: clampRgb(rgbGreenInput.value),
+    rgb_blue: clampRgb(rgbBlueInput.value),
   };
 }
 
@@ -233,8 +265,18 @@ function renderSettings(settings, options = {}) {
     unitDistanceInput.value = fmtNumber(currentSettings.unit_distance_cm);
     turnAngleInput.value = fmtNumber(currentSettings.turn_angle_deg);
     sensitivityInput.value = fmtNumber(currentSettings.sensitivity);
+    rgbRedInput.value = clampRgb(currentSettings.rgb_red);
+    rgbGreenInput.value = clampRgb(currentSettings.rgb_green);
+    rgbBlueInput.value = clampRgb(currentSettings.rgb_blue);
   }
   const displaySettings = updateInputs ? currentSettings : { ...currentSettings, ...getFormSettings() };
+  const red = clampRgb(displaySettings.rgb_red);
+  const green = clampRgb(displaySettings.rgb_green);
+  const blue = clampRgb(displaySettings.rgb_blue);
+  const hex = `#${rgbToHex(red, green, blue)}`;
+  rgbColorInput.value = hex;
+  rgbSwatchEl.style.backgroundColor = hex;
+  rgbSummaryEl.textContent = red || green || blue ? `当前 ${hex.toUpperCase()} · R${red} G${green} B${blue}` : "默认关闭";
   unitSummaryEl.textContent = `距离 ${fmtNumber(displaySettings.unit_distance_cm)} cm · 转向 ${fmtNumber(displaySettings.turn_angle_deg)}° · 灵敏度 ${fmtNumber(displaySettings.sensitivity)}x`;
   moveUnitLabelEl.textContent = `按一次执行 ${fmtNumber(displaySettings.unit_distance_cm)} cm`;
   turnUnitLabelEl.textContent = `按一次转 ${fmtNumber(displaySettings.turn_angle_deg)}°`;
@@ -324,6 +366,9 @@ async function createTask(action) {
   }
   setBusy(action, true);
   try {
+    if (action === "rgb_on" && settingsDirty) {
+      await saveSettings();
+    }
     const data = await api("./api/tasks", {
       method: "POST",
       body: JSON.stringify({
@@ -399,6 +444,20 @@ settingsInputs.forEach((input) => {
   input.addEventListener("input", () => {
     settingsDirty = true;
     renderSettings(getFormSettings(), { updateInputs: false });
+  });
+});
+rgbColorInput.addEventListener("input", () => {
+  const rgb = hexToRgb(rgbColorInput.value);
+  rgbRedInput.value = rgb.red;
+  rgbGreenInput.value = rgb.green;
+  rgbBlueInput.value = rgb.blue;
+  settingsDirty = true;
+  renderSettings(getFormSettings(), { updateInputs: false });
+});
+document.querySelector("#rgbSettingsForm").addEventListener("submit", (event) => {
+  event.preventDefault();
+  saveSettings().catch((error) => {
+    statusEl.textContent = `保存失败 ${error.message}`;
   });
 });
 cameraPreviewToggle.addEventListener("change", () => {

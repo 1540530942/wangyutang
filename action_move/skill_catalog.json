@@ -12,6 +12,14 @@
     "ros_container": "turbopi",
     "cmd_vel_topic": "/cmd_vel",
     "pwm_servo_topic": "/ros_robot_controller/pwm_servo/set_state",
+    "rgb_topic": "/ros_robot_controller/set_rgb",
+    "rgb_led_indices": [
+      1,
+      2
+    ],
+    "rgb_red": 0,
+    "rgb_green": 0,
+    "rgb_blue": 0,
     "unit_distance_cm": 5.0,
     "turn_angle_deg": 5.0,
     "sensitivity": 1.0,
@@ -68,6 +76,38 @@
         "shutdown",
         "poweroff"
       ]
+    },
+    {
+      "id": "rgb_on",
+      "name_zh": "RGB 开灯",
+      "description": "按当前调色设置点亮两颗 RGB 灯。",
+      "type": "rgb_light",
+      "aliases": [
+        "开灯",
+        "打开灯",
+        "灯光打开",
+        "rgb on",
+        "light on"
+      ],
+      "rgb": {
+        "mode": "settings"
+      }
+    },
+    {
+      "id": "rgb_off",
+      "name_zh": "RGB 关灯",
+      "description": "关闭两颗 RGB 灯。",
+      "type": "rgb_light",
+      "aliases": [
+        "关灯",
+        "关闭灯",
+        "灯光关闭",
+        "rgb off",
+        "light off"
+      ],
+      "rgb": {
+        "mode": "off"
+      }
     },
     {
       "id": "look_left",
@@ -150,7 +190,7 @@
         "向前移动"
       ],
       "twist": {
-        "linear_x": 0.35,
+        "linear_x": 0.12,
         "linear_y": 0.0,
         "angular_z": 0.0
       }
@@ -166,7 +206,7 @@
         "向后移动"
       ],
       "twist": {
-        "linear_x": -0.35,
+        "linear_x": -0.12,
         "linear_y": 0.0,
         "angular_z": 0.0
       }
@@ -183,7 +223,7 @@
       ],
       "twist": {
         "linear_x": 0.0,
-        "linear_y": 0.35,
+        "linear_y": 0.10,
         "angular_z": 0.0
       }
     },
@@ -199,7 +239,7 @@
       ],
       "twist": {
         "linear_x": 0.0,
-        "linear_y": -0.35,
+        "linear_y": -0.10,
         "angular_z": 0.0
       }
     },
@@ -217,7 +257,7 @@
       "twist": {
         "linear_x": 0.0,
         "linear_y": 0.0,
-        "angular_z": 5.0
+        "angular_z": 0.35
       }
     },
     {
@@ -234,7 +274,7 @@
       "twist": {
         "linear_x": 0.0,
         "linear_y": 0.0,
-        "angular_z": -5.0
+        "angular_z": -0.35
       }
     }
   ]

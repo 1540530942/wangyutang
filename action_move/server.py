@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import secrets
 import time
@@ -21,7 +22,7 @@ SETTINGS_FILE = DATA_DIR / "settings.json"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-DEVICE_ONLINE_SECONDS = 15.0
+DEVICE_ONLINE_SECONDS = 30.0
 MAX_TASKS = 100
 CLAIM_TIMEOUT_SECONDS = 35.0
 MAX_LONG_POLL_SECONDS = 20.0
@@ -31,6 +32,9 @@ DEFAULT_SETTINGS = {
     "turn_angle_deg": 5.0,
     "sensitivity": 1.0,
     "voice_volume_percent": 90.0,
+    "rgb_red": 0,
+    "rgb_green": 0,
+    "rgb_blue": 0,
 }
 ACTIVE_STATUSES = {"pending", "claimed", "running"}
 MOTION_TYPES = {"base_move", "base_turn"}
@@ -65,6 +69,9 @@ class ActionSettings(BaseModel):
     turn_angle_deg: float = Field(DEFAULT_SETTINGS["turn_angle_deg"], ge=1.0, le=90.0)
     sensitivity: float = Field(DEFAULT_SETTINGS["sensitivity"], ge=0.2, le=2.0)
     voice_volume_percent: float = Field(DEFAULT_SETTINGS["voice_volume_percent"], ge=0.0, le=100.0)
+    rgb_red: int = Field(DEFAULT_SETTINGS["rgb_red"], ge=0, le=255)
+    rgb_green: int = Field(DEFAULT_SETTINGS["rgb_green"], ge=0, le=255)
+    rgb_blue: int = Field(DEFAULT_SETTINGS["rgb_blue"], ge=0, le=255)
 
 
 class DeviceHeartbeat(BaseModel):
@@ -98,6 +105,9 @@ def normalize_settings(data: dict[str, Any] | None = None) -> dict[str, float]:
         "turn_angle_deg": round(float(settings.turn_angle_deg), 2),
         "sensitivity": round(float(settings.sensitivity), 2),
         "voice_volume_percent": round(float(settings.voice_volume_percent), 2),
+        "rgb_red": int(settings.rgb_red),
+        "rgb_green": int(settings.rgb_green),
+        "rgb_blue": int(settings.rgb_blue),
     }
 
 
@@ -276,6 +286,9 @@ def create_task(payload: ActionRequest) -> dict[str, Any]:
         "turn_angle_deg": settings["turn_angle_deg"],
         "sensitivity": settings["sensitivity"],
         "voice_volume_percent": settings["voice_volume_percent"],
+        "rgb_red": settings["rgb_red"],
+        "rgb_green": settings["rgb_green"],
+        "rgb_blue": settings["rgb_blue"],
         "status": "pending",
         "requested_at": now,
         "updated_at": now,
@@ -292,7 +305,7 @@ def create_task(payload: ActionRequest) -> dict[str, Any]:
 
 
 @app.get("/api/tasks/next")
-def next_task(
+async def next_task(
     wait_seconds: float = 0.0,
     x_action_token: Annotated[str | None, Header()] = None,
 ) -> dict[str, Any]:
@@ -314,7 +327,7 @@ def next_task(
 
         if time.monotonic() >= deadline:
             return {"task": None}
-        time.sleep(LONG_POLL_TICK_SECONDS)
+        await asyncio.sleep(LONG_POLL_TICK_SECONDS)
 
 
 @app.post("/api/tasks/result")
