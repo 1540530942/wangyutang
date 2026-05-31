@@ -1,0 +1,304 @@
+name: Deploy action_move
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_pi:
+        description: "Update Raspberry Pi action edge services"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      verify_live_rgb:
+        description: "Create rgb_on/rgb_off tasks and require Pi completion"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+  push:
+    paths:
+      - "action_move/**"
+      - "scripts/github_deploy_action_move.sh"
+      - ".github/workflows/deploy-action-move.yml"
+
+concurrency:
+  group: action-move-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+
+    env:
+      TENCENT_HOST: ${{ secrets.TENCENT_HOST }}
+      TENCENT_USER: ${{ secrets.TENCENT_USER }}
+      TENCENT_SSH_PRIVATE_KEY: ${{ secrets.TENCENT_SSH_PRIVATE_KEY }}
+      PI_HOST: ${{ secrets.PI_HOST }}
+      PI_USER: ${{ secrets.PI_USER }}
+      PI_SSH_PRIVATE_KEY: ${{ secrets.PI_SSH_PRIVATE_KEY }}
+      PI_PORT: ${{ secrets.PI_PORT || '10022' }}
+      DEPLOY_PI: ${{ github.event_name == 'push' && 'true' || inputs.deploy_pi }}
+      VERIFY_LIVE_RGB: ${{ github.event_name == 'push' && 'true' || inputs.verify_live_rgb }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Validate action_move module
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run syntax and local guard checks
+        run: |
+          python -m py_compile \
+            action_move/server.py \
+            action_move/action_move_executor.py \
+            action_move/edge_action_poller.py \
+            action_move/edge_ros_controller.py \
+            action_move/regression_guard.py
+          python -m json.tool action_move/skill_catalog.json >/dev/null
+          python -m pip install -r action_move/requirements.txt
+          python -m pip install httpx
+          python action_move/regression_guard.py --local
+
+      - name: Create release archive
+        run: |
+          tar \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='action_move/data' \
+            -czf action_move-${GITHUB_SHA}.tgz \
+            action_move scripts/github_deploy_action_move.sh
+
+      - name: Check deployment secrets
+        id: deploy_secrets
+        run: |
+          cloud_ready=false
+          if [ -n "$TENCENT_HOST" ] && [ -n "$TENCENT_USER" ] && [ -n "$TENCENT_SSH_PRIVATE_KEY" ]; then
+            cloud_ready=true
+          fi
+
+          pi_ready=false
+          if [ -n "$PI_HOST" ] && [ -n "$PI_USER" ] && [ -n "$PI_SSH_PRIVATE_KEY" ] && [ -n "$PI_PORT" ]; then
+            pi_ready=true
+          fi
+
+          echo "cloud_ready=$cloud_ready" >> "$GITHUB_OUTPUT"
+          echo "pi_ready=$pi_ready" >> "$GITHUB_OUTPUT"
+
+          if [ "$cloud_ready" != "true" ]; then
+            echo "::error::Tencent Cloud secrets are required for action_move deployment."
+            exit 1
+          fi
+          if [ "$DEPLOY_PI" = "true" ] && [ "$pi_ready" != "true" ]; then
+            echo "::error::Raspberry Pi secrets are required when deploy_pi=true."
+            exit 1
+          fi
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$TENCENT_SSH_PRIVATE_KEY" > ~/.ssh/tencent_key
+          chmod 600 ~/.ssh/tencent_key
+          {
+            echo "Host tencent-prod"
+            echo "  HostName $TENCENT_HOST"
+            echo "  User $TENCENT_USER"
+            echo "  IdentityFile ~/.ssh/tencent_key"
+            echo "  StrictHostKeyChecking accept-new"
+          } > ~/.ssh/config
+          if [ "$DEPLOY_PI" = "true" ]; then
+            printf '%s\n' "$PI_SSH_PRIVATE_KEY" > ~/.ssh/pi_key
+            chmod 600 ~/.ssh/pi_key
+            {
+              echo "Host pi-action"
+              echo "  HostName $PI_HOST"
+              echo "  User $PI_USER"
+              echo "  Port $PI_PORT"
+              echo "  IdentityFile ~/.ssh/pi_key"
+              echo "  ProxyJump tencent-prod"
+              echo "  StrictHostKeyChecking accept-new"
+            } >> ~/.ssh/config
+          fi
+
+      - name: Upload release to Tencent Cloud
+        run: |
+          ssh tencent-prod "mkdir -p /tmp/wangyutang-action-move-deploy"
+          scp action_move-${GITHUB_SHA}.tgz tencent-prod:/tmp/wangyutang-action-move-deploy/
+
+      - name: Apply cloud release
+        run: |
+          ssh tencent-prod \
+            "bash -s -- '/tmp/wangyutang-action-move-deploy/action_move-${GITHUB_SHA}.tgz' '${GITHUB_SHA}'" \
+            < scripts/github_deploy_action_move.sh
+
+      - name: Update Raspberry Pi action edge
+        if: env.DEPLOY_PI == 'true'
+        run: |
+          retry_pi() {
+            local attempt
+            for attempt in 1 2 3; do
+              if "$@"; then
+                return 0
+              fi
+              echo "Pi action command failed on attempt ${attempt}; retrying..."
+              sleep $((attempt * 10))
+            done
+            "$@"
+          }
+
+          ssh_opts=(-o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
+          retry_pi scp "${ssh_opts[@]}" action_move-${GITHUB_SHA}.tgz pi-action:/tmp/action_move-${GITHUB_SHA}.tgz
+          retry_pi ssh "${ssh_opts[@]}" pi-action "bash -s -- '${GITHUB_SHA}'" <<'SH'
+          set -euo pipefail
+          commit_sha="${1:?commit sha required}"
+          archive="/tmp/action_move-${commit_sha}.tgz"
+          work="/tmp/action_move_deploy_${commit_sha}"
+
+          rm -rf "$work"
+          mkdir -p "$work"
+          tar -xzf "$archive" -C "$work"
+
+          install -d -o pi -g pi /home/pi/action_move /home/pi/action_move/voice_prompts
+          install -m 0644 -o pi -g pi "$work/action_move/edge_action_poller.py" /home/pi/action_move/edge_action_poller.py
+          install -m 0644 -o pi -g pi "$work/action_move/action_move_executor.py" /home/pi/action_move/action_move_executor.py
+          install -m 0644 -o pi -g pi "$work/action_move/skill_catalog.json" /home/pi/action_move/skill_catalog.json
+          if [ -d "$work/action_move/voice_prompts" ]; then
+            cp -a "$work/action_move/voice_prompts/." /home/pi/action_move/voice_prompts/
+            chown -R pi:pi /home/pi/action_move/voice_prompts
+          fi
+          printf 'commit_sha=%s\n%s\n' "$commit_sha" "$(date -Is)" > /home/pi/action_move/RELEASE_INFO
+          chown pi:pi /home/pi/action_move/RELEASE_INFO
+
+          sudo install -m 0644 "$work/action_move/systemd/action-move-poller.service" /etc/systemd/system/action-move-poller.service
+          sudo install -m 0644 "$work/action_move/systemd/action-move-controller.service" /etc/systemd/system/action-move-controller.service
+
+          docker exec turbopi bash -lc 'mkdir -p /home/ubuntu/action_move'
+          docker cp "$work/action_move/edge_ros_controller.py" turbopi:/home/ubuntu/action_move/edge_ros_controller.py
+          docker cp "$work/action_move/skill_catalog.json" turbopi:/home/ubuntu/action_move/skill_catalog.json
+          docker exec -u root turbopi bash -lc 'chown -R ubuntu:ubuntu /home/ubuntu/action_move'
+
+          sudo systemctl daemon-reload
+          sudo systemctl enable action-move-controller.service action-move-poller.service
+          sudo systemctl restart action-move-controller.service
+          sleep 3
+          sudo systemctl restart action-move-poller.service
+
+          systemctl is-active --quiet action-move-controller.service
+          systemctl is-active --quiet action-move-poller.service
+
+          docker exec turbopi bash -lc 'source /opt/ros/humble/setup.bash && source /home/ubuntu/ros2_ws/install/setup.bash && ros2 interface show ros_robot_controller_msgs/msg/RGBStates >/dev/null'
+          python3 - <<'PY'
+          import json
+          import urllib.request
+
+          payload = json.dumps({"action": "rgb_off", "settings": {"rgb_red": 0, "rgb_green": 0, "rgb_blue": 0}}).encode("utf-8")
+          request = urllib.request.Request(
+              "http://127.0.0.1:8765/execute",
+              data=payload,
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          result = json.loads(urllib.request.urlopen(request, timeout=8).read().decode("utf-8"))
+          if not result.get("ok"):
+              raise SystemExit(f"controller RGB self-test failed: {result}")
+          print("PI_CONTROLLER_RGB_SELF_TEST", json.dumps(result, ensure_ascii=False))
+          PY
+          SH
+
+      - name: Verify public action cloud
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.request
+
+          base = "https://www.wangyutang.cn/action"
+
+          def get_json(path):
+              with urllib.request.urlopen(base + path, timeout=20) as response:
+                  return json.loads(response.read().decode("utf-8"))
+
+          html = urllib.request.urlopen(base + "/", timeout=20).read().decode("utf-8")
+          app_js = urllib.request.urlopen(base + "/static/app.js", timeout=20).read().decode("utf-8")
+          for token in ("rgbColorInput", "rgb_on", "rgb_off"):
+              if token not in html and token not in app_js:
+                  raise SystemExit(f"public action UI missing {token}")
+
+          health = get_json("/api/health")
+          skills = get_json("/api/skills")
+          settings = health.get("settings", {})
+          ids = {skill.get("id") for skill in skills.get("skills", [])}
+          missing = {"rgb_on", "rgb_off"} - ids
+          if health.get("status") != "ok":
+              raise SystemExit(f"bad health: {json.dumps(health, ensure_ascii=False)}")
+          if missing:
+              raise SystemExit(f"missing RGB skills: {sorted(missing)}")
+          for key in ("rgb_red", "rgb_green", "rgb_blue"):
+              if key not in settings:
+                  raise SystemExit(f"missing setting: {key}")
+          if health.get("device", {}).get("online") is not True:
+              raise SystemExit(f"Pi device is not online: {json.dumps(health.get('device'), ensure_ascii=False)}")
+          print("ACTION_CLOUD_VERIFY_OK", json.dumps({"skills": len(ids), "settings": settings}, ensure_ascii=False))
+          PY
+
+      - name: Verify live RGB task through Pi
+        if: env.DEPLOY_PI == 'true' && env.VERIFY_LIVE_RGB == 'true'
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          import urllib.request
+
+          base = "https://www.wangyutang.cn/action"
+
+          def get_json(path):
+              with urllib.request.urlopen(base + path, timeout=20) as response:
+                  return json.loads(response.read().decode("utf-8"))
+
+          def post_json(path, payload):
+              data = json.dumps(payload).encode("utf-8")
+              request = urllib.request.Request(
+                  base + path,
+                  data=data,
+                  headers={"Content-Type": "application/json"},
+                  method="POST",
+              )
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  return json.loads(response.read().decode("utf-8"))
+
+          post_json("/api/settings", {"unit_distance_cm": 5, "turn_angle_deg": 5, "sensitivity": 1, "voice_volume_percent": 90, "rgb_red": 12, "rgb_green": 80, "rgb_blue": 24})
+
+          completed = []
+          for action in ("rgb_on", "rgb_off"):
+              task = post_json("/api/tasks", {"action": action, "source": "deploy-action-move", "ttl_seconds": 45})["task"]
+              deadline = time.time() + 45
+              latest = None
+              while time.time() < deadline:
+                  time.sleep(2)
+                  tasks = get_json("/api/tasks")["tasks"]
+                  latest = next((item for item in tasks if item.get("id") == task["id"]), None)
+                  if not latest:
+                      continue
+                  if latest.get("status") == "complete":
+                      output = str(latest.get("output") or "")
+                      if "persistent_ros_controller" not in output and "ros2 topic pub" not in output:
+                          raise SystemExit(f"{action} completed without controller evidence: {output}")
+                      completed.append({"action": action, "task_id": task["id"], "device_id": latest.get("device_id")})
+                      break
+                  if latest.get("status") in {"failed", "expired"}:
+                      raise SystemExit(f"{action} failed: {json.dumps(latest, ensure_ascii=False)}")
+              else:
+                  raise SystemExit(f"{action} did not complete: {json.dumps(latest, ensure_ascii=False)}")
+
+          print("ACTION_PI_RGB_VERIFY_OK", json.dumps(completed, ensure_ascii=False))
+          PY
