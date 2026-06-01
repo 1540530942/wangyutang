@@ -197,6 +197,28 @@ def execute_rgb_light(skill: dict[str, Any], defaults: dict[str, Any], dry_run: 
     message = f"{{states: [{states}]}}"
     command = f"{ROS_SETUP} && ros2 topic pub --once --wait-matching-subscriptions 0 {topic} ros_robot_controller_msgs/msg/RGBStates '{message}'"
     run_in_container(str(defaults.get("ros_container", "turbopi")), command, dry_run)
+    execute_sonar_rgb(red, green, blue, defaults, dry_run)
+
+
+def execute_sonar_rgb(red: int, green: int, blue: int, defaults: dict[str, Any], dry_run: bool) -> None:
+    if not bool(defaults.get("sonar_rgb_enabled", True)):
+        return
+    indices = defaults.get("sonar_rgb_indices", [0, 1])
+    if not isinstance(indices, list):
+        indices = [0, 1]
+    code = "\n".join(
+        [
+            "from sdk.sonar import Sonar",
+            "sonar = Sonar()",
+            "sonar.setRGBMode(0)",
+            *[
+                f"sonar.setPixelColor({int(index)}, ({red}, {green}, {blue}))"
+                for index in indices
+            ],
+        ]
+    )
+    command = f"python3 - <<'PY'\n{code}\nPY"
+    run_in_container(str(defaults.get("ros_container", "turbopi")), command, dry_run)
 
 
 def execute_skill(skill: dict[str, Any], catalog: dict[str, Any], dry_run: bool, params: dict[str, Any] | None = None) -> None:

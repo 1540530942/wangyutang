@@ -17,6 +17,11 @@
       1,
       2
     ],
+    "sonar_rgb_enabled": true,
+    "sonar_rgb_indices": [
+      0,
+      1
+    ],
     "rgb_red": 0,
     "rgb_green": 0,
     "rgb_blue": 0,

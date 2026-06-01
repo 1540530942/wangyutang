@@ -14,6 +14,11 @@ from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from ros_robot_controller_msgs.msg import PWMServoState, RGBState, RGBStates, SetPWMServoState
 
+try:
+    from sdk.sonar import Sonar
+except Exception:
+    Sonar = None  # type: ignore[assignment]
+
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_CATALOG = BASE_DIR / "skill_catalog.json"
@@ -87,9 +92,12 @@ class TurboPiController(Node):
         self.cmd_vel_topic = str(defaults.get("cmd_vel_topic", "/cmd_vel"))
         self.pwm_servo_topic = str(defaults.get("pwm_servo_topic", "/ros_robot_controller/pwm_servo/set_state"))
         self.rgb_topic = str(defaults.get("rgb_topic", "/ros_robot_controller/set_rgb"))
+        self.sonar_rgb_enabled = bool(defaults.get("sonar_rgb_enabled", True))
+        self.sonar_rgb_indices = defaults.get("sonar_rgb_indices", [0, 1])
         self.cmd_vel_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
         self.servo_pub = self.create_publisher(SetPWMServoState, self.pwm_servo_topic, 10)
         self.rgb_pub = self.create_publisher(RGBStates, self.rgb_topic, 10)
+        self.sonar_rgb = None
         self.stop_event = threading.Event()
         self.last_action = ""
         self.last_executed_at = 0.0
@@ -239,6 +247,19 @@ class TurboPiController(Node):
             message.states.append(state)
         self.rgb_pub.publish(message)
         rclpy.spin_once(self, timeout_sec=0.0)
+        self.apply_sonar_rgb(red, green, blue)
+
+    def apply_sonar_rgb(self, red: int, green: int, blue: int) -> None:
+        if not self.sonar_rgb_enabled:
+            return
+        if Sonar is None:
+            raise RuntimeError("sonar RGB SDK is unavailable")
+        if self.sonar_rgb is None:
+            self.sonar_rgb = Sonar()
+        indices = self.sonar_rgb_indices if isinstance(self.sonar_rgb_indices, list) else [0, 1]
+        self.sonar_rgb.setRGBMode(0)
+        for index in indices:
+            self.sonar_rgb.setPixelColor(int(index), (red, green, blue))
 
     def request_camera_capture(self, defaults: dict[str, Any]) -> None:
         if not bool(defaults.get("capture_after_servo", True)):
