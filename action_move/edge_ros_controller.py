@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import statistics
 import threading
 import time
 import urllib.request
@@ -98,6 +99,7 @@ class TurboPiController(Node):
         self.servo_pub = self.create_publisher(SetPWMServoState, self.pwm_servo_topic, 10)
         self.rgb_pub = self.create_publisher(RGBStates, self.rgb_topic, 10)
         self.sonar_rgb = None
+        self.sonar_distance = None
         self.stop_event = threading.Event()
         self.last_action = ""
         self.last_executed_at = 0.0
@@ -141,6 +143,15 @@ class TurboPiController(Node):
                     self.request_camera_capture(defaults)
                 elif skill["type"] == "rgb_light":
                     self.publish_rgb(skill, defaults)
+                elif skill["type"] == "front_distance":
+                    distance = self.read_front_distance(defaults)
+                    output.extend(
+                        [
+                            "[INFO] front_distance_estimate_cm={front_distance_estimate_cm}".format(**distance),
+                            "[INFO] raw_mm_samples={raw_mm_samples}".format(**distance),
+                            "[INFO] confidence={confidence}".format(**distance),
+                        ]
+                    )
                 elif skill["type"] == "base_move":
                     self.stop_event.clear()
                     duration_ms = unit_duration_ms(defaults, "move")
@@ -260,6 +271,29 @@ class TurboPiController(Node):
         self.sonar_rgb.setRGBMode(0)
         for index in indices:
             self.sonar_rgb.setPixelColor(int(index), (red, green, blue))
+
+    def read_front_distance(self, defaults: dict[str, Any]) -> dict[str, Any]:
+        if Sonar is None:
+            raise RuntimeError("sonar distance SDK is unavailable")
+        if self.sonar_distance is None:
+            self.sonar_distance = Sonar()
+        samples = int(defaults.get("sonar_distance_samples", 7))
+        interval_ms = int(defaults.get("sonar_distance_sample_interval_ms", 40))
+        values: list[int] = []
+        for _ in range(max(samples, 1)):
+            value = int(self.sonar_distance.getDistance())
+            if 0 < value <= 5000:
+                values.append(value)
+            time.sleep(max(interval_ms, 0) / 1000.0)
+        if not values:
+            raise RuntimeError("sonar distance returned no valid samples")
+        raw_mm = min(values) if bool(defaults.get("sonar_distance_conservative", True)) else int(round(statistics.median(values)))
+        return {
+            "front_distance_estimate_cm": round(raw_mm / 10.0, 2),
+            "raw_mm": raw_mm,
+            "raw_mm_samples": ",".join(str(value) for value in values),
+            "confidence": round(min(1.0, len(values) / max(samples, 1)), 3),
+        }
 
     def request_camera_capture(self, defaults: dict[str, Any]) -> None:
         if not bool(defaults.get("capture_after_servo", True)):

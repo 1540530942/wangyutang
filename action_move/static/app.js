@@ -331,11 +331,13 @@ async function refresh() {
     row.className = `task task-${task.status}`;
     const distance = task.unit_distance_cm ? `${fmtNumber(task.unit_distance_cm)}cm` : "";
     const angle = task.turn_angle_deg ? `${fmtNumber(task.turn_angle_deg)}°` : "";
+    const sonarMatch = String(task.output || "").match(/front_distance_estimate_cm=([0-9.]+)/);
+    const sonar = sonarMatch ? `前方 ${sonarMatch[1]}cm` : "";
     row.innerHTML = `
       <div>
         <strong>${task.name_zh || task.skill_id}</strong>
         <code>${task.id}</code>
-        <div>${fmtTime(task.requested_at)} ${distance} ${angle}</div>
+        <div>${fmtTime(task.requested_at)} ${distance} ${angle} ${sonar}</div>
       </div>
       <div>${statusText(task)}</div>
     `;
