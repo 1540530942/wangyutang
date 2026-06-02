@@ -112,11 +112,11 @@ edge_action_poller.py             Pi-side cloud task poller.
 edge_ros_controller.py            Persistent ROS2 publisher service inside turbopi.
 movement_image_verifier.py        Manual verification helper.
 cloud_image_verifier.py           Cloud task plus before/after camera verification helper.
-motion_image_verification_*.md    Current image-based calibration report.
 source_map.md                     Tutorial source mapping.
 ros2_command_examples.md          ROS2 command examples.
 implementation_plan.md            Architecture notes.
-latency_analysis_*.md             Latency diagnosis and deployment notes.
+../docs/action_move/              Action latency notes and planning records.
+../docs/verification/             Image-based calibration and verification reports.
 ```
 
 ## Low-Latency Edge Controller

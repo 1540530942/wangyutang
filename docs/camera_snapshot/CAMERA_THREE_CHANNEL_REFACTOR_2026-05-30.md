@@ -435,5 +435,5 @@ smile_face/README.md
 smile_face/fb_renderer.py
 smile_face/face_render.py
 smile_face/server.py
-camera_snapshot/CAMERA_THREE_CHANNEL_REFACTOR_2026-05-30.md
+docs/camera_snapshot/CAMERA_THREE_CHANNEL_REFACTOR_2026-05-30.md
 ```

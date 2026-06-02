@@ -216,5 +216,5 @@ Avoid repeated live `move_forward` tests unless the robot is physically safe and
 The detailed module-local analysis is also recorded at:
 
 ```text
-action_move/latency_analysis_20260512.md
+docs/action_move/latency_analysis_20260512.md
 ```
