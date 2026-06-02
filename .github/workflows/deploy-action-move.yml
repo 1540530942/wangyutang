@@ -213,6 +213,19 @@ jobs:
           if not result.get("ok"):
               raise SystemExit(f"controller RGB self-test failed: {result}")
           print("PI_CONTROLLER_RGB_SELF_TEST", json.dumps(result, ensure_ascii=False))
+
+          payload = json.dumps({"action": "front_distance", "settings": {}}).encode("utf-8")
+          request = urllib.request.Request(
+              "http://127.0.0.1:8765/execute",
+              data=payload,
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          result = json.loads(urllib.request.urlopen(request, timeout=8).read().decode("utf-8"))
+          output = str(result.get("output") or "")
+          if not result.get("ok") or "front_distance_estimate_cm=" not in output:
+              raise SystemExit(f"controller front-distance self-test failed: {result}")
+          print("PI_CONTROLLER_FRONT_DISTANCE_SELF_TEST", json.dumps(result, ensure_ascii=False))
           PY
           SH
 
@@ -230,7 +243,7 @@ jobs:
 
           html = urllib.request.urlopen(base + "/", timeout=20).read().decode("utf-8")
           app_js = urllib.request.urlopen(base + "/static/app.js", timeout=20).read().decode("utf-8")
-          for token in ("rgbColorInput", "rgb_on", "rgb_off"):
+          for token in ("front_distance", "rgbColorInput", "rgb_on", "rgb_off"):
               if token not in html and token not in app_js:
                   raise SystemExit(f"public action UI missing {token}")
 
@@ -238,7 +251,7 @@ jobs:
           skills = get_json("/api/skills")
           settings = health.get("settings", {})
           ids = {skill.get("id") for skill in skills.get("skills", [])}
-          missing = {"rgb_on", "rgb_off"} - ids
+          missing = {"front_distance", "rgb_on", "rgb_off"} - ids
           if health.get("status") != "ok":
               raise SystemExit(f"bad health: {json.dumps(health, ensure_ascii=False)}")
           if missing:
@@ -279,7 +292,7 @@ jobs:
           post_json("/api/settings", {"unit_distance_cm": 5, "turn_angle_deg": 5, "sensitivity": 1, "voice_volume_percent": 90, "rgb_red": 12, "rgb_green": 80, "rgb_blue": 24})
 
           completed = []
-          for action in ("rgb_on", "rgb_off"):
+          for action in ("front_distance", "rgb_on", "rgb_off"):
               task = post_json("/api/tasks", {"action": action, "source": "deploy-action-move", "ttl_seconds": 45})["task"]
               deadline = time.time() + 45
               latest = None
@@ -293,6 +306,8 @@ jobs:
                       output = str(latest.get("output") or "")
                       if "persistent_ros_controller" not in output and "ros2 topic pub" not in output:
                           raise SystemExit(f"{action} completed without controller evidence: {output}")
+                      if action == "front_distance" and "front_distance_estimate_cm=" not in output:
+                          raise SystemExit(f"{action} completed without distance evidence: {output}")
                       completed.append({"action": action, "task_id": task["id"], "device_id": latest.get("device_id")})
                       break
                   if latest.get("status") in {"failed", "expired"}:
