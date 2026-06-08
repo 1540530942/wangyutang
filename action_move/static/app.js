@@ -1,6 +1,7 @@
 const statusEl = document.querySelector("#deviceStatus");
 const deviceInfoEl = document.querySelector("#deviceInfo");
 const tasksEl = document.querySelector("#tasks");
+const frontDistanceSummaryEl = document.querySelector("#frontDistanceSummary");
 const unitSummaryEl = document.querySelector("#unitSummary");
 const moveUnitLabelEl = document.querySelector("#moveUnitLabel");
 const turnUnitLabelEl = document.querySelector("#turnUnitLabel");
@@ -111,6 +112,29 @@ function fmtLatency(task) {
 function statusText(task) {
   const latency = fmtLatency(task);
   return latency ? `${task.status} · ${latency}` : task.status;
+}
+
+function sonarText(task) {
+  const sonarMatch = String(task?.output || "").match(/front_distance_estimate_cm=([0-9.]+)/);
+  return sonarMatch ? `前方 ${sonarMatch[1]}cm` : "";
+}
+
+function renderFrontDistanceSummary(tasks) {
+  const task = tasks.find((item) => item.skill_id === "front_distance");
+  if (!task) {
+    frontDistanceSummaryEl.textContent = "读取前方距离";
+    return;
+  }
+  const sonar = sonarText(task);
+  if (sonar) {
+    frontDistanceSummaryEl.textContent = sonar;
+  } else if (ACTIVE_STATUSES.has(task.status)) {
+    frontDistanceSummaryEl.textContent = "测距中...";
+  } else if (task.status === "failed") {
+    frontDistanceSummaryEl.textContent = "测距失败";
+  } else {
+    frontDistanceSummaryEl.textContent = "读取前方距离";
+  }
 }
 
 function renderDeviceInfo(device) {
@@ -350,6 +374,7 @@ async function refresh() {
   renderDeviceInfo(device);
 
   const data = await api("./api/tasks");
+  renderFrontDistanceSummary(data.tasks);
   tasksEl.innerHTML = "";
   const activeMotion = data.tasks.some((task) => MOTION_ACTIONS.has(task.skill_id) && ACTIVE_STATUSES.has(task.status));
   const activeTask = data.tasks.some((task) => ACTIVE_STATUSES.has(task.status));
@@ -364,8 +389,7 @@ async function refresh() {
     row.className = `task task-${task.status}`;
     const distance = task.unit_distance_cm ? `${fmtNumber(task.unit_distance_cm)}cm` : "";
     const angle = task.turn_angle_deg ? `${fmtNumber(task.turn_angle_deg)}°` : "";
-    const sonarMatch = String(task.output || "").match(/front_distance_estimate_cm=([0-9.]+)/);
-    const sonar = sonarMatch ? `前方 ${sonarMatch[1]}cm` : "";
+    const sonar = sonarText(task);
     row.innerHTML = `
       <div>
         <strong>${task.name_zh || task.skill_id}</strong>
