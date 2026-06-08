@@ -17,6 +17,7 @@ const cameraPreviewToggle = document.querySelector("#cameraPreviewToggle");
 const cameraPreview = document.querySelector("#cameraPreview");
 const cameraPreviewImage = document.querySelector("#cameraPreviewImage");
 const cameraPreviewStatus = document.querySelector("#cameraPreviewStatus");
+const cameraRefreshBtn = document.querySelector("#cameraRefreshBtn");
 const cameraSymbol = document.querySelector("#cameraSymbol");
 const cameraCompareCanvas = document.querySelector("#cameraCompareCanvas");
 const buttons = [...document.querySelectorAll("[data-action]")];
@@ -49,6 +50,8 @@ const MOTION_ACTIONS = new Set([
 const ACTIVE_STATUSES = new Set(["pending", "claimed", "running"]);
 const CAMERA_HEARTBEAT_MS = 10000;
 const CAMERA_POLL_MS = 2000;
+const CAMERA_CAPTURE_WAIT_MS = 12000;
+const CAMERA_CAPTURE_POLL_MS = 800;
 const CAMERA_DIFF_THRESHOLD = 0.035;
 const REFRESH_IDLE_MS = 1000;
 const REFRESH_ACTIVE_MS = 350;
@@ -226,6 +229,36 @@ function setCameraPreviewEnabled(enabled) {
   cameraTimer = setInterval(() => {
     monitorCameraOnce().catch((error) => setCameraStatus(`相机检查失败 ${error.message}`));
   }, CAMERA_POLL_MS);
+}
+
+async function refreshCameraCapture() {
+  const previousFrameId = lastCameraFrameId;
+  cameraRefreshBtn.disabled = true;
+  cameraRefreshBtn.classList.add("busy");
+  try {
+    if (!cameraPreviewToggle.checked) {
+      cameraPreviewToggle.checked = true;
+      setCameraPreviewEnabled(true);
+    }
+    setCameraStatus("正在触发相机抓取");
+    await api("/camera/api/capture", {
+      method: "POST",
+      body: JSON.stringify({ kind: "camera", mode: "single", query_gpio: 26 }),
+    });
+
+    const deadline = Date.now() + CAMERA_CAPTURE_WAIT_MS;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => window.setTimeout(resolve, CAMERA_CAPTURE_POLL_MS));
+      await monitorCameraOnce();
+      if (lastCameraFrameId && lastCameraFrameId !== previousFrameId) return;
+    }
+    setCameraStatus("已触发抓取，暂未收到新帧");
+  } catch (error) {
+    setCameraStatus(`相机刷新失败 ${error.message}`);
+  } finally {
+    cameraRefreshBtn.disabled = false;
+    cameraRefreshBtn.classList.remove("busy");
+  }
 }
 
 function setBusy(action, busy) {
@@ -464,6 +497,9 @@ document.querySelector("#rgbSettingsForm").addEventListener("submit", (event) =>
 });
 cameraPreviewToggle.addEventListener("change", () => {
   setCameraPreviewEnabled(cameraPreviewToggle.checked);
+});
+cameraRefreshBtn.addEventListener("click", () => {
+  refreshCameraCapture();
 });
 
 loadSettings()

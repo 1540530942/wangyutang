@@ -192,6 +192,14 @@ p,
   -webkit-tap-highlight-color: transparent;
 }
 
+.camera-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .toggle-line input {
   width: 22px;
   height: 22px;
@@ -458,6 +466,10 @@ button.small {
 
   .rgb-picker-line input[type="color"] {
     grid-column: 1 / -1;
+  }
+
+  .camera-actions {
+    justify-content: flex-start;
   }
 
   .camera-preview {

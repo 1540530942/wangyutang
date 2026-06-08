@@ -44,10 +44,13 @@
       <section class="panel camera-panel">
         <div class="panel-title">
           <h2>相机小窗</h2>
-          <label class="toggle-line">
-            <input id="cameraPreviewToggle" type="checkbox" />
-            <span>开启</span>
-          </label>
+          <div class="camera-actions">
+            <button class="small secondary" id="cameraRefreshBtn" type="button">刷新</button>
+            <label class="toggle-line">
+              <input id="cameraPreviewToggle" type="checkbox" />
+              <span>开启</span>
+            </label>
+          </div>
         </div>
         <div class="camera-preview disabled" id="cameraPreview">
           <div class="camera-frame">
