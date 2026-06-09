@@ -133,14 +133,78 @@ jobs:
 
       - name: Upload release to Tencent Cloud
         run: |
-          ssh tencent-prod "mkdir -p /tmp/wangyutang-action-move-deploy"
-          scp action_move-${GITHUB_SHA}.tgz tencent-prod:/tmp/wangyutang-action-move-deploy/
+          retry_cloud() {
+            local attempt
+            for attempt in 1 2 3; do
+              if "$@"; then
+                return 0
+              fi
+              echo "Tencent Cloud upload command failed on attempt ${attempt}; retrying..."
+              sleep $((attempt * 10))
+            done
+            "$@"
+          }
+
+          ssh_opts=(-o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
+          retry_cloud ssh "${ssh_opts[@]}" tencent-prod "mkdir -p /tmp/wangyutang-action-move-deploy"
+          retry_cloud scp "${ssh_opts[@]}" \
+            action_move-${GITHUB_SHA}.tgz \
+            scripts/github_deploy_action_move.sh \
+            tencent-prod:/tmp/wangyutang-action-move-deploy/
 
       - name: Apply cloud release
         run: |
-          ssh tencent-prod \
-            "bash -s -- '/tmp/wangyutang-action-move-deploy/action_move-${GITHUB_SHA}.tgz' '${GITHUB_SHA}'" \
-            < scripts/github_deploy_action_move.sh
+          ssh_opts=(-o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
+          remote_dir=/tmp/wangyutang-action-move-deploy
+          archive="$remote_dir/action_move-${GITHUB_SHA}.tgz"
+          script="$remote_dir/github_deploy_action_move.sh"
+          wrapper="$remote_dir/run-action-move-${GITHUB_SHA}.sh"
+          status_file="$remote_dir/deploy-${GITHUB_SHA}.status"
+          log_file="$remote_dir/deploy-${GITHUB_SHA}.log"
+          pid_file="$remote_dir/deploy-${GITHUB_SHA}.pid"
+
+          ssh "${ssh_opts[@]}" tencent-prod "cat > '$wrapper'" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          archive="${1:?archive required}"
+          commit_sha="${2:?commit sha required}"
+          script="${3:?script required}"
+          status_file="${4:?status file required}"
+          log_file="${5:?log file required}"
+          rm -f "$status_file"
+          if bash "$script" "$archive" "$commit_sha" >"$log_file" 2>&1; then
+            echo success >"$status_file"
+          else
+            code=$?
+            echo "failure $code" >"$status_file"
+            exit $code
+          fi
+          SH
+          ssh "${ssh_opts[@]}" tencent-prod "chmod +x '$wrapper'
+          rm -f '$status_file' '$log_file' '$pid_file'
+          nohup bash '$wrapper' '$archive' '${GITHUB_SHA}' '$script' '$status_file' '$log_file' >/dev/null 2>&1 &
+          echo \$! > '$pid_file'"
+
+          for attempt in $(seq 1 180); do
+            status=$(ssh "${ssh_opts[@]}" tencent-prod "cat '$status_file' 2>/dev/null || true")
+            if [ "$status" = "success" ]; then
+              ssh "${ssh_opts[@]}" tencent-prod "tail -80 '$log_file'"
+              exit 0
+            fi
+            if [ -n "$status" ]; then
+              ssh "${ssh_opts[@]}" tencent-prod "tail -160 '$log_file'"
+              echo "Tencent Cloud deploy failed: $status"
+              exit 1
+            fi
+            if [ $((attempt % 6)) -eq 0 ]; then
+              ssh "${ssh_opts[@]}" tencent-prod "echo '--- deploy log tail ---'; tail -40 '$log_file' 2>/dev/null || true"
+            fi
+            sleep 10
+          done
+
+          ssh "${ssh_opts[@]}" tencent-prod "tail -160 '$log_file' 2>/dev/null || true"
+          echo "Tencent Cloud deploy did not finish before timeout."
+          exit 1
 
       - name: Update Raspberry Pi action edge
         if: env.DEPLOY_PI == 'true'
