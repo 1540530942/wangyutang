@@ -137,6 +137,59 @@ p,
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.sonar-panel {
+  border-color: #d6e2e6;
+}
+
+.sonar-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfc;
+}
+
+.sonar-card.sonar-available {
+  border-color: #b8dec8;
+  background: #f4fbf6;
+}
+
+.sonar-card.sonar-unavailable {
+  border-color: #efc7b8;
+  background: #fff6f2;
+}
+
+.sonar-distance {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.sonar-distance strong {
+  font-size: 36px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.sonar-distance span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.sonar-meta,
+.sonar-raw {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.sonar-raw {
+  padding-top: 4px;
+  border-top: 1px dashed var(--line);
+}
+
 .pad {
   width: min(520px, 100%);
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -190,14 +243,6 @@ p,
   touch-action: manipulation;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-}
-
-.camera-actions {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  flex-wrap: wrap;
 }
 
 .toggle-line input {
@@ -466,10 +511,6 @@ button.small {
 
   .rgb-picker-line input[type="color"] {
     grid-column: 1 / -1;
-  }
-
-  .camera-actions {
-    justify-content: flex-start;
   }
 
   .camera-preview {

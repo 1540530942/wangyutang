@@ -21,36 +21,40 @@
 
       <section class="panel">
         <div class="panel-title">
-          <h2>超声波测距</h2>
-          <span id="frontDistanceSummary">读取前方距离</span>
-        </div>
-        <div class="grid">
-          <button data-action="front_distance">测距</button>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-title">
           <h2>安全控制</h2>
-          <span id="unitSummary">距离 5 cm · 转向 5°</span>
+          <span id="unitSummary">距离 5 cm · 转向 5° · 灵敏度 1x</span>
         </div>
         <div class="safety-grid">
           <button class="danger" data-action="emergency_stop">急停</button>
           <button class="secondary" data-action="reset_pose">Reset</button>
           <button class="danger" data-action="remote_shutdown">远程关机</button>
+          <button class="secondary" id="voiceVolumeOnBtn" type="button">打开音量</button>
+          <button class="secondary" id="voiceVolumeOffBtn" type="button">关闭音量</button>
+        </div>
+      </section>
+
+      <section class="panel sonar-panel">
+        <div class="panel-title">
+          <h2>超声波测距</h2>
+          <span id="sonarSummary">正在读取</span>
+        </div>
+        <div class="sonar-card" id="sonarCard">
+          <div class="sonar-distance">
+            <strong id="sonarDistanceValue">--</strong>
+            <span>cm</span>
+          </div>
+          <div class="sonar-meta" id="sonarMeta">等待设备上报超声波结果</div>
+          <div class="sonar-raw" id="sonarRaw"></div>
         </div>
       </section>
 
       <section class="panel camera-panel">
         <div class="panel-title">
           <h2>相机小窗</h2>
-          <div class="camera-actions">
-            <button class="small secondary" id="cameraRefreshBtn" type="button">刷新</button>
-            <label class="toggle-line">
-              <input id="cameraPreviewToggle" type="checkbox" />
-              <span>开启</span>
-            </label>
-          </div>
+          <label class="toggle-line">
+            <input id="cameraPreviewToggle" type="checkbox" />
+            <span>开启</span>
+          </label>
         </div>
         <div class="camera-preview disabled" id="cameraPreview">
           <div class="camera-frame">
@@ -154,7 +158,7 @@
       <section class="panel">
         <div class="panel-title">
           <h2>朝向</h2>
-          <span id="turnUnitLabel">按一次转 5°</span>
+          <span>	按一次转 5°</span>
         </div>
         <div class="grid two">
           <button data-action="turn_left">向左转</button>
@@ -169,6 +173,7 @@
         </div>
         <div class="tasks" id="tasks"></div>
       </section>
+
     </main>
     <script src="./static/app.js"></script>
   </body>
