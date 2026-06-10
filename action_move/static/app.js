@@ -374,7 +374,9 @@ function renderSettings(settings, options = {}) {
   rgbSummaryEl.textContent = red || green || blue ? `当前 ${hex.toUpperCase()} · R${red} G${green} B${blue}` : "默认关闭";
   unitSummaryEl.textContent = `距离 ${fmtNumber(displaySettings.unit_distance_cm)} cm · 转向 ${fmtNumber(displaySettings.turn_angle_deg)}° · 灵敏度 ${fmtNumber(displaySettings.sensitivity)}x`;
   moveUnitLabelEl.textContent = `按一次执行 ${fmtNumber(displaySettings.unit_distance_cm)} cm`;
-  turnUnitLabelEl.textContent = `按一次转 ${fmtNumber(displaySettings.turn_angle_deg)}°`;
+  if (turnUnitLabelEl) {
+    turnUnitLabelEl.textContent = `按一次转 ${fmtNumber(displaySettings.turn_angle_deg)}°`;
+  }
   voiceVolumeOnBtn.disabled = voiceVolume > 0;
   voiceVolumeOffBtn.disabled = voiceVolume <= 0;
   voiceVolumeOnBtn.textContent = "打开音量";
