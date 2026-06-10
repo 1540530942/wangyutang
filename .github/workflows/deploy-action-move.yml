@@ -379,5 +379,6 @@ jobs:
               else:
                   raise SystemExit(f"{action} did not complete: {json.dumps(latest, ensure_ascii=False)}")
 
+          post_json("/api/settings", {"unit_distance_cm": 5, "turn_angle_deg": 5, "sensitivity": 1, "voice_volume_percent": 90, "rgb_red": 0, "rgb_green": 0, "rgb_blue": 0})
           print("ACTION_PI_RGB_VERIFY_OK", json.dumps(completed, ensure_ascii=False))
           PY
