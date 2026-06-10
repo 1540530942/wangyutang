@@ -118,6 +118,14 @@ p,
   margin-bottom: 14px;
 }
 
+.title-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
 .grid,
 .pad {
   display: grid;
@@ -482,6 +490,11 @@ button.small {
   .panel-title {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .title-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .device-block {
