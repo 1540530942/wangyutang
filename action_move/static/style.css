@@ -468,6 +468,21 @@ button.small {
   color: var(--muted);
 }
 
+.task-log {
+  grid-column: 1 / -1;
+  max-height: 180px;
+  margin: 2px 0 0;
+  padding: 8px 10px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--muted);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+
 .task-claimed,
 .task-running {
   border-color: #9bc6e8;

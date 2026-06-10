@@ -292,6 +292,23 @@ function renderSonar(data = {}) {
   sonarRawEl.textContent = raw ? `原始信息：${raw}` : "";
 }
 
+function renderSonarFromTask(task) {
+  const output = String(task.output || "");
+  const distanceMatch = output.match(/front_distance_estimate_cm=([0-9.]+)/);
+  if (!distanceMatch) return;
+  const rawMatch = output.match(/raw_mm_samples=([0-9,]+)/);
+  const confidenceMatch = output.match(/confidence=([0-9.]+)/);
+  renderSonar({
+    available: true,
+    front_distance_estimate_cm: Number(distanceMatch[1]),
+    confidence: confidenceMatch ? Number(confidenceMatch[1]) : 0,
+    source: "action-task-log",
+    device_id: task.device_id || "",
+    reported_at: task.completed_at || task.updated_at || task.requested_at || 0,
+    raw: rawMatch ? rawMatch[1] : "",
+  });
+}
+
 async function refreshSonar() {
   try {
     const sonar = await api("/camera/api/sonar");
@@ -416,6 +433,12 @@ async function refresh() {
   tasksEl.innerHTML = "";
   const activeMotion = data.tasks.some((task) => MOTION_ACTIONS.has(task.skill_id) && ACTIVE_STATUSES.has(task.status));
   const activeTask = data.tasks.some((task) => ACTIVE_STATUSES.has(task.status));
+  const latestDistanceTask = data.tasks.find(
+    (task) => task.skill_id === "front_distance" && task.status === "complete" && task.output,
+  );
+  if (latestDistanceTask && Number(latestDistanceTask.completed_at || 0) >= lastSonarReportAt) {
+    renderSonarFromTask(latestDistanceTask);
+  }
   if (activeTask && refreshIntervalMs !== REFRESH_ACTIVE_MS) {
     scheduleFastRefresh(REFRESH_ACTIVE_MS);
   } else if (!activeTask && refreshIntervalMs !== REFRESH_IDLE_MS) {
@@ -435,6 +458,12 @@ async function refresh() {
       </div>
       <div>${statusText(task)}</div>
     `;
+    if (task.output || task.error) {
+      const log = document.createElement("pre");
+      log.className = "task-log";
+      log.textContent = task.error ? `${task.output || ""}\n${task.error}`.trim() : task.output;
+      row.appendChild(log);
+    }
     tasksEl.appendChild(row);
   }
 }
