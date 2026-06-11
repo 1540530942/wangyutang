@@ -1,0 +1,25 @@
+from __future__ import annotations
+
+ALLOWED_VOICE_SKILL_IDS = {
+    "move_forward",
+    "move_backward",
+    "move_left",
+    "move_right",
+    "turn_left",
+    "turn_right",
+    "look_left",
+    "look_right",
+    "look_up",
+    "look_down",
+    "reset_pose",
+    "emergency_stop",
+    "face_neutral",
+    "face_happy",
+    "face_joy",
+    "face_sad",
+    "face_angry",
+    "face_speak",
+    "face_mouth_open",
+    "face_blink",
+    "face_reset",
+}

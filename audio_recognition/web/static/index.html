@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>语音控制监控</title>
+    <link rel="stylesheet" href="./static/style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">TurboPi / WonderEchoPro</p>
+          <h1>语音控制监控</h1>
+          <p class="subtitle">网页输入和 WonderEchoPro 统一进入 common_api ASR，动作完成后通过 common_api TTS 播报。</p>
+        </div>
+        <div class="pill" id="status">连接中</div>
+      </header>
+
+      <section class="mode-strip">
+        <button id="modeWebBtn" class="tab active" type="button">网页输入</button>
+        <button id="modeWonderBtn" class="tab" type="button">WonderEchoPro</button>
+      </section>
+
+      <section class="control-strip">
+        <div class="toggle-card">
+          <div>
+            <span>当前模式</span>
+            <strong id="modeText">网页输入</strong>
+          </div>
+        </div>
+        <button id="recordBtn" type="button">开始采集</button>
+        <button id="stopBtn" class="secondary" type="button">停止采集</button>
+        <button id="clearTasksBtn" class="danger" type="button">清零任务</button>
+      </section>
+
+      <section class="panel volume-panel">
+        <div class="section-head compact-head">
+          <div>
+            <span>播报音量</span>
+            <h2 id="voiceVolumeText">90%</h2>
+          </div>
+          <button id="saveVoiceVolumeBtn" class="secondary" type="button">保存</button>
+        </div>
+        <div class="volume-control">
+          <input id="voiceVolumeInput" type="range" min="0" max="100" step="5" value="90" />
+          <div class="volume-marks">
+            <span>静音</span>
+            <span>适中</span>
+            <span>最大</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="status-grid">
+        <div><span>语音链路</span><strong id="audioState">等待</strong></div>
+        <div><span>动作服务</span><strong id="actionState">检测中</strong></div>
+        <div><span>小车</span><strong id="deviceState">未知</strong></div>
+        <div><span>摄像头</span><strong id="cameraState">检测中</strong></div>
+      </section>
+
+      <section class="content-grid">
+        <section class="panel latest-panel">
+          <div class="section-head">
+            <div>
+              <span>最新识别</span>
+              <h2 id="latestText">暂无识别内容</h2>
+            </div>
+            <code id="latestSkill">未匹配</code>
+          </div>
+          <p id="latestMeta">网页输入模式可直接输入文本或上传音频；WonderEchoPro 模式统一由“开始采集”触发树莓派录音。</p>
+
+          <div id="webInputSection">
+            <label class="field">
+              <span>网页输入文本</span>
+              <textarea id="webTextInput" placeholder="例如：前进"></textarea>
+            </label>
+            <div class="upload-row">
+              <button id="sendTextBtn" type="button">发送文本指令</button>
+            </div>
+            <div class="upload-row">
+              <input id="fileInput" type="file" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a" />
+              <button id="uploadBtn" class="secondary" type="button">上传音频识别</button>
+            </div>
+            <label class="field">
+              <span>ASR API</span>
+              <input value="/common/api/asr/transcribe" readonly />
+            </label>
+          </div>
+
+          <div id="wonderSection" class="hidden">
+            <div class="meter-row">
+              <span id="timer">00:00.0</span>
+              <canvas id="meter" width="640" height="64"></canvas>
+            </div>
+            <audio id="preview" controls></audio>
+          </div>
+
+          <textarea id="asrResult" readonly placeholder="ASR 识别文本"></textarea>
+          <pre id="asrRaw">{}</pre>
+        </section>
+
+        <section class="panel camera-panel">
+          <div class="section-head compact-head">
+            <div>
+              <span>摄像头窗口</span>
+              <h2>实时画面</h2>
+            </div>
+            <div class="mini-actions">
+              <button id="openCameraBtn" type="button">打开</button>
+              <button id="closeCameraBtn" class="secondary" type="button">关闭</button>
+            </div>
+          </div>
+          <div class="camera-frame">
+            <img id="cameraImage" alt="摄像头画面" />
+            <div id="cameraPlaceholder">摄像头未打开</div>
+          </div>
+          <p id="cameraMeta">等待摄像头状态</p>
+        </section>
+
+        <section class="panel">
+          <div class="section-head compact-head">
+            <div>
+              <span>动作任务</span>
+              <h2>执行结果</h2>
+            </div>
+            <button id="refreshBtn" class="secondary" type="button">刷新</button>
+          </div>
+          <div class="list" id="tasks"></div>
+        </section>
+
+        <section class="panel">
+          <div class="tabs">
+            <button id="showResultsBtn" class="tab active" type="button">识别历史</button>
+            <button id="showEventsBtn" class="tab" type="button">流水线</button>
+          </div>
+          <div class="list" id="results"></div>
+          <div class="list hidden" id="events"></div>
+        </section>
+      </section>
+    </main>
+    <script src="./static/app.js?v=20260519-voice-volume"></script>
+  </body>
+</html>

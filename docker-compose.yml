@@ -231,7 +231,7 @@ services:
     ports:
       - "8095:8095"
     volumes:
-      - audio_recognition_data:/app/data
+      - audio_recognition_data:/app/audio_recognition/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8095/api/health', timeout=3).read()"]
       interval: 30s

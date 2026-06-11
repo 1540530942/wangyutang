@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "skills": [
+    {"id": "move_forward", "name_zh": "move_forward", "aliases": ["forward"]},
+    {"id": "move_backward", "name_zh": "move_backward", "aliases": ["backward"]},
+    {"id": "move_left", "name_zh": "move_left", "aliases": ["move left"]},
+    {"id": "move_right", "name_zh": "move_right", "aliases": ["move right"]},
+    {"id": "turn_left", "name_zh": "turn_left", "aliases": ["turn left"]},
+    {"id": "turn_right", "name_zh": "turn_right", "aliases": ["turn right"]},
+    {"id": "look_left", "name_zh": "look_left", "aliases": ["look left"]},
+    {"id": "look_right", "name_zh": "look_right", "aliases": ["look right"]},
+    {"id": "look_up", "name_zh": "look_up", "aliases": ["look up"]},
+    {"id": "look_down", "name_zh": "look_down", "aliases": ["look down"]},
+    {"id": "reset_pose", "name_zh": "reset_pose", "aliases": ["reset"]},
+    {"id": "emergency_stop", "name_zh": "emergency_stop", "aliases": ["stop"]},
+    {"id": "face_neutral", "name_zh": "face_neutral", "aliases": ["neutral"]},
+    {"id": "face_happy", "name_zh": "face_happy", "aliases": ["happy"]},
+    {"id": "face_joy", "name_zh": "face_joy", "aliases": ["joy"]},
+    {"id": "face_sad", "name_zh": "face_sad", "aliases": ["sad"]},
+    {"id": "face_angry", "name_zh": "face_angry", "aliases": ["angry"]},
+    {"id": "face_speak", "name_zh": "face_speak", "aliases": ["speak"]},
+    {"id": "face_mouth_open", "name_zh": "face_mouth_open", "aliases": ["mouth open"]},
+    {"id": "face_blink", "name_zh": "face_blink", "aliases": ["blink"]},
+    {"id": "face_reset", "name_zh": "face_reset", "aliases": ["face reset"]}
+  ]
+}

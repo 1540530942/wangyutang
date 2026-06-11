@@ -1,0 +1,122 @@
+version: 1
+defaults:
+  max_action_duration_ms: 1000
+  max_turn_duration_ms: 800
+  max_face_duration_ms: 5000
+  observation_ttl_ms:
+    camera_snapshot: 2000
+    front_distance: 2000
+    get_robot_state: 5000
+  safety_thresholds:
+    min_front_distance_estimate_cm: 15
+skills:
+  - id: emergency_stop
+    route: action
+    tool: emergency_stop
+    max_duration_ms: 0
+    risk: low
+    aliases: [stop, e-stop]
+  - id: move_forward
+    route: action
+    tool: dispatch_action
+    max_duration_ms: 1000
+    risk: medium
+    pre_conditions:
+      - recent_camera_snapshot
+      - front_distance_clear
+    aliases: [forward]
+  - id: move_backward
+    route: action
+    tool: dispatch_action
+    max_duration_ms: 1000
+    aliases: [backward]
+  - id: move_left
+    route: action
+    tool: dispatch_action
+    max_duration_ms: 1000
+    aliases: [move left]
+  - id: move_right
+    route: action
+    tool: dispatch_action
+    max_duration_ms: 1000
+    aliases: [move right]
+  - id: turn_left
+    route: action
+    tool: dispatch_action
+    max_duration_ms: 800
+    aliases: [turn left]
+  - id: turn_right
+    route: action
+    tool: dispatch_action
+    max_duration_ms: 800
+    aliases: [turn right]
+  - id: look_left
+    route: action
+    tool: dispatch_action
+    max_duration_ms: 1000
+    aliases: [look left]
+  - id: look_right
+    route: action
+    tool: dispatch_action
+    max_duration_ms: 1000
+    aliases: [look right]
+  - id: look_up
+    route: action
+    tool: dispatch_action
+    max_duration_ms: 1000
+    aliases: [look up]
+  - id: look_down
+    route: action
+    tool: dispatch_action
+    max_duration_ms: 1000
+    aliases: [look down]
+  - id: reset_pose
+    route: action
+    tool: dispatch_action
+    max_duration_ms: 1000
+    aliases: [reset]
+  - id: face_neutral
+    route: face
+    tool: dispatch_face
+    max_duration_ms: 5000
+    aliases: [neutral]
+  - id: face_happy
+    route: face
+    tool: dispatch_face
+    max_duration_ms: 5000
+    aliases: [happy]
+  - id: face_joy
+    route: face
+    tool: dispatch_face
+    max_duration_ms: 5000
+    aliases: [joy]
+  - id: face_sad
+    route: face
+    tool: dispatch_face
+    max_duration_ms: 5000
+    aliases: [sad]
+  - id: face_angry
+    route: face
+    tool: dispatch_face
+    max_duration_ms: 5000
+    aliases: [angry]
+  - id: face_speak
+    route: face
+    tool: dispatch_face
+    max_duration_ms: 5000
+    aliases: [speak]
+  - id: face_mouth_open
+    route: face
+    tool: dispatch_face
+    max_duration_ms: 5000
+    aliases: [mouth open]
+  - id: face_blink
+    route: face
+    tool: dispatch_face
+    max_duration_ms: 5000
+    aliases: [blink]
+  - id: face_reset
+    route: face
+    tool: dispatch_face
+    max_duration_ms: 5000
+    aliases: [face reset]

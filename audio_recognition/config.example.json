@@ -1,0 +1,54 @@
+{
+  "device_id": "turbopi-01",
+  "recorder": {
+    "device": "plughw:CARD=Device,DEV=0",
+    "sample_rate": 16000,
+    "channels": 1,
+    "seconds": 4,
+    "normalize_target_rms": 1800,
+    "normalize_max_gain": 12,
+    "output_dir": "/tmp/audio_recognition"
+  },
+  "model_provider": {
+    "name": "Common API ASR",
+    "type": "generic_http",
+    "endpoint": "https://www.wangyutang.cn/common/api/asr/transcribe",
+    "api_key": "",
+    "api_key_env": "",
+    "model": "",
+    "audio_field": "file",
+    "model_field": "model",
+    "timeout_seconds": 180,
+    "headers": {},
+    "extra_fields": {
+      "language": "zh"
+    },
+    "response_text_path": [
+      "text"
+    ]
+  },
+  "cloud": {
+    "audio_server": "https://www.wangyutang.cn/audio",
+    "audio_token": "",
+    "action_server": "https://www.wangyutang.cn/action",
+    "action_enabled": true,
+    "face_server": "https://www.wangyutang.cn/face",
+    "face_enabled": true
+  },
+  "router": {
+    "skill_registry": "skills/registry.yaml",
+    "skill_catalog": "../action_move/skill_catalog.json",
+    "min_confidence": 0.65,
+    "react_agent": {
+      "mode": "llm",
+      "max_steps": 8,
+      "prompt_path": "agent/prompts/walle_system_prompt.md",
+      "llm": {
+        "endpoint": "https://www.wangyutang.cn/common/api/llm/qwen3-32b/chat/completions",
+        "model": "qwen3-32b",
+        "timeout_seconds": 90,
+        "retries": 2
+      }
+    }
+  }
+}
