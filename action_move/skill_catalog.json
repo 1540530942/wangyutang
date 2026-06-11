@@ -78,13 +78,13 @@
     },
     {
       "id": "remote_shutdown",
-      "name_zh": "????",
-      "description": "?????????? sudo shutdown -h now????????????????",
+      "name_zh": "远程关机",
+      "description": "通过边缘端执行 sudo shutdown -h now，用于安全关闭设备。",
       "type": "system_shutdown",
       "aliases": [
-        "??",
-        "?????",
-        "?????",
+        "关机",
+        "远程关机",
+        "关闭设备",
         "shutdown",
         "poweroff"
       ]

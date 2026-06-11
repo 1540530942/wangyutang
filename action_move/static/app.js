@@ -496,7 +496,7 @@ async function createTask(action) {
   if (button && button.disabled) return;
   let verificationCode = "";
   if (action === "remote_shutdown") {
-    verificationCode = window.prompt("请输入远程关机验证码（提示：12）");
+    verificationCode = window.prompt("请输入远程关机验证码（提示：123）");
     if (verificationCode === null) return;
     if (verificationCode !== "123") {
       statusEl.textContent = "验证码错误，已取消远程关机";
