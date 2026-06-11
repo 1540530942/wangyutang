@@ -264,7 +264,7 @@
       ],
       "twist": {
         "linear_x": 0.0,
-        "linear_y": -0.35,
+        "linear_y": -0.45,
         "angular_z": 0.0
       }
     },
@@ -282,7 +282,7 @@
       "twist": {
         "linear_x": 0.0,
         "linear_y": 0.0,
-        "angular_z": 0.35
+        "angular_z": 5.0
       }
     },
     {
@@ -299,7 +299,7 @@
       "twist": {
         "linear_x": 0.0,
         "linear_y": 0.0,
-        "angular_z": -0.35
+        "angular_z": -5.0
       }
     }
   ]
