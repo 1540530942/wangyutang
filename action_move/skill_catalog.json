@@ -11,6 +11,10 @@
   "defaults": {
     "ros_container": "turbopi",
     "cmd_vel_topic": "/cmd_vel",
+    "cmd_vel_topics": [
+      "/cmd_vel",
+      "/controller/cmd_vel"
+    ],
     "pwm_servo_topic": "/ros_robot_controller/pwm_servo/set_state",
     "rgb_topic": "/ros_robot_controller/set_rgb",
     "rgb_led_indices": [

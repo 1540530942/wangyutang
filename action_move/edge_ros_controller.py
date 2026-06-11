@@ -82,6 +82,18 @@ def unit_duration_ms(defaults: dict[str, Any], kind: str) -> int:
     return int(round(clamp(base * (unit / 5.0) / sensitivity, lower, upper)))
 
 
+def cmd_vel_topics(defaults: dict[str, Any]) -> list[str]:
+    topics = defaults.get("cmd_vel_topics")
+    if not isinstance(topics, list) or not topics:
+        topics = [defaults.get("cmd_vel_topic", "/cmd_vel")]
+    result: list[str] = []
+    for topic in topics:
+        text = str(topic or "").strip()
+        if text and text not in result:
+            result.append(text)
+    return result or ["/cmd_vel"]
+
+
 class TurboPiController(Node):
     def __init__(self, catalog_path: Path) -> None:
         super().__init__("action_move_edge_controller")
@@ -90,12 +102,15 @@ class TurboPiController(Node):
         self.publish_lock = threading.Lock()
         catalog = load_catalog(catalog_path)
         defaults = catalog.get("defaults", {})
-        self.cmd_vel_topic = str(defaults.get("cmd_vel_topic", "/cmd_vel"))
+        self.cmd_vel_topics = cmd_vel_topics(defaults)
         self.pwm_servo_topic = str(defaults.get("pwm_servo_topic", "/ros_robot_controller/pwm_servo/set_state"))
         self.rgb_topic = str(defaults.get("rgb_topic", "/ros_robot_controller/set_rgb"))
         self.sonar_rgb_enabled = bool(defaults.get("sonar_rgb_enabled", True))
         self.sonar_rgb_indices = defaults.get("sonar_rgb_indices", [0, 1])
-        self.cmd_vel_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
+        self.cmd_vel_pubs = {
+            topic: self.create_publisher(Twist, topic, 10)
+            for topic in self.cmd_vel_topics
+        }
         self.servo_pub = self.create_publisher(SetPWMServoState, self.pwm_servo_topic, 10)
         self.rgb_pub = self.create_publisher(RGBStates, self.rgb_topic, 10)
         self.sonar_rgb = None
@@ -156,12 +171,12 @@ class TurboPiController(Node):
                     self.stop_event.clear()
                     duration_ms = unit_duration_ms(defaults, "move")
                     output.append(f"[INFO] duration_ms={duration_ms}")
-                    self.publish_twist_burst(skill["twist"], duration_ms, int(defaults.get("stop_publish_times", 3)))
+                    output.extend(self.publish_twist_burst(skill["twist"], duration_ms, int(defaults.get("stop_publish_times", 3))))
                 elif skill["type"] == "base_turn":
                     self.stop_event.clear()
                     duration_ms = unit_duration_ms(defaults, "turn")
                     output.append(f"[INFO] duration_ms={duration_ms}")
-                    self.publish_twist_burst(skill["twist"], duration_ms, int(defaults.get("stop_publish_times", 3)))
+                    output.extend(self.publish_twist_burst(skill["twist"], duration_ms, int(defaults.get("stop_publish_times", 3))))
                 else:
                     raise ValueError(f"unsupported skill type: {skill['type']}")
                 self.last_action = skill["id"]
@@ -190,25 +205,39 @@ class TurboPiController(Node):
         message.angular.z = float(twist.get("angular_z", 0.0))
         return message
 
-    def publish_twist_burst(self, twist: dict[str, Any], duration_ms: int, stop_times: int) -> None:
+    def publish_twist_burst(self, twist: dict[str, Any], duration_ms: int, stop_times: int) -> list[str]:
         message = self.make_twist(twist)
         rate_hz = 20.0
         interval = 1.0 / rate_hz
         deadline = time.monotonic() + max(duration_ms, 0) / 1000.0
+        topic_counts = self.cmd_vel_subscription_counts()
         while time.monotonic() < deadline and not self.stop_event.is_set():
             with self.publish_lock:
-                self.cmd_vel_pub.publish(message)
+                for publisher in self.cmd_vel_pubs.values():
+                    publisher.publish(message)
                 rclpy.spin_once(self, timeout_sec=0.0)
             time.sleep(interval)
         self.publish_stop(stop_times)
+        return [
+            "[INFO] cmd_vel_topics=" + ",".join(self.cmd_vel_pubs.keys()),
+            "[INFO] cmd_vel_subscription_counts="
+            + ",".join(f"{topic}:{count}" for topic, count in topic_counts.items()),
+        ]
 
     def publish_stop(self, times: int = 3) -> None:
         stop = Twist()
         for _ in range(max(times, 1)):
             with self.publish_lock:
-                self.cmd_vel_pub.publish(stop)
+                for publisher in self.cmd_vel_pubs.values():
+                    publisher.publish(stop)
                 rclpy.spin_once(self, timeout_sec=0.0)
             time.sleep(0.03)
+
+    def cmd_vel_subscription_counts(self) -> dict[str, int]:
+        return {
+            topic: publisher.get_subscription_count()
+            for topic, publisher in self.cmd_vel_pubs.items()
+        }
 
     def publish_servo(self, skill: dict[str, Any], defaults: dict[str, Any]) -> None:
         servo = skill["servo"]

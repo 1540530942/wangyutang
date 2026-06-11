@@ -94,16 +94,27 @@ def unit_duration_ms(defaults: dict[str, Any], kind: str) -> int:
     return int(round(clamp(base * (unit / 5.0) / sensitivity, lower, upper)))
 
 
+def cmd_vel_topics(defaults: dict[str, Any]) -> list[str]:
+    topics = defaults.get("cmd_vel_topics")
+    if not isinstance(topics, list) or not topics:
+        topics = [defaults.get("cmd_vel_topic", "/cmd_vel")]
+    result: list[str] = []
+    for topic in topics:
+        text = str(topic or "").strip()
+        if text and text not in result:
+            result.append(text)
+    return result or ["/cmd_vel"]
+
+
 def publish_stop(defaults: dict[str, Any], dry_run: bool) -> None:
-    topic = str(defaults.get("cmd_vel_topic", "/cmd_vel"))
     times = int(defaults.get("stop_publish_times", 3))
     stop_msg = "{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"
-    command = (
-        f"{ROS_SETUP} && "
+    commands = [
         f"ros2 topic pub --times {max(times, 1)} --rate 10 --wait-matching-subscriptions 0 "
         f"{topic} geometry_msgs/msg/Twist '{stop_msg}'"
-    )
-    run_in_container(str(defaults.get("ros_container", "turbopi")), command, dry_run)
+        for topic in cmd_vel_topics(defaults)
+    ]
+    run_in_container(str(defaults.get("ros_container", "turbopi")), f"{ROS_SETUP} && " + " && ".join(commands), dry_run)
 
 
 def execute_base_stop(defaults: dict[str, Any], dry_run: bool) -> None:
@@ -153,7 +164,6 @@ def execute_base_move(skill: dict[str, Any], defaults: dict[str, Any], dry_run: 
     duration_ms = unit_duration_ms(defaults, "move")
     rate = 10
     times = max(1, round(duration_ms / 1000 * rate))
-    topic = str(defaults.get("cmd_vel_topic", "/cmd_vel"))
     move_msg = (
         "{"
         f"linear: {{x: {float(twist['linear_x'])}, y: {float(twist['linear_y'])}, z: 0.0}}, "
@@ -161,11 +171,15 @@ def execute_base_move(skill: dict[str, Any], defaults: dict[str, Any], dry_run: 
         "}"
     )
     stop_msg = "{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"
-    command = (
-        f"{ROS_SETUP} && "
-        f"ros2 topic pub --times {times} --rate {rate} --wait-matching-subscriptions 0 {topic} geometry_msgs/msg/Twist '{move_msg}' && "
-        f"ros2 topic pub --once --wait-matching-subscriptions 0 {topic} geometry_msgs/msg/Twist '{stop_msg}'"
-    )
+    commands = []
+    for topic in cmd_vel_topics(defaults):
+        commands.extend(
+            [
+                f"ros2 topic pub --times {times} --rate {rate} --wait-matching-subscriptions 0 {topic} geometry_msgs/msg/Twist '{move_msg}'",
+                f"ros2 topic pub --once --wait-matching-subscriptions 0 {topic} geometry_msgs/msg/Twist '{stop_msg}'",
+            ]
+        )
+    command = f"{ROS_SETUP} && " + " && ".join(commands)
     run_in_container(str(defaults.get("ros_container", "turbopi")), command, dry_run)
 
 
@@ -174,7 +188,6 @@ def execute_base_turn(skill: dict[str, Any], defaults: dict[str, Any], dry_run: 
     duration_ms = unit_duration_ms(defaults, "turn")
     rate = 10
     times = max(1, round(duration_ms / 1000 * rate))
-    topic = str(defaults.get("cmd_vel_topic", "/cmd_vel"))
     move_msg = (
         "{"
         f"linear: {{x: {float(twist['linear_x'])}, y: {float(twist['linear_y'])}, z: 0.0}}, "
@@ -182,11 +195,15 @@ def execute_base_turn(skill: dict[str, Any], defaults: dict[str, Any], dry_run: 
         "}"
     )
     stop_msg = "{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"
-    command = (
-        f"{ROS_SETUP} && "
-        f"ros2 topic pub --times {times} --rate {rate} --wait-matching-subscriptions 0 {topic} geometry_msgs/msg/Twist '{move_msg}' && "
-        f"ros2 topic pub --once --wait-matching-subscriptions 0 {topic} geometry_msgs/msg/Twist '{stop_msg}'"
-    )
+    commands = []
+    for topic in cmd_vel_topics(defaults):
+        commands.extend(
+            [
+                f"ros2 topic pub --times {times} --rate {rate} --wait-matching-subscriptions 0 {topic} geometry_msgs/msg/Twist '{move_msg}'",
+                f"ros2 topic pub --once --wait-matching-subscriptions 0 {topic} geometry_msgs/msg/Twist '{stop_msg}'",
+            ]
+        )
+    command = f"{ROS_SETUP} && " + " && ".join(commands)
     run_in_container(str(defaults.get("ros_container", "turbopi")), command, dry_run)
 
 
