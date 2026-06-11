@@ -93,10 +93,15 @@ def apply_voice_volume(device: str, volume_percent: object) -> str:
     match = re.match(r"(?:plug)?hw:(\d+),", device or "")
     if match:
         card = match.group(1)
+    controls = available_mixer_controls(card)
+    control = choose_mixer_control(controls)
+    if not control:
+        return "[WARN] voice volume set skipped: no mixer control found"
     command = ["amixer"]
     if card:
         command.extend(["-c", card])
-    command.extend(["set", "Speaker", f"{volume}%", "unmute"])
+    mute_state = "mute" if volume <= 0 else "unmute"
+    command.extend(["set", control, f"{volume}%", mute_state])
     try:
         completed = subprocess.run(command, text=True, capture_output=True, timeout=3)
     except (subprocess.SubprocessError, OSError) as exc:
@@ -104,7 +109,40 @@ def apply_voice_volume(device: str, volume_percent: object) -> str:
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout or "").strip()
         return f"[WARN] voice volume set failed rc={completed.returncode}: {detail[:200]}"
-    return f"[INFO] voice_volume_percent={volume}"
+    return f"[INFO] voice_volume_percent={volume} mixer_control={control}"
+
+
+def available_mixer_controls(card: str) -> list[str]:
+    command = ["amixer"]
+    if card:
+        command.extend(["-c", card])
+    command.append("scontrols")
+    try:
+        completed = subprocess.run(command, text=True, capture_output=True, timeout=3)
+    except (subprocess.SubprocessError, OSError):
+        return []
+    if completed.returncode != 0:
+        return []
+    controls: list[str] = []
+    for line in completed.stdout.splitlines():
+        match = re.search(r"Simple mixer control '([^']+)'", line)
+        if match:
+            controls.append(match.group(1))
+    return controls
+
+
+def choose_mixer_control(controls: list[str]) -> str:
+    if not controls:
+        return ""
+    by_name = {control.lower(): control for control in controls}
+    for preferred in ("speaker", "pcm", "master", "headphone", "digital", "playback"):
+        if preferred in by_name:
+            return by_name[preferred]
+    for preferred in ("speaker", "pcm", "master", "headphone", "digital", "playback"):
+        for control in controls:
+            if preferred in control.lower():
+                return control
+    return controls[0]
 
 
 def detect_usb_audio_device() -> str:
@@ -150,6 +188,14 @@ def announce_completion(
 ) -> str:
     if not enabled:
         return ""
+    try:
+        volume = max(0, min(100, int(round(float(volume_percent)))))
+    except (TypeError, ValueError):
+        volume = 90
+    if volume <= 0:
+        selected_device = device or os.getenv("ACTION_VOICE_DEVICE", "").strip() or detect_usb_audio_device()
+        volume_output = apply_voice_volume(selected_device, volume_percent)
+        return "\n".join(part for part in [volume_output, "[INFO] voice_prompt_skipped=muted"] if part)
     text = f"{VOICE_ACTION_TEXT.get(action, action)}完成"
     prompt = VOICE_PROMPT_DIR / f"{action}_complete.wav"
     player = shutil.which("aplay") or ""

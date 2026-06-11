@@ -2,8 +2,15 @@ const statusEl = document.querySelector("#deviceStatus");
 const deviceInfoEl = document.querySelector("#deviceInfo");
 const tasksEl = document.querySelector("#tasks");
 const unitSummaryEl = document.querySelector("#unitSummary");
+const sonarSummaryEl = document.querySelector("#sonarSummary");
+const sonarDistanceValueEl = document.querySelector("#sonarDistanceValue");
+const sonarMetaEl = document.querySelector("#sonarMeta");
+const sonarRawEl = document.querySelector("#sonarRaw");
+const sonarCard = document.querySelector("#sonarCard");
 const moveUnitLabelEl = document.querySelector("#moveUnitLabel");
 const turnUnitLabelEl = document.querySelector("#turnUnitLabel");
+const voiceVolumeOnBtn = document.querySelector("#voiceVolumeOnBtn");
+const voiceVolumeOffBtn = document.querySelector("#voiceVolumeOffBtn");
 const unitDistanceInput = document.querySelector("#unitDistanceInput");
 const turnAngleInput = document.querySelector("#turnAngleInput");
 const sensitivityInput = document.querySelector("#sensitivityInput");
@@ -23,16 +30,20 @@ const buttons = [...document.querySelectorAll("[data-action]")];
 
 let refreshTimer = null;
 let cameraTimer = null;
+let sonarTimer = null;
 let lastCameraPixels = null;
 let lastCameraFrameId = "";
 let lastCameraPulseAt = 0;
 let lastCameraObjectUrl = "";
+let lastSonarReportAt = 0;
+let lastVoiceVolumePercent = 90;
 let settingsDirty = false;
 let lastTouchActionAt = 0;
 let currentSettings = {
   unit_distance_cm: 5,
   turn_angle_deg: 5,
   sensitivity: 1,
+  voice_volume_percent: 90,
   rgb_red: 0,
   rgb_green: 0,
   rgb_blue: 0,
@@ -50,6 +61,7 @@ const ACTIVE_STATUSES = new Set(["pending", "claimed", "running"]);
 const CAMERA_HEARTBEAT_MS = 10000;
 const CAMERA_POLL_MS = 2000;
 const CAMERA_DIFF_THRESHOLD = 0.035;
+const SONAR_POLL_MS = 2000;
 const REFRESH_IDLE_MS = 1000;
 const REFRESH_ACTIVE_MS = 350;
 let refreshIntervalMs = 0;
@@ -72,7 +84,19 @@ function fmtNumber(value) {
   return Number.isInteger(number) ? String(number) : number.toFixed(1);
 }
 
+function fmtDistance(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "--";
+  if (Number.isInteger(number)) return String(number);
+  return number.toFixed(1);
+}
+
 function fmtTime(value) {
+  if (!value) return "";
+  return new Date(value * 1000).toLocaleTimeString();
+}
+
+function fmtSonarTimestamp(value) {
   if (!value) return "";
   return new Date(value * 1000).toLocaleTimeString();
 }
@@ -122,6 +146,10 @@ function renderDeviceInfo(device) {
 
 function setCameraStatus(text) {
   cameraPreviewStatus.textContent = text;
+}
+
+function setSonarStatus(text) {
+  sonarSummaryEl.textContent = text;
 }
 
 function flashCameraSymbol() {
@@ -234,6 +262,68 @@ function setBusy(action, busy) {
   }
 }
 
+function renderSonar(data = {}) {
+  const available = Boolean(data.available);
+  const distance = data.front_distance_estimate_cm;
+  const confidence = Number(data.confidence);
+  const source = String(data.source || "");
+  const deviceId = String(data.device_id || "");
+  const reportedAt = Number(data.reported_at || 0);
+  const sampledAt = Number(data.sampled_at || 0);
+  const raw = String(data.raw || "");
+  const distanceText = distance === null || distance === undefined ? "--" : `${fmtDistance(distance)}`;
+  sonarDistanceValueEl.textContent = distanceText;
+  sonarCard.classList.toggle("sonar-available", available);
+  sonarCard.classList.toggle("sonar-unavailable", !available);
+  if (available && Number.isFinite(distance)) {
+    setSonarStatus(`有效 ${fmtDistance(distance)} cm`);
+  } else if (source || raw) {
+    setSonarStatus("暂不可用");
+  } else {
+    setSonarStatus("等待上报");
+  }
+  const detailParts = [];
+  if (source) detailParts.push(`来源 ${source}`);
+  if (deviceId) detailParts.push(`设备 ${deviceId}`);
+  if (reportedAt) detailParts.push(`上报 ${fmtSonarTimestamp(reportedAt)}`);
+  if (sampledAt) detailParts.push(`采样 ${fmtSonarTimestamp(sampledAt)}`);
+  if (Number.isFinite(confidence) && confidence > 0) detailParts.push(`置信度 ${(confidence * 100).toFixed(0)}%`);
+  sonarMetaEl.textContent = detailParts.length ? detailParts.join(" · ") : "等待设备上报超声波结果";
+  sonarRawEl.textContent = raw ? `原始信息：${raw}` : "";
+}
+
+function renderSonarFromTask(task) {
+  const output = String(task.output || "");
+  const distanceMatch = output.match(/front_distance_estimate_cm=([0-9.]+)/);
+  if (!distanceMatch) return;
+  const rawMatch = output.match(/raw_mm_samples=([0-9,]+)/);
+  const confidenceMatch = output.match(/confidence=([0-9.]+)/);
+  renderSonar({
+    available: true,
+    front_distance_estimate_cm: Number(distanceMatch[1]),
+    confidence: confidenceMatch ? Number(confidenceMatch[1]) : 0,
+    source: "action-task-log",
+    device_id: task.device_id || "",
+    reported_at: task.completed_at || task.updated_at || task.requested_at || 0,
+    raw: rawMatch ? rawMatch[1] : "",
+  });
+}
+
+async function refreshSonar() {
+  try {
+    const sonar = await api("/camera/api/sonar");
+    lastSonarReportAt = Number(sonar.reported_at || 0);
+    renderSonar(sonar);
+  } catch (error) {
+    setSonarStatus("读取失败");
+    sonarMetaEl.textContent = `超声波数据读取失败：${error.message}`;
+    sonarRawEl.textContent = "";
+    sonarDistanceValueEl.textContent = "--";
+    sonarCard.classList.remove("sonar-available");
+    sonarCard.classList.add("sonar-unavailable");
+  }
+}
+
 function setMotionLocked(locked) {
   for (const button of buttons) {
     const action = button.dataset.action;
@@ -248,6 +338,7 @@ function getFormSettings() {
     unit_distance_cm: Number(unitDistanceInput.value || 5),
     turn_angle_deg: Number(turnAngleInput.value || 5),
     sensitivity: Number(sensitivityInput.value || 1),
+    voice_volume_percent: Number(currentSettings.voice_volume_percent || 0),
     rgb_red: clampRgb(rgbRedInput.value),
     rgb_green: clampRgb(rgbGreenInput.value),
     rgb_blue: clampRgb(rgbBlueInput.value),
@@ -261,6 +352,9 @@ function isEditingSettings() {
 function renderSettings(settings, options = {}) {
   const updateInputs = options.updateInputs !== false;
   currentSettings = { ...currentSettings, ...settings };
+  if (currentSettings.voice_volume_percent > 0) {
+    lastVoiceVolumePercent = currentSettings.voice_volume_percent;
+  }
   if (updateInputs) {
     unitDistanceInput.value = fmtNumber(currentSettings.unit_distance_cm);
     turnAngleInput.value = fmtNumber(currentSettings.turn_angle_deg);
@@ -274,12 +368,21 @@ function renderSettings(settings, options = {}) {
   const green = clampRgb(displaySettings.rgb_green);
   const blue = clampRgb(displaySettings.rgb_blue);
   const hex = `#${rgbToHex(red, green, blue)}`;
+  const voiceVolume = Math.max(0, Math.min(100, Math.round(Number(displaySettings.voice_volume_percent || 0))));
   rgbColorInput.value = hex;
   rgbSwatchEl.style.backgroundColor = hex;
   rgbSummaryEl.textContent = red || green || blue ? `当前 ${hex.toUpperCase()} · R${red} G${green} B${blue}` : "默认关闭";
   unitSummaryEl.textContent = `距离 ${fmtNumber(displaySettings.unit_distance_cm)} cm · 转向 ${fmtNumber(displaySettings.turn_angle_deg)}° · 灵敏度 ${fmtNumber(displaySettings.sensitivity)}x`;
   moveUnitLabelEl.textContent = `按一次执行 ${fmtNumber(displaySettings.unit_distance_cm)} cm`;
-  turnUnitLabelEl.textContent = `按一次转 ${fmtNumber(displaySettings.turn_angle_deg)}°`;
+  if (turnUnitLabelEl) {
+    turnUnitLabelEl.textContent = `按一次转 ${fmtNumber(displaySettings.turn_angle_deg)}°`;
+  }
+  voiceVolumeOnBtn.disabled = voiceVolume > 0;
+  voiceVolumeOffBtn.disabled = voiceVolume <= 0;
+  voiceVolumeOnBtn.textContent = "打开音量";
+  voiceVolumeOffBtn.textContent = voiceVolume > 0 ? "关闭音量" : "音量已关";
+  voiceVolumeOnBtn.title = voiceVolume > 0 ? `当前音量 ${voiceVolume}%` : `恢复到 ${fmtNumber(lastVoiceVolumePercent || 90)}%`;
+  voiceVolumeOffBtn.title = voiceVolume > 0 ? "将音量设为 0%" : "当前已关闭";
 }
 
 async function loadSettings() {
@@ -296,6 +399,18 @@ async function saveSettings() {
   settingsDirty = false;
   renderSettings(data.settings || payload);
   await refresh();
+}
+
+async function setVoiceVolume(enabled) {
+  const nextVolume = enabled
+    ? (currentSettings.voice_volume_percent > 0 ? currentSettings.voice_volume_percent : lastVoiceVolumePercent || 90)
+    : 0;
+  if (enabled && nextVolume > 0) {
+    lastVoiceVolumePercent = nextVolume;
+  }
+  currentSettings = { ...currentSettings, voice_volume_percent: nextVolume };
+  settingsDirty = false;
+  await saveSettings();
 }
 
 async function refresh() {
@@ -320,6 +435,12 @@ async function refresh() {
   tasksEl.innerHTML = "";
   const activeMotion = data.tasks.some((task) => MOTION_ACTIONS.has(task.skill_id) && ACTIVE_STATUSES.has(task.status));
   const activeTask = data.tasks.some((task) => ACTIVE_STATUSES.has(task.status));
+  const latestDistanceTask = data.tasks.find(
+    (task) => task.skill_id === "front_distance" && task.status === "complete" && task.output,
+  );
+  if (latestDistanceTask && Number(latestDistanceTask.completed_at || 0) >= lastSonarReportAt) {
+    renderSonarFromTask(latestDistanceTask);
+  }
   if (activeTask && refreshIntervalMs !== REFRESH_ACTIVE_MS) {
     scheduleFastRefresh(REFRESH_ACTIVE_MS);
   } else if (!activeTask && refreshIntervalMs !== REFRESH_IDLE_MS) {
@@ -339,6 +460,12 @@ async function refresh() {
       </div>
       <div>${statusText(task)}</div>
     `;
+    if (task.output || task.error) {
+      const log = document.createElement("pre");
+      log.className = "task-log";
+      log.textContent = task.error ? `${task.output || ""}\n${task.error}`.trim() : task.output;
+      row.appendChild(log);
+    }
     tasksEl.appendChild(row);
   }
 }
@@ -352,12 +479,24 @@ function scheduleFastRefresh(intervalMs = REFRESH_IDLE_MS) {
   }, intervalMs);
 }
 
+function scheduleSonarRefresh() {
+  if (sonarTimer) clearInterval(sonarTimer);
+  refreshSonar().catch((error) => {
+    sonarSummaryEl.textContent = `读取失败 ${error.message}`;
+  });
+  sonarTimer = setInterval(() => {
+    refreshSonar().catch((error) => {
+      sonarSummaryEl.textContent = `读取失败 ${error.message}`;
+    });
+  }, SONAR_POLL_MS);
+}
+
 async function createTask(action) {
   const button = buttons.find((item) => item.dataset.action === action);
-  if (button?.disabled) return;
+  if (button && button.disabled) return;
   let verificationCode = "";
   if (action === "remote_shutdown") {
-    verificationCode = window.prompt("请输入远程关机验证码（提示：12）");
+    verificationCode = window.prompt("请输入远程关机验证码（提示：123）");
     if (verificationCode === null) return;
     if (verificationCode !== "123") {
       statusEl.textContent = "验证码错误，已取消远程关机";
@@ -463,6 +602,16 @@ document.querySelector("#rgbSettingsForm").addEventListener("submit", (event) =>
 cameraPreviewToggle.addEventListener("change", () => {
   setCameraPreviewEnabled(cameraPreviewToggle.checked);
 });
+voiceVolumeOnBtn.addEventListener("click", () => {
+  setVoiceVolume(true).catch((error) => {
+    statusEl.textContent = `保存失败 ${error.message}`;
+  });
+});
+voiceVolumeOffBtn.addEventListener("click", () => {
+  setVoiceVolume(false).catch((error) => {
+    statusEl.textContent = `保存失败 ${error.message}`;
+  });
+});
 
 loadSettings()
   .then(refresh)
@@ -470,3 +619,4 @@ loadSettings()
     statusEl.textContent = `检查失败 ${error.message}`;
   });
 scheduleFastRefresh();
+scheduleSonarRefresh();

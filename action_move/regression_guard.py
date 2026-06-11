@@ -17,6 +17,7 @@ REQUIRED_SKILLS = {
     "emergency_stop",
     "reset_pose",
     "remote_shutdown",
+    "front_distance",
     "rgb_on",
     "rgb_off",
     "look_left",
@@ -97,6 +98,13 @@ def local_guard(guard: Guard) -> None:
     guard.check(rgb_task.status_code == 200 and rgb_task.json()["task"]["skill_id"] == "rgb_on", "RGB task can be created locally")
 
     tasks.clear()
+    distance_task = client.post("/api/tasks", json={"action": "front_distance", "source": "guard-local"})
+    guard.check(
+        distance_task.status_code == 200 and distance_task.json()["task"]["skill_id"] == "front_distance",
+        "front distance task can be created locally",
+    )
+
+    tasks.clear()
     first_motion = client.post("/api/tasks", json={"action": "move_forward", "source": "guard-local"})
     second_motion = client.post("/api/tasks", json={"action": "move_backward", "source": "guard-local"})
     guard.check(first_motion.status_code == 200 and second_motion.status_code == 409, "motion queue rejects overlapping motion")
@@ -113,6 +121,9 @@ def static_guard(guard: Guard) -> None:
         guard.check(token in app_js, f"app.js contains {token}")
     for token in (".camera-preview", ".camera-symbol", ".toggle-line", ".rgb-panel", ".rgb-swatch"):
         guard.check(token in style, f"style contains {token}")
+
+    guard.check("front_distance" in index, "index contains front_distance")
+    guard.check("front_distance_estimate_cm" in app_js, "app.js contains front_distance_estimate_cm")
 
     # Cheap syntax sentries for environments without node.
     guard.check(app_js.count("{") == app_js.count("}"), "app.js brace count is balanced")
@@ -148,6 +159,8 @@ def cloud_guard(guard: Guard) -> None:
         "monitorCameraOnce" in app_js and "CAMERA_HEARTBEAT_MS" in app_js and "hexToRgb" in app_js,
         "cloud app.js contains camera monitor and RGB helpers",
     )
+    guard.check("front_distance" in action_html, "cloud page contains front distance control")
+    guard.check("front_distance_estimate_cm" in app_js, "cloud app.js contains front distance result parsing")
 
     status, camera = request_json(f"{CAMERA_SERVER}/api/health")
     guard.check(status == 200 and camera.get("status") == "ok" and camera.get("has_image") is True, "cloud camera health has image")

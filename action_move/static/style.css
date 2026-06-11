@@ -118,6 +118,14 @@ p,
   margin-bottom: 14px;
 }
 
+.title-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
 .grid,
 .pad {
   display: grid;
@@ -135,6 +143,59 @@ p,
 
 .safety-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.sonar-panel {
+  border-color: #d6e2e6;
+}
+
+.sonar-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfc;
+}
+
+.sonar-card.sonar-available {
+  border-color: #b8dec8;
+  background: #f4fbf6;
+}
+
+.sonar-card.sonar-unavailable {
+  border-color: #efc7b8;
+  background: #fff6f2;
+}
+
+.sonar-distance {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.sonar-distance strong {
+  font-size: 36px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.sonar-distance span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.sonar-meta,
+.sonar-raw {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.sonar-raw {
+  padding-top: 4px;
+  border-top: 1px dashed var(--line);
 }
 
 .pad {
@@ -407,6 +468,21 @@ button.small {
   color: var(--muted);
 }
 
+.task-log {
+  grid-column: 1 / -1;
+  max-height: 180px;
+  margin: 2px 0 0;
+  padding: 8px 10px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--muted);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+
 .task-claimed,
 .task-running {
   border-color: #9bc6e8;
@@ -429,6 +505,11 @@ button.small {
   .panel-title {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .title-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .device-block {

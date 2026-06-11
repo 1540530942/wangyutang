@@ -72,6 +72,7 @@ The cloud service persists runtime settings in `data/settings.json`:
 - `unit_distance_cm`: movement unit distance, default `5`.
 - `turn_angle_deg`: heading turn unit, default `5`.
 - `sensitivity`: duration multiplier control, default `1.0`.
+- `voice_volume_percent`: completion voice volume, `0` means muted and any positive value enables playback.
 
 Each task stores a settings snapshot when it is created. The Raspberry Pi poller passes that snapshot into `action_move_executor.py`, so an action keeps the units that were visible on the page when the button was pressed.
 
@@ -99,6 +100,7 @@ python3 action_move_executor.py turn_left
 The executor runs ROS2 commands as user `ubuntu` inside the `turbopi` container. Every base movement publishes a timed `Twist` burst and then a zero stop command.
 
 Camera look skills request `https://www.wangyutang.cn/camera/api/capture` after the servo command so the camera page refreshes to the new direction.
+The web page also reads `https://www.wangyutang.cn/camera/api/sonar` to show the latest ultrasonic distance in a dedicated status box.
 
 ## Directory Layout
 
@@ -154,7 +156,7 @@ The guard does not send movement commands and does not create a valid shutdown t
 - remote shutdown verification-code rejection
 - motion queue overlap rejection
 - camera mini-window static assets
-- cloud `/action/` and `/camera/` health
+- cloud `/action/` health
 - cloud skill catalog and device network fields
 
 For live hardware changes, add a separate image-verification run with `cloud_image_verifier.py`; keep that out of the default guard because it moves the robot.

@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 data/
 movement_verify/
+cloud_image_verify/
 servo_scan/
 monitor_logs/
 *_verify*.jpg

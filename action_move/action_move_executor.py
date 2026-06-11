@@ -50,6 +50,17 @@ def run_in_container(container: str, command: str, dry_run: bool) -> None:
     subprocess.run(docker_command, check=True, timeout=12)
 
 
+def run_in_container_text(container: str, command: str, dry_run: bool) -> str:
+    docker_user = "ubuntu"
+    docker_command = ["docker", "exec", "-u", docker_user, container, "bash", "-lc", command]
+    if dry_run:
+        rendered = " ".join(docker_command)
+        print(rendered)
+        return rendered
+    completed = subprocess.run(docker_command, check=True, text=True, capture_output=True, timeout=12)
+    return completed.stdout.strip()
+
+
 def clamp(value: float, minimum: float, maximum: float) -> float:
     return max(minimum, min(maximum, value))
 
@@ -83,16 +94,27 @@ def unit_duration_ms(defaults: dict[str, Any], kind: str) -> int:
     return int(round(clamp(base * (unit / 5.0) / sensitivity, lower, upper)))
 
 
+def cmd_vel_topics(defaults: dict[str, Any]) -> list[str]:
+    topics = defaults.get("cmd_vel_topics")
+    if not isinstance(topics, list) or not topics:
+        topics = [defaults.get("cmd_vel_topic", "/cmd_vel")]
+    result: list[str] = []
+    for topic in topics:
+        text = str(topic or "").strip()
+        if text and text not in result:
+            result.append(text)
+    return result or ["/cmd_vel"]
+
+
 def publish_stop(defaults: dict[str, Any], dry_run: bool) -> None:
-    topic = str(defaults.get("cmd_vel_topic", "/cmd_vel"))
     times = int(defaults.get("stop_publish_times", 3))
     stop_msg = "{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"
-    command = (
-        f"{ROS_SETUP} && "
+    commands = [
         f"ros2 topic pub --times {max(times, 1)} --rate 10 --wait-matching-subscriptions 0 "
         f"{topic} geometry_msgs/msg/Twist '{stop_msg}'"
-    )
-    run_in_container(str(defaults.get("ros_container", "turbopi")), command, dry_run)
+        for topic in cmd_vel_topics(defaults)
+    ]
+    run_in_container(str(defaults.get("ros_container", "turbopi")), f"{ROS_SETUP} && " + " && ".join(commands), dry_run)
 
 
 def execute_base_stop(defaults: dict[str, Any], dry_run: bool) -> None:
@@ -142,7 +164,6 @@ def execute_base_move(skill: dict[str, Any], defaults: dict[str, Any], dry_run: 
     duration_ms = unit_duration_ms(defaults, "move")
     rate = 10
     times = max(1, round(duration_ms / 1000 * rate))
-    topic = str(defaults.get("cmd_vel_topic", "/cmd_vel"))
     move_msg = (
         "{"
         f"linear: {{x: {float(twist['linear_x'])}, y: {float(twist['linear_y'])}, z: 0.0}}, "
@@ -150,11 +171,15 @@ def execute_base_move(skill: dict[str, Any], defaults: dict[str, Any], dry_run: 
         "}"
     )
     stop_msg = "{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"
-    command = (
-        f"{ROS_SETUP} && "
-        f"ros2 topic pub --times {times} --rate {rate} --wait-matching-subscriptions 0 {topic} geometry_msgs/msg/Twist '{move_msg}' && "
-        f"ros2 topic pub --once --wait-matching-subscriptions 0 {topic} geometry_msgs/msg/Twist '{stop_msg}'"
-    )
+    commands = []
+    for topic in cmd_vel_topics(defaults):
+        commands.extend(
+            [
+                f"ros2 topic pub --times {times} --rate {rate} --wait-matching-subscriptions 0 {topic} geometry_msgs/msg/Twist '{move_msg}'",
+                f"ros2 topic pub --once --wait-matching-subscriptions 0 {topic} geometry_msgs/msg/Twist '{stop_msg}'",
+            ]
+        )
+    command = f"{ROS_SETUP} && " + " && ".join(commands)
     run_in_container(str(defaults.get("ros_container", "turbopi")), command, dry_run)
 
 
@@ -163,7 +188,6 @@ def execute_base_turn(skill: dict[str, Any], defaults: dict[str, Any], dry_run: 
     duration_ms = unit_duration_ms(defaults, "turn")
     rate = 10
     times = max(1, round(duration_ms / 1000 * rate))
-    topic = str(defaults.get("cmd_vel_topic", "/cmd_vel"))
     move_msg = (
         "{"
         f"linear: {{x: {float(twist['linear_x'])}, y: {float(twist['linear_y'])}, z: 0.0}}, "
@@ -171,11 +195,15 @@ def execute_base_turn(skill: dict[str, Any], defaults: dict[str, Any], dry_run: 
         "}"
     )
     stop_msg = "{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"
-    command = (
-        f"{ROS_SETUP} && "
-        f"ros2 topic pub --times {times} --rate {rate} --wait-matching-subscriptions 0 {topic} geometry_msgs/msg/Twist '{move_msg}' && "
-        f"ros2 topic pub --once --wait-matching-subscriptions 0 {topic} geometry_msgs/msg/Twist '{stop_msg}'"
-    )
+    commands = []
+    for topic in cmd_vel_topics(defaults):
+        commands.extend(
+            [
+                f"ros2 topic pub --times {times} --rate {rate} --wait-matching-subscriptions 0 {topic} geometry_msgs/msg/Twist '{move_msg}'",
+                f"ros2 topic pub --once --wait-matching-subscriptions 0 {topic} geometry_msgs/msg/Twist '{stop_msg}'",
+            ]
+        )
+    command = f"{ROS_SETUP} && " + " && ".join(commands)
     run_in_container(str(defaults.get("ros_container", "turbopi")), command, dry_run)
 
 
@@ -197,6 +225,65 @@ def execute_rgb_light(skill: dict[str, Any], defaults: dict[str, Any], dry_run: 
     message = f"{{states: [{states}]}}"
     command = f"{ROS_SETUP} && ros2 topic pub --once --wait-matching-subscriptions 0 {topic} ros_robot_controller_msgs/msg/RGBStates '{message}'"
     run_in_container(str(defaults.get("ros_container", "turbopi")), command, dry_run)
+    execute_sonar_rgb(red, green, blue, defaults, dry_run)
+
+
+def execute_sonar_rgb(red: int, green: int, blue: int, defaults: dict[str, Any], dry_run: bool) -> None:
+    if not bool(defaults.get("sonar_rgb_enabled", True)):
+        return
+    indices = defaults.get("sonar_rgb_indices", [0, 1])
+    if not isinstance(indices, list):
+        indices = [0, 1]
+    code = "\n".join(
+        [
+            "from sdk.sonar import Sonar",
+            "sonar = Sonar()",
+            "sonar.setRGBMode(0)",
+            *[
+                f"sonar.setPixelColor({int(index)}, ({red}, {green}, {blue}))"
+                for index in indices
+            ],
+        ]
+    )
+    command = f"python3 - <<'PY'\n{code}\nPY"
+    run_in_container(str(defaults.get("ros_container", "turbopi")), command, dry_run)
+
+
+def execute_front_distance(defaults: dict[str, Any], dry_run: bool) -> None:
+    samples = int(defaults.get("sonar_distance_samples", 7))
+    interval_ms = int(defaults.get("sonar_distance_sample_interval_ms", 40))
+    conservative = bool(defaults.get("sonar_distance_conservative", True))
+    code = f"""
+import json
+import statistics
+import time
+from sdk.sonar import Sonar
+
+sonar = Sonar()
+values = []
+for _ in range({max(samples, 1)}):
+    value = int(sonar.getDistance())
+    if 0 < value <= 5000:
+        values.append(value)
+    time.sleep({max(interval_ms, 0) / 1000.0!r})
+if not values:
+    raise SystemExit("sonar distance returned no valid samples")
+raw_mm = min(values) if {conservative!r} else int(round(statistics.median(values)))
+print(json.dumps({{
+    "front_distance_estimate_cm": round(raw_mm / 10.0, 2),
+    "raw_mm": raw_mm,
+    "raw_mm_samples": ",".join(str(value) for value in values),
+    "confidence": round(min(1.0, len(values) / {max(samples, 1)}), 3),
+}}, ensure_ascii=False))
+"""
+    command = f"python3 - <<'PY'\n{code}\nPY"
+    output = run_in_container_text(str(defaults.get("ros_container", "turbopi")), command, dry_run)
+    if dry_run:
+        return
+    data = json.loads(output.splitlines()[-1])
+    print(f"[INFO] front_distance_estimate_cm={data['front_distance_estimate_cm']}")
+    print(f"[INFO] raw_mm_samples={data['raw_mm_samples']}")
+    print(f"[INFO] confidence={data['confidence']}")
 
 
 def execute_skill(skill: dict[str, Any], catalog: dict[str, Any], dry_run: bool, params: dict[str, Any] | None = None) -> None:
@@ -222,6 +309,8 @@ def execute_skill(skill: dict[str, Any], catalog: dict[str, Any], dry_run: bool,
         execute_base_stop(defaults, dry_run)
     elif skill["type"] == "rgb_light":
         execute_rgb_light(skill, defaults, dry_run)
+    elif skill["type"] == "front_distance":
+        execute_front_distance(defaults, dry_run)
     elif skill["type"] == "reset_pose":
         execute_reset_pose(defaults, dry_run)
         if bool(defaults.get("capture_after_servo", True)):

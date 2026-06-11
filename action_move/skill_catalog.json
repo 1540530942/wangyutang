@@ -11,12 +11,24 @@
   "defaults": {
     "ros_container": "turbopi",
     "cmd_vel_topic": "/cmd_vel",
+    "cmd_vel_topics": [
+      "/cmd_vel",
+      "/controller/cmd_vel"
+    ],
     "pwm_servo_topic": "/ros_robot_controller/pwm_servo/set_state",
     "rgb_topic": "/ros_robot_controller/set_rgb",
     "rgb_led_indices": [
       1,
       2
     ],
+    "sonar_rgb_enabled": true,
+    "sonar_rgb_indices": [
+      0,
+      1
+    ],
+    "sonar_distance_samples": 7,
+    "sonar_distance_sample_interval_ms": 40,
+    "sonar_distance_conservative": true,
     "rgb_red": 0,
     "rgb_green": 0,
     "rgb_blue": 0,
@@ -66,13 +78,13 @@
     },
     {
       "id": "remote_shutdown",
-      "name_zh": "????",
-      "description": "?????????? sudo shutdown -h now????????????????",
+      "name_zh": "远程关机",
+      "description": "通过边缘端执行 sudo shutdown -h now，用于安全关闭设备。",
       "type": "system_shutdown",
       "aliases": [
-        "??",
-        "?????",
-        "?????",
+        "关机",
+        "远程关机",
+        "关闭设备",
         "shutdown",
         "poweroff"
       ]
@@ -108,6 +120,19 @@
       "rgb": {
         "mode": "off"
       }
+    },
+    {
+      "id": "front_distance",
+      "name_zh": "超声波测距",
+      "description": "读取车头超声波模块的前方距离，返回厘米估算值和原始毫米采样。",
+      "type": "front_distance",
+      "aliases": [
+        "前方距离",
+        "测距",
+        "超声波",
+        "front distance",
+        "sonar"
+      ]
     },
     {
       "id": "look_left",
@@ -190,7 +215,7 @@
         "向前移动"
       ],
       "twist": {
-        "linear_x": 0.12,
+        "linear_x": 0.35,
         "linear_y": 0.0,
         "angular_z": 0.0
       }
@@ -206,7 +231,7 @@
         "向后移动"
       ],
       "twist": {
-        "linear_x": -0.12,
+        "linear_x": -0.35,
         "linear_y": 0.0,
         "angular_z": 0.0
       }
@@ -223,7 +248,7 @@
       ],
       "twist": {
         "linear_x": 0.0,
-        "linear_y": 0.10,
+        "linear_y": 0.35,
         "angular_z": 0.0
       }
     },
@@ -239,7 +264,7 @@
       ],
       "twist": {
         "linear_x": 0.0,
-        "linear_y": -0.10,
+        "linear_y": -0.45,
         "angular_z": 0.0
       }
     },
@@ -257,7 +282,7 @@
       "twist": {
         "linear_x": 0.0,
         "linear_y": 0.0,
-        "angular_z": 0.35
+        "angular_z": 5.0
       }
     },
     {
@@ -274,7 +299,7 @@
       "twist": {
         "linear_x": 0.0,
         "linear_y": 0.0,
-        "angular_z": -0.35
+        "angular_z": -5.0
       }
     }
   ]
