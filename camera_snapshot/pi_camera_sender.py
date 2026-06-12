@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import json
 import os
 import signal
 import shlex
@@ -19,6 +20,8 @@ DEFAULT_SERVER = os.environ.get("CAMERA_SNAPSHOT_SERVER", "http://127.0.0.1:8099
 DEFAULT_TOKEN = os.environ.get("CAMERA_SNAPSHOT_TOKEN", "")
 DEFAULT_QUERY_GPIO = int(os.environ.get("CAMERA_SNAPSHOT_DEFAULT_GPIO", "26"))
 DEFAULT_FACE_RENDER_URL = os.environ.get("CAMERA_SNAPSHOT_FACE_RENDER_URL", "https://www.wangyutang.cn/face/api/face/render.jpg")
+DEFAULT_SONAR_CONTAINER = os.environ.get("CAMERA_SONAR_CONTAINER", "turbopi")
+DEFAULT_SONAR_UPLOAD_INTERVAL_SECONDS = float(os.environ.get("CAMERA_SONAR_UPLOAD_INTERVAL_SECONDS", "1.0"))
 CAPTURE_KINDS = ("screen", "face", "camera")
 
 
@@ -727,6 +730,89 @@ def upload_gpio_status(
     response.raise_for_status()
 
 
+def read_sonar_status(container: str) -> dict[str, object]:
+    sampled_at = time.time()
+    code = r"""
+import json
+import sys
+import time
+
+sys.path.insert(0, "/home/ubuntu/ros2_ws/src/driver/sdk")
+from sdk.sonar import Sonar
+
+sonar = Sonar()
+values = []
+for _ in range(7):
+    value = int(sonar.getDistance())
+    if 0 < value <= 5000:
+        values.append(value)
+    time.sleep(0.04)
+
+if values:
+    raw_mm = min(values)
+    payload = {
+        "available": True,
+        "front_distance_estimate_cm": raw_mm / 10.0,
+        "confidence": min(1.0, len(values) / 5.0),
+        "source": "turbopi-sonar-sdk",
+        "raw": ",".join(str(value) for value in values),
+    }
+else:
+    payload = {
+        "available": False,
+        "front_distance_estimate_cm": None,
+        "confidence": 0.0,
+        "source": "turbopi-sonar-sdk",
+        "raw": "",
+    }
+print(json.dumps(payload), flush=True)
+"""
+    try:
+        result = subprocess.run(
+            ["docker", "exec", "-u", "ubuntu", container, "python3", "-c", code],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        data = json.loads(result.stdout.strip().splitlines()[-1])
+        if isinstance(data, dict):
+            data["sampled_at"] = sampled_at
+            return data
+    except Exception as exc:
+        return {
+            "available": False,
+            "front_distance_estimate_cm": None,
+            "confidence": 0.0,
+            "source": "turbopi-sonar-sdk",
+            "sampled_at": sampled_at,
+            "error": str(exc),
+        }
+    return {
+        "available": False,
+        "front_distance_estimate_cm": None,
+        "confidence": 0.0,
+        "source": "turbopi-sonar-sdk",
+        "sampled_at": sampled_at,
+        "error": "invalid sonar payload",
+    }
+
+
+def upload_sonar_status(
+    session: requests.Session,
+    server: str,
+    token: str,
+    device_id: str,
+    sonar_status: dict[str, object],
+) -> None:
+    payload = {**sonar_status, "device_id": device_id}
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["X-Camera-Token"] = token
+    response = session.post(f"{server}/api/sonar", headers=headers, json=payload, timeout=5)
+    response.raise_for_status()
+
+
 def upload_inspection(
     session: requests.Session,
     server: str,
@@ -819,6 +905,8 @@ def main() -> None:
     )
     parser.add_argument("--web-video-timeout", type=float, default=2.0)
     parser.add_argument("--ros-container", default=os.environ.get("CAMERA_ROS_CONTAINER", "turbopi"))
+    parser.add_argument("--sonar-container", default=DEFAULT_SONAR_CONTAINER)
+    parser.add_argument("--sonar-upload-interval-seconds", type=float, default=DEFAULT_SONAR_UPLOAD_INTERVAL_SECONDS)
     parser.add_argument("--ros-image-topic", default=os.environ.get("CAMERA_ROS_IMAGE_TOPIC", "/image_raw"))
     parser.add_argument(
         "--ros-usb-cam-autostart",
@@ -860,6 +948,7 @@ def main() -> None:
     failed_one_shots: set[str] = set()
     sent_at_by_task: dict[str, float] = {}
     last_gpio_upload_at = 0.0
+    last_sonar_upload_at = 0.0
     try:
         while running:
             control = fetch_control(session, server)
@@ -873,6 +962,18 @@ def main() -> None:
                     last_gpio_upload_at = now
                 except Exception as exc:
                     print(f"[WARN] gpio status upload failed: {exc}", flush=True)
+            if args.sonar_upload_interval_seconds > 0 and now - last_sonar_upload_at >= args.sonar_upload_interval_seconds:
+                try:
+                    upload_sonar_status(
+                        session,
+                        server,
+                        args.token,
+                        args.device_id,
+                        read_sonar_status(args.sonar_container),
+                    )
+                    last_sonar_upload_at = now
+                except Exception as exc:
+                    print(f"[WARN] sonar status upload failed: {exc}", flush=True)
 
             did_work = False
             for kind in CAPTURE_KINDS:

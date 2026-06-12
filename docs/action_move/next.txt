@@ -1,0 +1,1 @@
+在C:\Users\Administrator\Desktop\Workspace\Project_Codex\wangyutang_platform\action_move 增加一个按钮，"远程关机"树莓派，例如“ sudo shutdown -h now”，点击该按钮时，要求输入验证码 123
