@@ -1,0 +1,315 @@
+name: Deploy robot platform
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "Deployment scope"
+        required: true
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - all
+          - robot_gateway
+          - camera_snapshot
+          - action_move
+          - audio_recognition
+          - pi5_robot
+          - smile_face
+  push:
+    branches:
+      - main
+      - feature/llm-manager
+    paths:
+      - "robot_gateway/**"
+      - "audio_recognition/**"
+      - "pi5_robot/**"
+      - "smile_face/**"
+      - "docker-compose.yml"
+      - ".env.example"
+      - "scripts/tencent_apply_release.sh"
+      - ".github/workflows/deploy-modules.yml"
+
+concurrency:
+  group: robot-platform-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: production
+
+    env:
+      TENCENT_HOST: ${{ secrets.TENCENT_HOST }}
+      TENCENT_USER: ${{ secrets.TENCENT_USER }}
+      TENCENT_SSH_PRIVATE_KEY: ${{ secrets.TENCENT_SSH_PRIVATE_KEY }}
+      TENCENT_DEPLOY_ROOT: ${{ vars.TENCENT_DEPLOY_ROOT || '/root/wangyutang_platform' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect deployment scope
+        id: scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_SCOPE: ${{ inputs.scope || 'auto' }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          declare -A build_services=(
+            [camera_snapshot]="camera-snapshot"
+            [action_move]="action-move"
+            [audio_recognition]="audio-recognition"
+            [pi5_robot]="pi5-robot"
+            [smile_face]="smile-face"
+          )
+          declare -A up_services=(
+            [robot_gateway]="robot-gateway"
+            [camera_snapshot]="camera-snapshot"
+            [action_move]="action-move"
+            [audio_recognition]="audio-recognition"
+            [pi5_robot]="pi5-robot"
+            [smile_face]="smile-face"
+          )
+
+          all_modules=(robot_gateway camera_snapshot action_move audio_recognition pi5_robot smile_face)
+          selected=()
+
+          add_module() {
+            local module="$1"
+            local existing
+            for existing in "${selected[@]}"; do
+              if [ "$existing" = "$module" ]; then
+                return
+              fi
+            done
+            selected+=("$module")
+          }
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$REQUESTED_SCOPE" != "auto" ]; then
+            if [ "$REQUESTED_SCOPE" = "all" ]; then
+              selected=("${all_modules[@]}")
+            else
+              selected=("$REQUESTED_SCOPE")
+            fi
+          else
+            before="$BEFORE_SHA"
+            after="$AFTER_SHA"
+            if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
+              before="HEAD^"
+            fi
+            changed="$(git diff --name-only "$before" "$after" 2>/dev/null || git diff --name-only HEAD^ HEAD || true)"
+            echo "$changed" | sed 's/^/changed: /'
+
+            if echo "$changed" | grep -Eq '^(docker-compose.yml|\.env\.example|scripts/tencent_apply_release.sh|\.github/workflows/deploy-modules.yml)$'; then
+              selected=("${all_modules[@]}")
+            else
+              echo "$changed" | grep -Eq '^robot_gateway/' && add_module robot_gateway || true
+              echo "$changed" | grep -Eq '^audio_recognition/' && add_module audio_recognition || true
+              echo "$changed" | grep -Eq '^pi5_robot/' && add_module pi5_robot || true
+              echo "$changed" | grep -Eq '^smile_face/' && add_module smile_face || true
+            fi
+          fi
+
+          if [ "${#selected[@]}" -eq 0 ]; then
+            echo "No deployable module changes detected."
+            echo "modules=" >> "$GITHUB_OUTPUT"
+            echo "build_services=" >> "$GITHUB_OUTPUT"
+            echo "up_services=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          build=()
+          up=()
+          for module in "${selected[@]}"; do
+            if [ -n "${build_services[$module]:-}" ]; then
+              build+=("${build_services[$module]}")
+            fi
+            up+=("${up_services[$module]}")
+          done
+
+          printf 'modules=%s\n' "${selected[*]}" >> "$GITHUB_OUTPUT"
+          printf 'build_services=%s\n' "${build[*]}" >> "$GITHUB_OUTPUT"
+          printf 'up_services=%s\n' "${up[*]}" >> "$GITHUB_OUTPUT"
+
+          echo "modules=${selected[*]}"
+          echo "build_services=${build[*]}"
+          echo "up_services=${up[*]}"
+
+      - name: Validate Compose and Python syntax
+        if: steps.scope.outputs.up_services != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          docker compose --env-file .env -f docker-compose.yml config --quiet
+          python -m compileall -q camera_snapshot action_move audio_recognition pi5_robot smile_face
+
+      - name: Create source release archive
+        if: steps.scope.outputs.up_services != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar \
+            --exclude='**/__pycache__' \
+            --exclude='**/*.pyc' \
+            --exclude='**/.pytest_cache' \
+            --exclude='**/node_modules' \
+            --exclude='**/dist' \
+            --exclude='**/data' \
+            -czf robot-platform-${GITHUB_SHA}.tgz \
+            docker-compose.yml \
+            .env.example \
+            robot_gateway \
+            camera_snapshot \
+            action_move \
+            audio_recognition \
+            pi5_robot \
+            smile_face
+          echo "RELEASE_ARCHIVE=robot-platform-${GITHUB_SHA}.tgz" >> "$GITHUB_ENV"
+
+      - name: Check deployment secrets
+        if: steps.scope.outputs.up_services != ''
+        run: |
+          test -n "$TENCENT_HOST"
+          test -n "$TENCENT_USER"
+          test -n "$TENCENT_SSH_PRIVATE_KEY"
+
+      - name: Configure SSH
+        if: steps.scope.outputs.up_services != ''
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$TENCENT_SSH_PRIVATE_KEY" > ~/.ssh/tencent_key
+          chmod 600 ~/.ssh/tencent_key
+          {
+            echo "Host tencent-prod"
+            echo "  HostName $TENCENT_HOST"
+            echo "  User $TENCENT_USER"
+            echo "  IdentityFile ~/.ssh/tencent_key"
+            echo "  StrictHostKeyChecking accept-new"
+            echo "  ServerAliveInterval 15"
+            echo "  ServerAliveCountMax 4"
+          } > ~/.ssh/config
+
+      - name: Upload release to Tencent Cloud
+        if: steps.scope.outputs.up_services != ''
+        run: |
+          ssh tencent-prod "mkdir -p /tmp/wangyutang-platform-deploy"
+          scp "$RELEASE_ARCHIVE" tencent-prod:/tmp/wangyutang-platform-deploy/
+
+      - name: Apply release on Tencent Cloud
+        if: steps.scope.outputs.up_services != ''
+        shell: bash
+        env:
+          BUILD_SERVICES: ${{ steps.scope.outputs.build_services }}
+          UP_SERVICES: ${{ steps.scope.outputs.up_services }}
+          MODULES: ${{ steps.scope.outputs.modules }}
+        run: |
+          set -euo pipefail
+          ssh tencent-prod \
+            "TENCENT_DEPLOY_ROOT='$TENCENT_DEPLOY_ROOT' \
+             BUILD_SERVICES='$BUILD_SERVICES' \
+             UP_SERVICES='$UP_SERVICES' \
+             MODULES='$MODULES' \
+             bash -s -- '/tmp/wangyutang-platform-deploy/$RELEASE_ARCHIVE' '${GITHUB_SHA}'" <<'REMOTE'
+          set -euo pipefail
+
+          archive="${1:?archive required}"
+          commit_sha="${2:?commit sha required}"
+          deploy_root="${TENCENT_DEPLOY_ROOT:-/root/wangyutang_platform}"
+          release_root="/tmp/wangyutang-platform-release-${commit_sha}"
+
+          echo "Deploy root: $deploy_root"
+          echo "Modules: ${MODULES:-}"
+          echo "Build services: ${BUILD_SERVICES:-}"
+          echo "Up services: ${UP_SERVICES:-}"
+
+          rm -rf "$release_root"
+          mkdir -p "$release_root"
+          tar -xzf "$archive" -C "$release_root"
+
+          mkdir -p "$deploy_root"
+          for path in docker-compose.yml .env.example $MODULES; do
+            rm -rf "$deploy_root/$path"
+            cp -a "$release_root/$path" "$deploy_root/$path"
+          done
+
+          if [ ! -f "$deploy_root/.env" ]; then
+            cp "$deploy_root/.env.example" "$deploy_root/.env"
+            echo "Created $deploy_root/.env from .env.example"
+          fi
+
+          cd "$deploy_root"
+          docker compose --env-file .env -f docker-compose.yml config --quiet
+
+          if [ -n "${BUILD_SERVICES:-}" ]; then
+            docker compose --env-file .env -f docker-compose.yml build $BUILD_SERVICES
+          fi
+
+          docker compose --env-file .env -f docker-compose.yml up -d --no-deps --force-recreate $UP_SERVICES
+
+          # Keep compatibility with older containers that were attached to infra_default.
+          if docker network inspect infra_default >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -qx robot-gateway; then
+            docker network connect infra_default robot-gateway >/dev/null 2>&1 || true
+          fi
+
+          check_url() {
+            local name="$1"
+            local url="$2"
+            local deadline=$((SECONDS + 90))
+            until curl -fsS "$url" >/dev/null; do
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "Health check failed for $name: $url" >&2
+                docker compose --env-file .env -f docker-compose.yml ps >&2 || true
+                exit 1
+              fi
+              sleep 3
+            done
+            echo "$name healthy: $url"
+          }
+
+          for service in $UP_SERVICES; do
+            case "$service" in
+              robot-gateway) check_url robot-gateway http://127.0.0.1/api/health ;;
+              camera-snapshot) check_url camera-snapshot http://127.0.0.1:8099/api/health ;;
+              action-move) check_url action-move http://127.0.0.1:8094/api/health ;;
+              audio-recognition) check_url audio-recognition http://127.0.0.1:8095/api/health ;;
+              pi5-robot) check_url pi5-robot http://127.0.0.1:8093/api/health ;;
+              smile-face) check_url smile-face http://127.0.0.1:8096/api/health ;;
+            esac
+          done
+
+          docker compose --env-file .env -f docker-compose.yml ps $UP_SERVICES
+          REMOTE
+
+      - name: Verify public gateway
+        if: steps.scope.outputs.up_services != ''
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.request
+
+          checks = {
+              "gateway": "https://www.wangyutang.cn/api/health",
+              "home": "https://www.wangyutang.cn/",
+          }
+          for name, url in checks.items():
+              with urllib.request.urlopen(url, timeout=25) as response:
+                  body = response.read()
+                  if response.status != 200:
+                      raise SystemExit(f"{name} returned {response.status}")
+                  print(name, response.status, len(body))
+                  if name == "gateway":
+                      payload = json.loads(body.decode("utf-8"))
+                      if payload.get("status") != "ok":
+                          raise SystemExit(payload)
+          PY
