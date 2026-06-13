@@ -42,7 +42,7 @@ git add <changed-files>
 git commit -m "Concise change summary"
 
 docker compose config --quiet
-python -m compileall -q camera_snapshot action_move audio_recognition pi5_robot remote_control_cloud common_api_manager
+python -m compileall -q camera_snapshot action_move audio_recognition pi5_robot common_api_manager
 
 git -c http.version=HTTP/1.1 `
     -c http.sslBackend=schannel `

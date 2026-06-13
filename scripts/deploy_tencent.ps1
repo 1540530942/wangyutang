@@ -49,8 +49,6 @@ $ScriptsDir = Join-Path $ReleaseDir "scripts"
 $DocsDir = Join-Path $ReleaseDir "docs"
 
 $Images = @(
-  @{ Name = "remote-control-api:local"; File = "remote-control-api_local.tar" },
-  @{ Name = "remote-control-web:local"; File = "remote-control-web_local.tar" },
   @{ Name = "camera-snapshot:local"; File = "camera-snapshot_local.tar" },
   @{ Name = "action-move:local"; File = "action-move_local.tar" },
   @{ Name = "audio-recognition:local"; File = "audio-recognition_local.tar" },
@@ -67,7 +65,7 @@ if ($GitStatus -and -not $AllowDirty) {
 }
 
 Write-Step "Running local checks"
-Invoke-Checked "python" @("-m", "compileall", "-q", "camera_snapshot", "action_move", "audio_recognition", "pi5_robot", "remote_control_cloud")
+Invoke-Checked "python" @("-m", "compileall", "-q", "camera_snapshot", "action_move", "audio_recognition", "pi5_robot")
 Invoke-Checked "docker" @("compose", "config", "--quiet")
 
 if (-not $SkipBuild) {
@@ -88,10 +86,6 @@ Copy-Item -LiteralPath "robot_gateway\Caddyfile" -Destination (Join-Path $Gatewa
 Copy-Item -LiteralPath "robot_gateway\site" -Destination (Join-Path $GatewayDir "site") -Recurse -Force
 Copy-IfExists ".env.example" (Join-Path $ReleaseDir ".env.example")
 Copy-IfExists ".env" (Join-Path $ReleaseDir ".env.local-copy")
-if (Test-Path -LiteralPath "remote_control_cloud\infra\mosquitto\mosquitto.conf") {
-  New-Item -ItemType Directory -Path (Join-Path $InfraDir "mosquitto") -Force | Out-Null
-  Copy-Item -LiteralPath "remote_control_cloud\infra\mosquitto\mosquitto.conf" -Destination (Join-Path $InfraDir "mosquitto\mosquitto.conf") -Force
-}
 Copy-Item -LiteralPath "scripts\tencent_apply_release.sh" -Destination (Join-Path $ScriptsDir "tencent_apply_release.sh") -Force
 Copy-Item -LiteralPath "DEPLOY.md" -Destination (Join-Path $DocsDir "DEPLOY.md") -Force
 Copy-DirIfExists "docs" (Join-Path $DocsDir "repo-docs")
@@ -148,7 +142,6 @@ if (-not $SkipVerify) {
   $Checks = @(
     "https://www.wangyutang.cn/api/health",
     "https://www.wangyutang.cn/",
-    "http://110.40.154.41:8000/api/health",
     "http://110.40.154.41:8099/api/health",
     "http://110.40.154.41:8094/api/health",
     "http://110.40.154.41:8095/api/health",

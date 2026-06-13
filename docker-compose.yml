@@ -16,58 +16,6 @@ services:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
-  remote-control-mqtt:
-    image: eclipse-mosquitto:2
-    container_name: remote-control-mqtt
-    ports:
-      - "1883:1883"
-      - "9001:9001"
-    volumes:
-      - ./remote_control_cloud/infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - remote_control_mqtt_data:/mosquitto/data
-      - remote_control_mqtt_log:/mosquitto/log
-    restart: unless-stopped
-
-  remote-control-api:
-    image: ${REMOTE_CONTROL_API_IMAGE:-remote-control-api:local}
-    build:
-      context: ./remote_control_cloud
-      dockerfile: Dockerfile.api
-      args:
-        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.12-slim}
-        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
-    container_name: remote-control-api
-    env_file:
-      - .env
-    environment:
-      MQTT_HOST: remote-control-mqtt
-      MQTT_PORT: "1883"
-    depends_on:
-      - remote-control-mqtt
-    ports:
-      - "8000:8000"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).read()"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-    restart: unless-stopped
-
-  remote-control-web:
-    image: ${REMOTE_CONTROL_WEB_IMAGE:-remote-control-web:local}
-    build:
-      context: ./remote_control_cloud
-      dockerfile: Dockerfile.web
-      args:
-        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
-    container_name: remote-control-web
-    env_file:
-      - .env
-    ports:
-      - "5173:5173"
-    restart: unless-stopped
-
   camera-snapshot:
     image: ${CAMERA_SNAPSHOT_IMAGE:-camera-snapshot:local}
     build:
@@ -185,5 +133,3 @@ volumes:
   action_move_data:
   audio_recognition_data:
   pi5_robot_episodes:
-  remote_control_mqtt_data:
-  remote_control_mqtt_log:

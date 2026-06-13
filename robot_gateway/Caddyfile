@@ -11,14 +11,6 @@
 		respond `{"status":"ok","service":"robot-gateway"}` 200
 	}
 
-	handle_path /remote/* {
-		reverse_proxy {$REMOTE_WEB_UPSTREAM:remote-control-web:5173}
-	}
-
-	handle_path /remote-api/* {
-		reverse_proxy {$REMOTE_API_UPSTREAM:remote-control-api:8000}
-	}
-
 	handle_path /camera/* {
 		reverse_proxy {$CAMERA_UPSTREAM:camera-snapshot:8099}
 	}

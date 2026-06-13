@@ -29,16 +29,12 @@ done
 
 echo "==> Installing runtime files"
 mkdir -p "$deploy_root"
-mkdir -p "$deploy_root/remote_control_cloud/infra/mosquitto"
 mkdir -p "$deploy_root/robot_gateway"
 
 cp docker-compose.yml "$deploy_root/docker-compose.yml"
 cp robot_gateway/Caddyfile "$deploy_root/robot_gateway/Caddyfile"
 rm -rf "$deploy_root/robot_gateway/site"
 cp -a robot_gateway/site "$deploy_root/robot_gateway/site"
-if [ -f infra/mosquitto/mosquitto.conf ]; then
-  cp infra/mosquitto/mosquitto.conf "$deploy_root/remote_control_cloud/infra/mosquitto/mosquitto.conf"
-fi
 
 if [ -f "$deploy_root/.env" ]; then
   echo "Using existing $deploy_root/.env"
@@ -87,7 +83,6 @@ docker compose --env-file .env -f docker-compose.yml up -d --no-build
 
 echo "==> Local health checks"
 curl -fsS http://127.0.0.1/api/health >/dev/null
-curl -fsS http://127.0.0.1:8000/api/health >/dev/null
 curl -fsS http://127.0.0.1:8099/api/health >/dev/null
 curl -fsS http://127.0.0.1:8094/api/health >/dev/null
 curl -fsS http://127.0.0.1:8095/api/health >/dev/null
