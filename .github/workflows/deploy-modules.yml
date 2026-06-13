@@ -300,7 +300,7 @@ jobs:
 
           checks = {
               "gateway": "https://www.wangyutang.cn/api/health",
-              "home": "https://www.wangyutang.cn/",
+              "face": "https://www.wangyutang.cn/face/api/state",
           }
           for name, url in checks.items():
               with urllib.request.urlopen(url, timeout=25) as response:
