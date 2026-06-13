@@ -17,19 +17,6 @@ on:
           - audio_recognition
           - pi5_robot
           - smile_face
-  push:
-    branches:
-      - main
-      - feature/llm-manager
-    paths:
-      - "robot_gateway/**"
-      - "audio_recognition/**"
-      - "pi5_robot/**"
-      - "smile_face/**"
-      - "docker-compose.yml"
-      - ".env.example"
-      - "scripts/tencent_apply_release.sh"
-      - ".github/workflows/deploy-modules.yml"
 
 concurrency:
   group: robot-platform-production
