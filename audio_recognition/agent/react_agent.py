@@ -9,7 +9,7 @@ from typing import Any
 import requests
 
 from audio_recognition.core.envelope import DecisionEnvelope, ToolCall, build_call_id
-from audio_recognition.skills.registry import resolve_catalog_path, resolve_registry_path
+from audio_recognition.skills.registry import load_skill_registry, resolve_catalog_path, resolve_registry_path
 from audio_recognition.tools.tool_call_adapter import normalize_legacy_json_to_react_turn, normalize_tool_calls_to_react_turn
 from audio_recognition.tools.tool_schema import build_react_tools_schema, tool_skill_groups
 
@@ -57,6 +57,12 @@ class LlmReactAgent:
 
     def _system_prompt(self) -> str:
         groups = tool_skill_groups(self.registry_path, self.catalog_path)
+        registry = load_skill_registry(self.registry_path, self.catalog_path)
+        alias_hints = {
+            skill_id: list(registry.skills[skill_id].aliases)
+            for skill_id in groups["action"] + groups["face"]
+            if skill_id in registry.skills and registry.skills[skill_id].aliases
+        }
         allowed = {
             "dispatch_action": groups["action"],
             "dispatch_face": groups["face"],
@@ -94,6 +100,7 @@ class LlmReactAgent:
             "- tool_call.args.text must be the minimal source fragment for only this step.\n"
             "- Use front_distance before forward motion when front clearance matters; use camera_snapshot when visual scene evidence is required.\n"
             f"Allowed: {json.dumps(allowed, ensure_ascii=False)}.\n"
+            f"Skill aliases: {json.dumps(alias_hints, ensure_ascii=False)}.\n"
             f"Schema: {json.dumps(schema, ensure_ascii=False)}."
         )
 

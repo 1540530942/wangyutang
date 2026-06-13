@@ -221,6 +221,7 @@ async function transcribeFile(file) {
 async function sendTextCommand() {
   const text = webTextInput?.value?.trim() || "";
   if (!text) throw new Error("请输入网页指令文本");
+  statusEl.textContent = "正在发送文本指令";
   const data = await postJson("./api/recognize-text", {
     device_id: "web-text",
     text,
@@ -232,6 +233,13 @@ async function sendTextCommand() {
   asrResultEl.value = data.result?.text || text;
   asrRawEl.textContent = JSON.stringify(data, null, 2);
   await refresh();
+  if (data.action_error || data.face_error) {
+    statusEl.textContent = `指令派发失败：${data.action_error || data.face_error}`;
+  } else if (data.action_task || data.face_task) {
+    statusEl.textContent = `已派发文本指令：${data.skill?.id || "已匹配"}`;
+  } else if (!data.skill) {
+    statusEl.textContent = "未匹配到可执行动作，请换一种说法";
+  }
 }
 
 function itemRow(primary, secondary, code, className = "item") {

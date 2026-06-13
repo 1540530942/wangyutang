@@ -160,7 +160,7 @@ def _check_skill_preconditions(
                     envelope,
                     task,
                     result,
-                    "recent_camera_snapshot_required",
+                    "recent_front_distance_required",
                     spec=spec,
                     detail={"required_observation": "front_distance_or_camera_snapshot"},
                 )

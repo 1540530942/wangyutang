@@ -211,8 +211,13 @@ class ReactPipelineTest(unittest.TestCase):
         self.assertEqual(registry.defaults["observation_ttl_ms"]["camera_snapshot"], 2000)
         self.assertEqual(registry.defaults["safety_thresholds"]["min_front_distance_estimate_cm"], 15)
         self.assertEqual(forward.risk, "medium")
-        self.assertIn("recent_camera_snapshot", forward.pre_conditions)
-        self.assertIn("front_distance_clear", forward.pre_conditions)
+        self.assertEqual(forward.pre_conditions, ("front_distance_clear",))
+        self.assertIn("左转", registry.get("turn_left").aliases)
+        self.assertIn("右转", registry.get("turn_right").aliases)
+        self.assertIn("摄像头向左", registry.get("look_left").aliases)
+        self.assertIn("摄像头向右", registry.get("look_right").aliases)
+        self.assertIn("抬头看", registry.get("look_up").aliases)
+        self.assertIn("低头看", registry.get("look_down").aliases)
 
     def test_default_llm_config_targets_qwen32_common_api(self) -> None:
         from audio_recognition.agent.react_agent import DEFAULT_LLM_ENDPOINT, DEFAULT_LLM_MODEL, build_llm_react_agent
@@ -225,6 +230,7 @@ class ReactPipelineTest(unittest.TestCase):
         self.assertIn("WALL-E", agent._system_prompt())
         self.assertIn("react_v1_single_tool", agent._system_prompt())
         self.assertIn("one tool_call", agent._system_prompt())
+        self.assertIn("Skill aliases", agent._system_prompt())
 
     def test_simple_command_generates_envelope_tool_task_and_dry_run(self) -> None:
         with patch("audio_recognition.agent.react_agent.requests.post", side_effect=[action_response("turn_left", text="左转"), finish_response()]):
@@ -295,7 +301,7 @@ class ReactPipelineTest(unittest.TestCase):
         self.assertEqual(envelope.react_messages[3]["tool_call_id"], "call_native_turn_left")
         self.assertEqual(envelope.react_turns[0]["message_for_history"]["tool_calls"][0]["id"], "call_native_turn_left")
 
-    def test_move_forward_requires_recent_camera_observation(self) -> None:
+    def test_move_forward_requires_recent_front_distance_observation(self) -> None:
         with patch("audio_recognition.agent.react_agent.requests.post", side_effect=[action_response("move_forward", text="前进"), finish_response(2)]):
             envelope = decide_transcript(
                 base_dir=BASE_DIR,
@@ -308,7 +314,7 @@ class ReactPipelineTest(unittest.TestCase):
         self.assertEqual(envelope.tasks[0].skill_id, "move_forward")
         self.assertEqual(envelope.tasks[0].status, "rejected")
         self.assertEqual(envelope.dispatch_results[0]["status"], "rejected")
-        self.assertEqual(envelope.safety_result["reason"], "recent_camera_snapshot_required")
+        self.assertEqual(envelope.safety_result["reason"], "recent_front_distance_required")
 
     def test_move_forward_rejects_when_front_distance_too_close(self) -> None:
         with patch(

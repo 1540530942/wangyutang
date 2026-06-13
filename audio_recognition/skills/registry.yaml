@@ -22,7 +22,6 @@ skills:
     max_duration_ms: 1000
     risk: medium
     pre_conditions:
-      - recent_camera_snapshot
       - front_distance_clear
     aliases: [forward]
   - id: move_backward
@@ -44,32 +43,32 @@ skills:
     route: action
     tool: dispatch_action
     max_duration_ms: 800
-    aliases: [turn left]
+    aliases: [turn left, 左转, 左拐, 朝左转, 向左旋转, 往左转, 往左拐, 向左拐]
   - id: turn_right
     route: action
     tool: dispatch_action
     max_duration_ms: 800
-    aliases: [turn right]
+    aliases: [turn right, 右转, 右拐, 朝右转, 向右旋转, 往右转, 往右拐, 向右拐]
   - id: look_left
     route: action
     tool: dispatch_action
     max_duration_ms: 1000
-    aliases: [look left]
+    aliases: [look left, 左看, 左边看, 看左边, 向左边看, 摄像头向左, 镜头向左, 舵机向左转]
   - id: look_right
     route: action
     tool: dispatch_action
     max_duration_ms: 1000
-    aliases: [look right]
+    aliases: [look right, 右看, 右边看, 看右边, 向右边看, 摄像头向右, 镜头向右, 舵机向右转]
   - id: look_up
     route: action
     tool: dispatch_action
     max_duration_ms: 1000
-    aliases: [look up]
+    aliases: [look up, 抬头看, 看上面, 向上看, 摄像头向上, 镜头向上, 舵机向上转]
   - id: look_down
     route: action
     tool: dispatch_action
     max_duration_ms: 1000
-    aliases: [look down]
+    aliases: [look down, 低头看, 看下面, 向下看, 摄像头向下, 镜头向下, 舵机向下转]
   - id: reset_pose
     route: action
     tool: dispatch_action
