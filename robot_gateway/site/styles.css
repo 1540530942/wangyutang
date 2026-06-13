@@ -187,11 +187,11 @@ h1 {
 }
 
 .pig-child {
-  left: 50%;
+  left: calc(50% - 41px);
   bottom: 34px;
   width: 82px;
   height: 68px;
-  transform: translateX(-50%) scale(0.86);
+  transform: scale(0.86);
   animation: pig-child-hop 3.2s ease-in-out infinite;
 }
 
@@ -200,22 +200,6 @@ h1 {
   width: 112px;
   height: 92px;
   animation-delay: 0.24s;
-}
-
-.pig-label {
-  position: absolute;
-  right: 50%;
-  bottom: -36px;
-  transform: translateX(50%);
-  min-width: 48px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  color: #8f2f32;
-  font-size: 0.78rem;
-  font-weight: 900;
-  text-align: center;
-  background: rgba(255, 246, 242, 0.92);
-  box-shadow: 0 8px 18px rgba(143, 47, 50, 0.12);
 }
 
 .pig-shadow {
@@ -552,10 +536,10 @@ h1 {
 
 @keyframes pig-child-hop {
   0%, 100% {
-    transform: translateX(-50%) translateY(0) scale(0.86);
+    transform: translateY(0) scale(0.86);
   }
   50% {
-    transform: translateX(-50%) translateY(-18px) scale(0.9);
+    transform: translateY(-18px) scale(0.9);
   }
 }
 
