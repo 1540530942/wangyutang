@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -41,6 +41,4 @@ def index() -> FileResponse:
 
 @app.get("/lab")
 def lab() -> FileResponse:
-    if not settings.lab_enabled:
-        raise HTTPException(status_code=404, detail="Common API lab is disabled")
     return FileResponse(f"{settings.static_dir}/lab.html")

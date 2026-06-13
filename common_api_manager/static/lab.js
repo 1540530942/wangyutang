@@ -174,7 +174,7 @@ async function runLlm() {
 $('loginForm').addEventListener('submit', (event) => {
   event.preventDefault();
   if ($('captchaInput').value.trim() !== '123') {
-    $('loginError').textContent = '验证码不正确。提示：123。';
+    $('loginError').textContent = '验证码不正确。提示：12。';
     return;
   }
   sessionStorage.setItem('common_api_lab_unlocked', '1');

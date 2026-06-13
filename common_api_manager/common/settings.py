@@ -17,7 +17,6 @@ load_dotenv(os.path.join(os.path.dirname(BASE_DIR), ".env"))
 class Settings:
     base_dir: str = BASE_DIR
     static_dir: str = STATIC_DIR
-    lab_enabled: bool = os.getenv("COMMON_API_LAB_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
     dashscope_api_key: str = os.getenv("DASHSCOPE_API_KEY", "").strip()
     asr_model: str = os.getenv("ASR_MODEL", "qwen3-asr-flash-realtime")
     realtime_url: str = os.getenv("DASHSCOPE_REALTIME_URL", "wss://dashscope.aliyuncs.com/api-ws/v1/realtime")
