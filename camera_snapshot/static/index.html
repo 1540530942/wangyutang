@@ -134,8 +134,12 @@
 
     <section class="inspection">
       <div class="section-title">
-        <p class="eyebrow">Inspection</p>
-        <h2>远程巡检</h2>
+        <div>
+          <p class="eyebrow">Inspection</p>
+          <h2>远程巡检</h2>
+          <p id="inspectionHint" class="section-hint">尚未巡检，点击按钮让树莓派上报 CPU、内存、网络和服务状态。</p>
+        </div>
+        <button id="inspectionRunButton" class="primary secondary" type="button">立即远程巡检</button>
       </div>
       <div class="inspection-grid">
         <div><span>主机</span><strong id="inspectHost">-</strong></div>
@@ -154,6 +158,6 @@
       </div>
     </section>
   </main>
-  <script src="./static/app.js?v=20260613-inspection-metrics"></script>
+  <script src="./static/app.js?v=20260614-inspection-action"></script>
 </body>
 </html>

@@ -40,6 +40,8 @@ const elements = {
   screenshotButton: document.getElementById("screenshotButton"),
   faceButton: document.getElementById("faceButton"),
   inspectButton: document.getElementById("inspectButton"),
+  inspectionRunButton: document.getElementById("inspectionRunButton"),
+  inspectionHint: document.getElementById("inspectionHint"),
   continuousButton: document.getElementById("continuousButton"),
   cameraDownloadButton: document.getElementById("cameraDownloadButton"),
   screenDownloadButton: document.getElementById("screenDownloadButton"),
@@ -155,6 +157,9 @@ function clearInspection() {
     elements.inspectService,
     elements.inspectLoad,
   ].forEach((element) => setValue(element, "-"));
+  if (elements.inspectionHint) {
+    elements.inspectionHint.textContent = "尚未巡检，点击按钮让树莓派上报 CPU、内存、网络和服务状态。";
+  }
 }
 
 function isTaskActive(task) {
@@ -225,7 +230,13 @@ async function loadInspection() {
     const throttled = inspection.throttled || "-";
     const throttleOk = typeof throttled === "string" && (throttled.includes("0x0") || throttled === "unavailable");
     const service = inspection.sender_service || "-";
+    const reportedAt = Number(inspection.reported_at || 0);
 
+    if (elements.inspectionHint) {
+      elements.inspectionHint.textContent = reportedAt
+        ? `最近巡检：${formatTime(reportedAt)}（${formatAge(Date.now() / 1000 - reportedAt)}）`
+        : "已收到巡检数据";
+    }
     setValue(elements.inspectHost, inspection.hostname);
     setValue(elements.inspectTemp, tempLabel, Number.isFinite(temp) && temp < 70 ? "ok" : "warn");
     setValue(elements.inspectCpu, cpuUsageLabel, Number.isFinite(cpuUsage) && cpuUsage < 80 ? "ok" : "warn");
@@ -423,6 +434,7 @@ async function tick() {
 elements.singleButton.addEventListener("click", () => createTask("camera", "single"));
 elements.screenshotButton.addEventListener("click", () => createTask("screen", "single"));
 elements.inspectButton.addEventListener("click", () => createTask("screen", "inspect"));
+elements.inspectionRunButton?.addEventListener("click", () => createTask("screen", "inspect"));
 elements.faceButton.addEventListener("click", () => createTask("face", "single"));
 elements.cameraDownloadButton.addEventListener("click", () => downloadLatestImage("camera"));
 elements.screenDownloadButton.addEventListener("click", () => downloadLatestImage("screen"));

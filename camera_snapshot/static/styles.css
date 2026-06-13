@@ -311,7 +311,18 @@ button.primary.danger {
 }
 
 .section-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
   margin-bottom: 10px;
+}
+
+.section-hint {
+  max-width: 720px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.6;
 }
 
 .inspection-grid {
@@ -326,6 +337,14 @@ button.primary.danger {
 }
 
 @media (max-width: 720px) {
+  .section-title {
+    display: grid;
+  }
+
+  .section-title button {
+    width: 100%;
+  }
+
   .meta,
   .inspection-grid,
   .channel-meta {
