@@ -1,14 +1,12 @@
 $ErrorActionPreference = "Continue"
 
 $checks = @(
-  @{ Name = "platform"; Url = "http://127.0.0.1:8098/api/health" },
-  @{ Name = "paper-learning"; Url = "http://127.0.0.1:8088/api/health" },
-  @{ Name = "paper-hermes"; Url = "http://127.0.0.1:8091/api/health" },
   @{ Name = "remote-api"; Url = "http://127.0.0.1:8000/api/health" },
-  @{ Name = "remote-sensing"; Url = "http://127.0.0.1:8090/api/health" },
   @{ Name = "camera-snapshot"; Url = "http://127.0.0.1:8099/api/health" },
-  @{ Name = "web-manager"; Url = "http://127.0.0.1:8092/api/health" },
-  @{ Name = "gateway"; Url = "http://127.0.0.1/api/health" }
+  @{ Name = "action-move"; Url = "http://127.0.0.1:8094/api/health" },
+  @{ Name = "audio-recognition"; Url = "http://127.0.0.1:8095/api/health" },
+  @{ Name = "pi5-robot"; Url = "http://127.0.0.1:8093/api/health" },
+  @{ Name = "smile-face"; Url = "http://127.0.0.1:8096/api/health" }
 )
 
 $failed = 0

@@ -16,13 +16,16 @@ Emergency docker cp fixes are temporary only and must be folded back into source
 Host: 110.40.154.41
 SSH user: root
 Default SSH alias: tencent
-Server release root: /root/control_platform/releases
-Server current link: /root/control_platform/current
+Server release root: /root/wangyutang_platform/releases
+Server current link: /root/wangyutang_platform/current
 Primary URLs:
-  https://www.wangyutang.cn/
-  https://www.wangyutang.cn/camera/
-  http://110.40.154.41/
-  http://110.40.154.41/camera/
+  http://110.40.154.41:5173/
+  http://110.40.154.41:8000/api/health
+  http://110.40.154.41:8099/api/health
+  http://110.40.154.41:8094/api/health
+  http://110.40.154.41:8095/api/health
+  http://110.40.154.41:8093/api/health
+  http://110.40.154.41:8096/api/health
 ```
 
 ## Standard Flow
@@ -68,10 +71,10 @@ The deployment script performs these steps:
 3. Build Docker images with docker compose build.
 4. Export the production images with docker save.
 5. Create a timestamped release directory under dist\tencent_releases.
-6. Copy docker-compose.yml, .env example files, Caddyfile, registry, scripts, and image archives into the release.
-7. Upload the release to /root/control_platform/releases/<timestamp>.
+6. Copy docker-compose.yml, .env example files, runtime infra, scripts, and image archives into the release.
+7. Upload the release to /root/wangyutang_platform/releases/<timestamp>.
 8. Run scripts/tencent_apply_release.sh on the server.
-9. Verify public URLs.
+9. Verify service health URLs.
 10. Write docs/logs/<date>-tencent-deploy-<timestamp>.md.
 ```
 
@@ -127,8 +130,8 @@ powershell -ExecutionPolicy Bypass -File scripts\deploy_tencent.ps1 -ReleaseId 2
 On the server:
 
 ```bash
-cd /root/control_platform
-ln -sfn /root/control_platform/releases/<previous-release> current
+cd /root/wangyutang_platform
+ln -sfn /root/wangyutang_platform/releases/<previous-release> current
 cd current
 docker compose --env-file .env -f docker-compose.yml up -d --no-build
 ```
@@ -136,13 +139,17 @@ docker compose --env-file .env -f docker-compose.yml up -d --no-build
 Then verify:
 
 ```bash
-curl -fsS http://127.0.0.1/api/health
-curl -fsS http://127.0.0.1/camera/api/health
+curl -fsS http://127.0.0.1:8000/api/health
+curl -fsS http://127.0.0.1:8099/api/health
+curl -fsS http://127.0.0.1:8094/api/health
+curl -fsS http://127.0.0.1:8095/api/health
+curl -fsS http://127.0.0.1:8093/api/health
+curl -fsS http://127.0.0.1:8096/api/health
 ```
 
 ## Notes
 
 - Tencent Cloud SSH may close rapid repeated connections. Wait 45 to 120 seconds before retrying.
 - Docker Hub access from the server has been unreliable, so releases include local image archives and use `docker load`.
-- The server may keep historical image tags such as `control-platform:deployed-<timestamp>` for emergency recovery, but the normal runtime tags are the `:local` names used by Compose.
+- The normal runtime tags are the `:local` names used by Compose.
 - The Raspberry Pi camera sender must be managed by systemd only. Do not start manual `nohup python3 pi_camera_sender.py ...` copies; the sender has a lock file to reject duplicate instances.

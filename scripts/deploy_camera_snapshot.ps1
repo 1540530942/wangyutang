@@ -1,8 +1,8 @@
 param(
   [string]$RemoteHost = "tencent",
   [string]$RemoteRoot = "/root/camera_snapshot",
-  [string]$RemotePlatformRoot = "/root/control_platform",
-  [string]$RemoteComposeFile = "/root/control_platform/infra/docker-compose.platform.yml",
+  [string]$RemotePlatformRoot = "/root/wangyutang_platform",
+  [string]$RemoteComposeFile = "/root/wangyutang_platform/docker-compose.yml",
   [string]$PiHost = "raspberrypi-via-tencent",
   [string]$PiSenderPath = "/home/pi/pi_camera_sender.py",
   [string]$PiServicePath = "/etc/systemd/system/camera-snapshot-sender.service",
@@ -29,11 +29,11 @@ function Invoke-Checked([string]$Command, [string[]]$Arguments) {
 
 function Wait-ForTaskResult([string]$Kind, [string]$Mode, [string[]]$ExpectedSources, [int]$TimeoutSec = 45) {
   $body = @{ kind = $Kind; mode = $Mode; query_gpio = 26 } | ConvertTo-Json -Compress
-  $task = Invoke-RestMethod -Uri "https://www.wangyutang.cn/camera/api/capture" -Method Post -ContentType "application/json" -Body $body -TimeoutSec 15
+  $task = Invoke-RestMethod -Uri "http://110.40.154.41:8099/api/capture" -Method Post -ContentType "application/json" -Body $body -TimeoutSec 15
   $deadline = (Get-Date).AddSeconds($TimeoutSec)
   do {
     Start-Sleep -Seconds 2
-    $latest = Invoke-RestMethod -Uri "https://www.wangyutang.cn/camera/api/latest?kind=$Kind" -TimeoutSec 15
+    $latest = Invoke-RestMethod -Uri "http://110.40.154.41:8099/api/latest?kind=$Kind" -TimeoutSec 15
     if ($latest.task_id -eq $task.task.id -and $ExpectedSources -contains $latest.capture_source) {
       Write-Host ("OK   kind={0} mode={1} task={2} source={3}" -f $Kind, $Mode, $latest.task_id, $latest.capture_source)
       return
@@ -115,7 +115,7 @@ ps -ef | grep -E 'pi_camera_sender.py' | grep -v grep
 
 if (-not $SkipVerify) {
   Write-Step "Verifying public camera page and capture modes"
-  $html = Invoke-WebRequest -Uri "https://www.wangyutang.cn/camera/" -UseBasicParsing -TimeoutSec 20
+  $html = Invoke-WebRequest -Uri "http://110.40.154.41:8099/" -UseBasicParsing -TimeoutSec 20
   $labels = @(
     (-join @([char]0x6444, [char]0x50cf, [char]0x673a, [char]0x622a, [char]0x56fe)),
     (-join @([char]0x5c4f, [char]0x5e55, [char]0x622a, [char]0x56fe)),
@@ -126,7 +126,7 @@ if (-not $SkipVerify) {
       throw "Camera page missing button label: $label"
     }
   }
-  Invoke-RestMethod -Uri "https://www.wangyutang.cn/camera/api/health" -TimeoutSec 15 | Out-Null
+  Invoke-RestMethod -Uri "http://110.40.154.41:8099/api/health" -TimeoutSec 15 | Out-Null
   Wait-ForTaskResult "camera" "single" @("web-video-server", "rpicam-still", "picamera2", "opencv", "fake-camera")
   Wait-ForTaskResult "screen" "single" @("screenshot")
   Wait-ForTaskResult "face" "single" @("smile-face-render")

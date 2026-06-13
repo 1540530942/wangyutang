@@ -6,7 +6,7 @@ commit_sha="${2:-unknown}"
 
 deploy_root="${CAMERA_DEPLOY_ROOT:-/root/camera_snapshot}"
 release_root="${CAMERA_RELEASE_ROOT:-/root/camera_snapshot/releases}"
-platform_root="${PLATFORM_ROOT:-/root/control_platform}"
+platform_root="${PLATFORM_ROOT:-/root/wangyutang_platform}"
 compose_file="${CAMERA_COMPOSE_FILE:-}"
 release_dir="$release_root/$commit_sha"
 
@@ -71,8 +71,6 @@ if [ "${CAMERA_BUILD_IMAGES:-false}" = "true" ]; then
   if [ -z "$compose_file" ]; then
     if [ -f "$platform_root/docker-compose.yml" ]; then
       compose_file="$platform_root/docker-compose.yml"
-    elif [ -f "$platform_root/infra/docker-compose.platform.yml" ]; then
-      compose_file="$platform_root/infra/docker-compose.platform.yml"
     else
       echo "camera compose file not found under $platform_root" >&2
       exit 1

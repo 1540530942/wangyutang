@@ -368,24 +368,22 @@ POST http://127.0.0.1:8100/api/asr/transcribe
 -> 返回识别文本 JSON
 ```
 
-公网 ASR/TTS 链路：
+服务器 ASR/TTS 链路：
 
 ```text
 浏览器 / API 调用方
--> https://www.wangyutang.cn/common/
--> Caddy /common/*
+-> http://<host>:8101/
 -> common-api.service
--> /root/control_platform/common_api/app_src/app.py
+-> /root/wangyutang_platform/common_api/app_src/app.py
 -> LV 39.156.151.204:8000/8001
 -> 返回 ASR JSON 或 TTS WAV
 ```
 
-公网 LLM 链路：
+服务器 LLM 链路：
 
 ```text
 浏览器 / API 调用方
--> https://www.wangyutang.cn/common/api/llm/chat
--> Caddy /common/*
+-> http://<host>:8101/api/llm/chat
 -> common-api.service
 -> 腾讯云 127.0.0.1:18002
 -> SSH tunnel

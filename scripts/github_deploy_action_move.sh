@@ -4,7 +4,7 @@ set -euo pipefail
 archive_path="${1:?release archive path is required}"
 commit_sha="${2:-unknown}"
 
-platform_root="${PLATFORM_ROOT:-/root/control_platform}"
+platform_root="${PLATFORM_ROOT:-/root/wangyutang_platform}"
 release_root="${ACTION_MOVE_RELEASE_ROOT:-/root/action_move/releases}"
 release_dir="$release_root/$commit_sha"
 compose_file="${ACTION_MOVE_COMPOSE_FILE:-}"
@@ -44,8 +44,6 @@ python3 -m json.tool action_move/skill_catalog.json >/dev/null
 if [ -z "$compose_file" ]; then
   if [ -f "$platform_root/docker-compose.yml" ]; then
     compose_file="$platform_root/docker-compose.yml"
-  elif [ -f "$platform_root/infra/docker-compose.platform.yml" ]; then
-    compose_file="$platform_root/infra/docker-compose.platform.yml"
   else
     echo "compose file not found under $platform_root" >&2
     exit 1

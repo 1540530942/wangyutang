@@ -4,7 +4,7 @@
 
 `common_api_manager` 已部署到腾讯云，作为公共接口 `common_api` 的一部分提供语音转文本能力。
 
-在线页面：
+在线页面（旧公网网关仍存在时可用；当前机器人平台仓库不再维护 Caddy 网关配置）：
 
 ```text
 https://www.wangyutang.cn/common/
@@ -121,13 +121,13 @@ POST https://www.wangyutang.cn/audio/api/asr/transcribe
 源码目录：
 
 ```text
-/root/control_platform/common_api/app_src
+/root/wangyutang_platform/common_api/app_src
 ```
 
 环境文件：
 
 ```text
-/root/control_platform/common_api/.env
+/root/wangyutang_platform/common_api/.env
 ```
 
 环境变量：
@@ -155,7 +155,7 @@ MODEL_USAGE_COLLECTOR_URL=http://127.0.0.1:18080/usage
 最终使用：
 
 ```text
-systemd + Python venv + Caddy reverse proxy
+systemd + Python venv
 ```
 
 systemd 服务：
@@ -185,51 +185,24 @@ enabled
 active
 ```
 
-## Caddy 路由
+## 访问方式
 
-腾讯云 Caddy 配置文件：
-
-```text
-/root/control_platform/infra/caddy/Caddyfile
-```
-
-本地对应文件：
+当前仓库不再维护统一 Caddy 网关。`common-api` 如果继续运行，优先按独立 systemd 服务和直连端口验证：
 
 ```text
-C:\Users\Administrator\Desktop\Workspace\Project_Codex\wangyutang_platform\control_platform\infra\caddy\Caddyfile
+http://127.0.0.1:8101/api/health
 ```
 
-新增路由：
-
-```text
-/common/* -> 172.18.0.1:8101
-```
-
-公网路径：
-
-```text
-https://www.wangyutang.cn/common/
-https://www.wangyutang.cn/common/api/health
-https://www.wangyutang.cn/common/api/asr/transcribe
-```
-
-Caddy 验证和重载：
-
-```bash
-docker exec control-platform-caddy caddy validate --config /etc/caddy/Caddyfile
-docker exec control-platform-caddy caddy reload --config /etc/caddy/Caddyfile
-```
+如需重新暴露公网入口，应在新的网关或云厂商负载均衡中单独配置，不再依赖 `control_platform`。
 
 ## 部署链路
 
 ```text
 本地 wangyutang_platform/common_api_manager
 -> 打包上传到腾讯云
--> /root/control_platform/common_api/app_src
+-> /root/wangyutang_platform/common_api/app_src
 -> common-api.service
 -> http://127.0.0.1:8101
--> Caddy /common/*
--> https://www.wangyutang.cn/common/
 ```
 
 ## 数据链路
@@ -238,9 +211,7 @@ docker exec control-platform-caddy caddy reload --config /etc/caddy/Caddyfile
 
 ```text
 用户浏览器 / API 调用方
--> POST https://www.wangyutang.cn/common/api/asr/transcribe
--> Caddy 去掉 /common 前缀
--> POST http://172.18.0.1:8101/api/asr/transcribe
+-> POST http://<host>:8101/api/asr/transcribe
 -> FastAPI app.py
 -> WAV 解析为 PCM
 -> 重采样到 16k

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 release_dir="${1:?release directory is required}"
-deploy_root="${2:-/root/control_platform}"
+deploy_root="${2:-/root/wangyutang_platform}"
 
 if [ ! -d "$release_dir" ]; then
   echo "release directory not found: $release_dir" >&2
@@ -13,8 +13,6 @@ cd "$release_dir"
 
 echo "==> Validating release files"
 test -f docker-compose.yml
-test -f infra/Caddyfile
-test -f infra/registry.json
 test -d images
 
 if [ -f SHA256SUMS.txt ]; then
@@ -29,13 +27,9 @@ done
 
 echo "==> Installing runtime files"
 mkdir -p "$deploy_root"
-mkdir -p "$deploy_root/control_platform/infra/caddy"
-mkdir -p "$deploy_root/control_platform/modules"
 mkdir -p "$deploy_root/remote_control_cloud/infra/mosquitto"
 
 cp docker-compose.yml "$deploy_root/docker-compose.yml"
-cp infra/Caddyfile "$deploy_root/control_platform/infra/caddy/Caddyfile"
-cp infra/registry.json "$deploy_root/control_platform/modules/registry.json"
 if [ -f infra/mosquitto/mosquitto.conf ]; then
   cp infra/mosquitto/mosquitto.conf "$deploy_root/remote_control_cloud/infra/mosquitto/mosquitto.conf"
 fi
@@ -61,20 +55,14 @@ docker compose --env-file .env -f docker-compose.yml config --quiet
 
 echo "==> Stopping containers that use fixed production names"
 for name in \
-  control-platform-caddy \
-  wangyutang-caddy \
-  control-platform \
-  paper-hermes \
-  paper-learning-system \
   remote-control-mqtt \
   remote-control-api \
   remote-control-web \
-  remote-sensing \
   camera-snapshot \
   action-move \
   audio-recognition \
-  web-manager \
-  pi5-robot
+  pi5-robot \
+  smile-face
 do
   if docker ps -a --format '{{.Names}}' | grep -qx "$name"; then
     docker rm -f "$name" >/dev/null
@@ -84,9 +72,12 @@ done
 docker compose --env-file .env -f docker-compose.yml up -d --no-build
 
 echo "==> Local health checks"
-curl -fsS http://127.0.0.1/api/health >/dev/null
-curl -fsS http://127.0.0.1/camera/api/health >/dev/null
-curl -fsS http://127.0.0.1/action/api/health >/dev/null
+curl -fsS http://127.0.0.1:8000/api/health >/dev/null
+curl -fsS http://127.0.0.1:8099/api/health >/dev/null
+curl -fsS http://127.0.0.1:8094/api/health >/dev/null
+curl -fsS http://127.0.0.1:8095/api/health >/dev/null
+curl -fsS http://127.0.0.1:8093/api/health >/dev/null
+curl -fsS http://127.0.0.1:8096/api/health >/dev/null
 
 echo "==> Service status"
 docker compose --env-file .env -f docker-compose.yml ps

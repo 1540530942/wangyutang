@@ -1,105 +1,4 @@
 services:
-  caddy:
-    image: ${CADDY_IMAGE:-caddy:2.8-alpine}
-    container_name: wangyutang-caddy
-    env_file:
-      - .env
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./control_platform/infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      platform:
-        condition: service_healthy
-      paper-learning:
-        condition: service_healthy
-      remote-control-web:
-        condition: service_started
-      remote-control-api:
-        condition: service_healthy
-      remote-sensing:
-        condition: service_healthy
-      camera-snapshot:
-        condition: service_started
-      action-move:
-        condition: service_healthy
-      audio-recognition:
-        condition: service_healthy
-      web-manager:
-        condition: service_healthy
-      smile-face:
-        condition: service_healthy
-    restart: unless-stopped
-
-  platform:
-    image: ${CONTROL_PLATFORM_IMAGE:-control-platform:local}
-    build:
-      context: ./control_platform
-      args:
-        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.12-slim}
-        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
-    container_name: control-platform
-    env_file:
-      - .env
-    ports:
-      - "8098:8098"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8098/api/health', timeout=3).read()"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
-    restart: unless-stopped
-
-  paper-hermes:
-    image: ${PAPER_HERMES_IMAGE:-paper-hermes:local}
-    build:
-      context: ./paper_learning_system
-      dockerfile: Dockerfile.hermes
-      args:
-        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.12-slim}
-        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
-    container_name: paper-hermes
-    env_file:
-      - .env
-    ports:
-      - "127.0.0.1:8091:8091"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/api/health', timeout=3).read()"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-    restart: unless-stopped
-
-  paper-learning:
-    image: ${PAPER_LEARNING_IMAGE:-paper-learning-system:local}
-    build:
-      context: ./paper_learning_system
-      args:
-        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.12-slim}
-        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
-    container_name: paper-learning-system
-    env_file:
-      - .env
-    depends_on:
-      paper-hermes:
-        condition: service_healthy
-    ports:
-      - "8088:8088"
-    volumes:
-      - paper_learning_data:/app/data
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/api/health', timeout=3).read()"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
-    restart: unless-stopped
-
   remote-control-mqtt:
     image: eclipse-mosquitto:2
     container_name: remote-control-mqtt
@@ -150,26 +49,6 @@ services:
       - .env
     ports:
       - "5173:5173"
-    restart: unless-stopped
-
-  remote-sensing:
-    image: ${REMOTE_SENSING_IMAGE:-remote-sensing-system:local}
-    build:
-      context: ./remote_sensing
-      args:
-        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.12-slim}
-        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
-    container_name: remote-sensing
-    env_file:
-      - .env
-    ports:
-      - "8090:8090"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/api/health', timeout=3).read()"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
     restart: unless-stopped
 
   camera-snapshot:
@@ -240,31 +119,6 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  web-manager:
-    image: ${WEB_MANAGER_IMAGE:-web-manager:local}
-    build:
-      context: ./llm_manager
-      args:
-        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.12-slim}
-        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
-    container_name: web-manager
-    env_file:
-      - .env
-    environment:
-      WEB_MANAGER_REGISTRY_PATH: /app/control_platform/modules/registry.json
-    ports:
-      - "8092:8092"
-    volumes:
-      - llm_manager_data:/app/data
-      - ./control_platform/modules/registry.json:/app/control_platform/modules/registry.json:ro
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8092/api/health', timeout=3).read()"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
-
   pi5-robot:
     image: ${PI5_ROBOT_IMAGE:-pi5-robot:local}
     build:
@@ -308,13 +162,9 @@ services:
     restart: unless-stopped
 
 volumes:
-  caddy_data:
-  caddy_config:
-  paper_learning_data:
   camera_snapshot_data:
   action_move_data:
   audio_recognition_data:
-  llm_manager_data:
   pi5_robot_episodes:
   remote_control_mqtt_data:
   remote_control_mqtt_log:
