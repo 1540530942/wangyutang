@@ -17,6 +17,7 @@ load_dotenv(os.path.join(os.path.dirname(BASE_DIR), ".env"))
 class Settings:
     base_dir: str = BASE_DIR
     static_dir: str = STATIC_DIR
+    lab_enabled: bool = os.getenv("COMMON_API_LAB_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
     dashscope_api_key: str = os.getenv("DASHSCOPE_API_KEY", "").strip()
     asr_model: str = os.getenv("ASR_MODEL", "qwen3-asr-flash-realtime")
     realtime_url: str = os.getenv("DASHSCOPE_REALTIME_URL", "wss://dashscope.aliyuncs.com/api-ws/v1/realtime")
@@ -49,8 +50,16 @@ class Settings:
         "https://dashscope.aliyuncs.com/compatible-mode/v1",
     ).rstrip("/")
     dashscope_text_model: str = os.getenv("TEXT_MODEL", "qwen3-32b")
+    dashscope_vision_model: str = os.getenv("VISION_MODEL", "qwen-vl-plus")
+    vision_default_question: str = os.getenv("VISION_DEFAULT_QUESTION", "请描述这张图片，并提取其中的文字和关键信息。")
+    vision_max_image_bytes: int = int(os.getenv("VISION_MAX_IMAGE_BYTES", "10000000"))
+    vision_resize_max_side: int = int(os.getenv("VISION_RESIZE_MAX_SIDE", "1280"))
+    vision_jpeg_quality: int = int(os.getenv("VISION_JPEG_QUALITY", "85"))
     dashscope_timeout_seconds: float = float(os.getenv("DASHSCOPE_TIMEOUT_SECONDS", "180"))
     lv_timeout_seconds: float = float(os.getenv("LV_QWEN_TIMEOUT_SECONDS", "180"))
+    spark_qwen_base_url: str = os.getenv("SPARK_QWEN_BASE_URL", "http://127.0.0.1:18000").rstrip("/")
+    spark_qwen_model: str = os.getenv("SPARK_QWEN_MODEL", "qwen3.6-35b-a3b-fp8")
+    spark_qwen_timeout_seconds: float = float(os.getenv("SPARK_QWEN_TIMEOUT_SECONDS", "180"))
     model_usage_collector_url: str = os.getenv("MODEL_USAGE_COLLECTOR_URL", "").strip()
 
 

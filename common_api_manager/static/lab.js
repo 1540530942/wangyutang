@@ -1,0 +1,213 @@
+const $ = (id) => document.getElementById(id);
+const API_PREFIX = window.location.pathname.startsWith('/common/') ? '/common' : '';
+const state = { health: null };
+
+function toast(message, bad = false) {
+  const node = $('toast');
+  node.textContent = message;
+  node.classList.toggle('bad', bad);
+  node.classList.add('show');
+  window.setTimeout(() => node.classList.remove('show'), 3200);
+}
+
+function pretty(value) {
+  return JSON.stringify(value, null, 2);
+}
+
+function setBusy(button, busy, label) {
+  if (!button.dataset.label) button.dataset.label = button.textContent;
+  button.disabled = busy;
+  button.textContent = busy ? label : button.dataset.label;
+}
+
+async function requestJson(url, options = {}) {
+  const response = await fetch(API_PREFIX + url, options);
+  const text = await response.text();
+  let data;
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { text }; }
+  if (!response.ok) {
+    const detail = data.detail || data.error || text || `HTTP ${response.status}`;
+    throw new Error(typeof detail === 'string' ? detail : pretty(detail));
+  }
+  return data;
+}
+
+function applyHealth(data) {
+  state.health = data;
+  $('healthSignal').classList.add('ok');
+  $('healthSignal').classList.remove('bad');
+  $('healthText').textContent = '接口在线';
+  $('healthDetail').textContent = '模型信息已同步';
+  const models = data.models || {};
+  $('asrModelLabel').textContent = models.asr || '-';
+  $('visionModelLabel').textContent = models.vision || '-';
+  $('llmModelLabel').textContent = models.llm_tools || models.llm || '-';
+  $('sparkModelLabel').textContent = models.spark_llm || '-';
+  if (!$('asrModel').value) $('asrModel').value = models.asr || '';
+  if (!$('visionModel').value && models.vision) $('visionModel').value = models.vision;
+  $('llmModel').value = models.llm_tools || 'qwen3-32b';
+  updateAsrPrompt();
+  updateLlmEndpoint();
+}
+
+async function loadHealth() {
+  try {
+    applyHealth(await requestJson('/api/health'));
+  } catch (error) {
+    $('healthSignal').classList.add('bad');
+    $('healthText').textContent = '健康检查失败';
+    $('healthDetail').textContent = error.message;
+  }
+}
+
+function updateAsrPrompt() {
+  $('asrPrompt').textContent = `language=zh\nmodel=${$('asrModel').value || '(默认)'}`;
+}
+
+function messagesPayload() {
+  return [
+    { role: 'system', content: $('systemPrompt').value.trim() },
+    { role: 'user', content: $('userPrompt').value.trim() },
+  ].filter((item) => item.content);
+}
+
+function llmRoute() {
+  const endpoint = $('llmEndpoint').value;
+  if (endpoint === 'spark') return '/api/llm/spark-qwen/chat';
+  if (endpoint === 'lv') return '/api/llm/chat';
+  return '/api/llm/qwen3-32b/chat';
+}
+
+function updateLlmEndpoint() {
+  const models = (state.health && state.health.models) || {};
+  if ($('llmEndpoint').value === 'spark') $('llmModel').value = models.spark_llm || 'qwen3.6-35b-a3b-fp8';
+  if ($('llmEndpoint').value === 'lv') $('llmModel').value = models.llm || 'qwen3.5-9b';
+  if ($('llmEndpoint').value === 'dashscope') $('llmModel').value = models.llm_tools || 'qwen3-32b';
+  $('llmEndpointLabel').textContent = `POST ${llmRoute()}`;
+  updateFullPrompt();
+}
+
+function updateFullPrompt() {
+  const payload = {
+    model: $('llmModel').value.trim(),
+    messages: messagesPayload(),
+    temperature: 0.2,
+    max_tokens: 512,
+  };
+  if ($('llmEndpoint').value === 'spark') {
+    payload.chat_template_kwargs = { enable_thinking: false };
+  }
+  $('llmFullPrompt').textContent = pretty(payload);
+}
+
+async function runAsr() {
+  const file = $('audioFile').files[0];
+  if (!file) return toast('请先选择音频文件', true);
+  const body = new FormData();
+  body.append('language', 'zh');
+  if ($('asrModel').value.trim()) body.append('model', $('asrModel').value.trim());
+  body.append('file', file);
+  setBusy($('runAsr'), true, '识别中...');
+  try {
+    updateAsrPrompt();
+    const data = await requestJson('/api/asr/transcribe', { method: 'POST', body });
+    $('asrResult').value = data.text || data.transcript || pretty(data);
+    $('asrRaw').textContent = pretty(data);
+    toast('ASR 完成');
+  } catch (error) {
+    $('asrRaw').textContent = error.message;
+    toast(error.message, true);
+  } finally {
+    setBusy($('runAsr'), false);
+  }
+}
+
+async function runVision() {
+  const file = $('imageFile').files[0];
+  if (!file) return toast('请先选择图片', true);
+  const body = new FormData();
+  body.append('question', $('visionPrompt').value.trim());
+  body.append('model', $('visionModel').value.trim());
+  body.append('file', file);
+  setBusy($('runVision'), true, '理解中...');
+  try {
+    const data = await requestJson('/api/vision/qwen/analyze', { method: 'POST', body });
+    $('visionResult').value = data.text || pretty(data);
+    $('visionRaw').textContent = pretty(data);
+    toast('图像理解完成');
+  } catch (error) {
+    $('visionRaw').textContent = error.message;
+    toast(error.message, true);
+  } finally {
+    setBusy($('runVision'), false);
+  }
+}
+
+async function runLlm() {
+  const payload = {
+    model: $('llmModel').value.trim(),
+    messages: messagesPayload(),
+    temperature: 0.2,
+    max_tokens: 512,
+  };
+  if ($('llmEndpoint').value === 'spark') payload.chat_template_kwargs = { enable_thinking: false };
+  if (!payload.messages.length) return toast('请输入提示词', true);
+  setBusy($('runLlm'), true, '生成中...');
+  try {
+    $('llmFullPrompt').textContent = pretty(payload);
+    const data = await requestJson(llmRoute(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    $('llmResult').value = data.text || pretty(data);
+    $('llmRaw').textContent = pretty(data);
+    toast('LLM 完成');
+  } catch (error) {
+    $('llmRaw').textContent = error.message;
+    toast(error.message, true);
+  } finally {
+    setBusy($('runLlm'), false);
+  }
+}
+
+$('loginForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  if ($('captchaInput').value.trim() !== '123') {
+    $('loginError').textContent = '验证码不正确。提示：123。';
+    return;
+  }
+  sessionStorage.setItem('common_api_lab_unlocked', '1');
+  $('gate').classList.add('hidden');
+  $('app').classList.remove('hidden');
+  loadHealth();
+});
+
+$('audioFile').addEventListener('change', () => {
+  const file = $('audioFile').files[0];
+  $('audioName').textContent = file ? `${file.name} · ${Math.round(file.size / 1024)} KB` : 'WAV / MP3 / M4A / OGG';
+});
+$('imageFile').addEventListener('change', () => {
+  const file = $('imageFile').files[0];
+  $('imageName').textContent = file ? `${file.name} · ${Math.round(file.size / 1024)} KB` : 'JPG / PNG / WebP';
+  const zone = document.querySelector('.image-zone');
+  if (!file) return zone.classList.remove('has-image');
+  $('imagePreview').src = URL.createObjectURL(file);
+  zone.classList.add('has-image');
+});
+$('asrModel').addEventListener('input', updateAsrPrompt);
+$('llmEndpoint').addEventListener('change', updateLlmEndpoint);
+$('llmModel').addEventListener('input', updateFullPrompt);
+$('systemPrompt').addEventListener('input', updateFullPrompt);
+$('userPrompt').addEventListener('input', updateFullPrompt);
+$('runAsr').addEventListener('click', runAsr);
+$('runVision').addEventListener('click', runVision);
+$('runLlm').addEventListener('click', runLlm);
+
+if (sessionStorage.getItem('common_api_lab_unlocked') === '1') {
+  $('gate').classList.add('hidden');
+  $('app').classList.remove('hidden');
+  loadHealth();
+}
+updateAsrPrompt();
+updateFullPrompt();

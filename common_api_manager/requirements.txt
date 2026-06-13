@@ -3,3 +3,4 @@ uvicorn
 python-dotenv
 python-multipart
 dashscope>=1.25.6
+Pillow

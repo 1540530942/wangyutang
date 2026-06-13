@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Common API Lab</title>
+    <link rel="stylesheet" href="./static/lab.css" />
+  </head>
+  <body>
+    <div class="grid-glow" aria-hidden="true"></div>
+    <section id="gate" class="gate-shell">
+      <div class="gate-card">
+        <p class="kicker">WANGYUTANG / COMMON API</p>
+        <h1>模型接口实验台</h1>
+        <p class="gate-copy">实验入口默认不应公网开放。验证码提示：<strong>123</strong></p>
+        <form id="loginForm" class="login-row">
+          <input id="captchaInput" inputmode="numeric" autocomplete="one-time-code" placeholder="验证码" aria-label="验证码" />
+          <button type="submit">解锁</button>
+        </form>
+        <p id="loginError" class="error-line" role="alert"></p>
+      </div>
+    </section>
+
+    <main id="app" class="lab-shell hidden">
+      <header class="hero">
+        <div>
+          <p class="kicker">COMMON API LAB</p>
+          <h1>ASR · Vision · LLM</h1>
+          <p class="hero-copy">一个页面体验公共模型接口：上传音频跑 ASR，上传图片跑视觉理解，输入提示词跑 LLM。每个面板都会展示模型、完整提示词和原始返回。</p>
+        </div>
+        <aside class="health-card">
+          <span class="signal" id="healthSignal"></span>
+          <div>
+            <strong id="healthText">连接中</strong>
+            <small id="healthDetail">/common/api/health</small>
+          </div>
+        </aside>
+      </header>
+
+      <section class="model-strip" id="modelStrip">
+        <div><span>ASR</span><strong id="asrModelLabel">-</strong></div>
+        <div><span>Vision</span><strong id="visionModelLabel">-</strong></div>
+        <div><span>LLM</span><strong id="llmModelLabel">-</strong></div>
+        <div><span>Spark</span><strong id="sparkModelLabel">-</strong></div>
+      </section>
+
+      <section class="panels">
+        <article class="panel panel-asr">
+          <div class="panel-head">
+            <div>
+              <span class="panel-index">01</span>
+              <h2>音频识别 ASR</h2>
+            </div>
+            <code>POST /api/asr/transcribe</code>
+          </div>
+          <label class="field-label">模型</label>
+          <input id="asrModel" class="text-input" value="" placeholder="默认使用健康检查中的 ASR 模型" />
+          <label class="drop-zone" for="audioFile">
+            <input id="audioFile" type="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.webm" />
+            <span>选择音频文件</span>
+            <strong id="audioName">WAV / MP3 / M4A / OGG</strong>
+          </label>
+          <button id="runAsr" class="run-button">运行 ASR</button>
+          <div class="prompt-box">
+            <span>完整请求提示 / 参数</span>
+            <pre id="asrPrompt">language=zh\nmodel=(默认)</pre>
+          </div>
+          <div class="result-box"><textarea id="asrResult" readonly placeholder="识别文本"></textarea></div>
+          <details><summary>原始返回</summary><pre id="asrRaw">{}</pre></details>
+        </article>
+
+        <article class="panel panel-vision">
+          <div class="panel-head">
+            <div>
+              <span class="panel-index">02</span>
+              <h2>图像理解 VL</h2>
+            </div>
+            <code>POST /api/vision/qwen/analyze</code>
+          </div>
+          <label class="field-label">模型</label>
+          <input id="visionModel" class="text-input" value="qwen-vl-plus" />
+          <label class="drop-zone image-zone" for="imageFile">
+            <input id="imageFile" type="file" accept="image/*" />
+            <img id="imagePreview" alt="图片预览" />
+            <span>选择图片</span>
+            <strong id="imageName">JPG / PNG / WebP</strong>
+          </label>
+          <label class="field-label">完整提示词</label>
+          <textarea id="visionPrompt" class="prompt-input">请用中文描述这张图片，说明主要物体、环境、文字内容和是否有人。</textarea>
+          <button id="runVision" class="run-button">运行图像理解</button>
+          <div class="result-box"><textarea id="visionResult" readonly placeholder="图像理解结果"></textarea></div>
+          <details><summary>原始返回</summary><pre id="visionRaw">{}</pre></details>
+        </article>
+
+        <article class="panel panel-llm wide">
+          <div class="panel-head">
+            <div>
+              <span class="panel-index">03</span>
+              <h2>文本大模型 LLM</h2>
+            </div>
+            <code id="llmEndpointLabel">POST /api/llm/qwen3-32b/chat</code>
+          </div>
+          <div class="split-row">
+            <label><span class="field-label">接口</span><select id="llmEndpoint" class="text-input"><option value="dashscope">DashScope Qwen3-32B</option><option value="spark">Spark Qwen3.6-35B</option><option value="lv">LV Qwen Chat</option></select></label>
+            <label><span class="field-label">模型</span><input id="llmModel" class="text-input" value="qwen3-32b" /></label>
+          </div>
+          <label class="field-label">System Prompt</label>
+          <textarea id="systemPrompt" class="prompt-input short">你是王语棠公共模型接口实验台里的中文助手，回答要准确、简洁、可验证。</textarea>
+          <label class="field-label">User Prompt</label>
+          <textarea id="userPrompt" class="prompt-input">请用三句话介绍这个接口实验台能做什么。</textarea>
+          <button id="runLlm" class="run-button">运行 LLM</button>
+          <div class="prompt-box">
+            <span>完整 Messages</span>
+            <pre id="llmFullPrompt"></pre>
+          </div>
+          <div class="result-box"><textarea id="llmResult" readonly placeholder="LLM 回复"></textarea></div>
+          <details open><summary>原始返回</summary><pre id="llmRaw">{}</pre></details>
+        </article>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status"></div>
+    <script src="./static/lab.js"></script>
+  </body>
+</html>
