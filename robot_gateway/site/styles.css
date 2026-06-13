@@ -187,11 +187,11 @@ h1 {
 }
 
 .pig-child {
-  left: calc(50% - 41px);
-  bottom: 34px;
-  width: 82px;
-  height: 68px;
-  transform: scale(0.86);
+  left: calc(50% - 44px);
+  bottom: 36px;
+  width: 88px;
+  height: 72px;
+  transform: scale(0.9);
   animation: pig-child-hop 3.2s ease-in-out infinite;
 }
 
@@ -222,6 +222,13 @@ h1 {
   box-shadow: inset 10px -12px 0 rgba(255, 136, 154, 0.34);
 }
 
+.pig-child .pig-face {
+  inset: 9px 7px 12px;
+  border-width: 3px;
+  border-radius: 50% 50% 47% 53%;
+  box-shadow: inset 7px -8px 0 rgba(255, 136, 154, 0.28);
+}
+
 .pig-ear {
   position: absolute;
   top: 4px;
@@ -241,6 +248,20 @@ h1 {
 .pig-ear.right {
   right: 12px;
   transform: rotate(22deg);
+}
+
+.pig-child .pig-ear {
+  top: 8px;
+  width: 26px;
+  height: 28px;
+}
+
+.pig-child .pig-ear.left {
+  left: 11px;
+}
+
+.pig-child .pig-ear.right {
+  right: 11px;
 }
 
 .pig-hair {
@@ -303,6 +324,20 @@ h1 {
   right: 28px;
 }
 
+.pig-child .pig-eye {
+  top: 22px;
+  width: 8px;
+  height: 10px;
+}
+
+.pig-child .pig-eye.left {
+  left: 24px;
+}
+
+.pig-child .pig-eye.right {
+  right: 24px;
+}
+
 .pig-eye.wink {
   height: 4px;
   margin-top: 5px;
@@ -322,6 +357,13 @@ h1 {
   transform: translateX(-50%);
 }
 
+.pig-child .pig-nose {
+  top: 36px;
+  width: 30px;
+  height: 20px;
+  border-width: 3px;
+}
+
 .pig-nose i {
   position: absolute;
   top: 8px;
@@ -339,6 +381,20 @@ h1 {
   right: 9px;
 }
 
+.pig-child .pig-nose i {
+  top: 6px;
+  width: 5px;
+  height: 6px;
+}
+
+.pig-child .pig-nose i:first-child {
+  left: 7px;
+}
+
+.pig-child .pig-nose i:last-child {
+  right: 7px;
+}
+
 .pig-smile {
   position: absolute;
   right: 32px;
@@ -347,6 +403,13 @@ h1 {
   height: 12px;
   border-bottom: 3px solid #8f2f32;
   border-radius: 50%;
+}
+
+.pig-child .pig-smile {
+  right: 26px;
+  bottom: 7px;
+  left: 26px;
+  height: 9px;
 }
 
 .pig-leg {
@@ -366,6 +429,20 @@ h1 {
 .pig-leg.right {
   right: 30px;
   animation-delay: 0.22s;
+}
+
+.pig-child .pig-leg {
+  bottom: 5px;
+  width: 14px;
+  height: 17px;
+}
+
+.pig-child .pig-leg.left {
+  left: 26px;
+}
+
+.pig-child .pig-leg.right {
+  right: 26px;
 }
 
 .lead {
@@ -536,10 +613,10 @@ h1 {
 
 @keyframes pig-child-hop {
   0%, 100% {
-    transform: translateY(0) scale(0.86);
+    transform: translateY(0) scale(0.9);
   }
   50% {
-    transform: translateY(-18px) scale(0.9);
+    transform: translateY(-14px) scale(0.93);
   }
 }
 
