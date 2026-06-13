@@ -54,6 +54,9 @@ const elements = {
   gpioSampledAt: document.getElementById("gpioSampledAt"),
   inspectHost: document.getElementById("inspectHost"),
   inspectTemp: document.getElementById("inspectTemp"),
+  inspectCpu: document.getElementById("inspectCpu"),
+  inspectCpuFreq: document.getElementById("inspectCpuFreq"),
+  inspectMemory: document.getElementById("inspectMemory"),
   inspectThrottle: document.getElementById("inspectThrottle"),
   inspectWifi: document.getElementById("inspectWifi"),
   inspectIp: document.getElementById("inspectIp"),
@@ -140,6 +143,9 @@ function clearInspection() {
   [
     elements.inspectHost,
     elements.inspectTemp,
+    elements.inspectCpu,
+    elements.inspectCpuFreq,
+    elements.inspectMemory,
     elements.inspectThrottle,
     elements.inspectWifi,
     elements.inspectIp,
@@ -213,12 +219,18 @@ async function loadInspection() {
 
     const temp = Number(inspection.temperature_c);
     const tempLabel = Number.isFinite(temp) ? `${temp.toFixed(1)}°C` : "-";
+    const cpuUsage = Number(inspection.cpu_usage_percent);
+    const cpuUsageLabel = Number.isFinite(cpuUsage) ? `${cpuUsage.toFixed(1)}%` : "-";
+    const cpuFrequency = inspection.cpu_frequency_mhz ? `${inspection.cpu_frequency_mhz} MHz` : "-";
     const throttled = inspection.throttled || "-";
-    const throttleOk = typeof throttled === "string" && throttled.includes("0x0");
+    const throttleOk = typeof throttled === "string" && (throttled.includes("0x0") || throttled === "unavailable");
     const service = inspection.sender_service || "-";
 
     setValue(elements.inspectHost, inspection.hostname);
     setValue(elements.inspectTemp, tempLabel, Number.isFinite(temp) && temp < 70 ? "ok" : "warn");
+    setValue(elements.inspectCpu, cpuUsageLabel, Number.isFinite(cpuUsage) && cpuUsage < 80 ? "ok" : "warn");
+    setValue(elements.inspectCpuFreq, cpuFrequency);
+    setValue(elements.inspectMemory, inspection.memory);
     setValue(elements.inspectThrottle, throttleOk ? "正常" : throttled, throttleOk ? "ok" : "warn");
     setValue(elements.inspectWifi, inspection.wifi_ssid);
     setValue(elements.inspectIp, inspection.ip_address);
