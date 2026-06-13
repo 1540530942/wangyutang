@@ -55,6 +55,28 @@ class CameraSnapshotSmokeTests(unittest.TestCase):
             server.latest_meta_by_kind[kind].clear()
             server.latest_meta_by_kind[kind].update(server.default_latest_meta(kind))
             server.latest_image_path(kind).unlink(missing_ok=True)
+        server.latest_inspection.clear()
+        server.latest_inspection.update(
+            {
+                "available": False,
+                "reported_at": 0.0,
+                "device_id": "",
+                "task_id": "",
+                "hostname": "",
+                "uptime": "",
+                "temperature_c": None,
+                "cpu_usage_percent": None,
+                "cpu_frequency_mhz": "",
+                "memory": "",
+                "throttled": "",
+                "wifi_ssid": "",
+                "ip_address": "",
+                "gateway": "",
+                "disk": "",
+                "sender_service": "",
+                "load_average": "",
+            }
+        )
         server.state["updated_at"] = 0.0
 
     def test_static_page_exposes_independent_capture_cards(self) -> None:
@@ -62,11 +84,13 @@ class CameraSnapshotSmokeTests(unittest.TestCase):
         app_js = (MODULE_DIR / "static" / "app.js").read_text(encoding="utf-8")
         static_text = index_html + app_js
 
-        for label in ("鎽勫儚鏈烘埅鍥?, "灞忓箷鎴浘", "琛ㄦ儏鎴浘", "杩滅▼宸℃"):
+        for label in ("摄像机截图", "屏幕截图", "表情截图", "远程巡检"):
             self.assertIn(label, index_html)
-        for status_text in ("鐪熷疄鎽勫儚澶寸敾闈?, "妗岄潰鎴浘", "绂诲睆娓叉煋", "绛夊緟涓婁紶瓒呮椂"):
+        for status_text in ("真实摄像头画面", "桌面截图", "离屏渲染", "等待上传超时", "cpu_usage_percent"):
             self.assertIn(status_text, app_js)
-        for mojibake in ("锟?, "閸?, "閹?, "缁?, "閻?, "閺嶆垼甯?"):
+        for label in ("CPU 占用", "CPU 频率", "内存"):
+            self.assertIn(label, index_html)
+        for mojibake in ("�", "鍒", "鎽", "绛", "鐩", "鏍戣帗"):
             self.assertNotIn(mojibake, static_text)
 
     def test_server_stores_latest_frames_per_kind_without_overwrite(self) -> None:
@@ -220,6 +244,26 @@ class CameraSnapshotSmokeTests(unittest.TestCase):
         self.assertEqual(payload["kind"], "camera")
         self.assertEqual(payload["status"], "failed")
         self.assertEqual(payload["capture_error"], "no camera")
+
+    def test_inspection_api_stores_cpu_and_memory_metrics(self) -> None:
+        with TestClient(server.app) as client:
+            response = client.post(
+                "/api/inspection",
+                json={
+                    "device_id": "smoke-pi",
+                    "task_id": "inspect-1",
+                    "hostname": "pi-host",
+                    "temperature_c": 45.2,
+                    "cpu_usage_percent": 23.5,
+                    "cpu_frequency_mhz": "1500",
+                    "memory": "512M used, 1.1G available",
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+            inspection = client.get("/api/inspection").json()
+            self.assertEqual(inspection["cpu_usage_percent"], 23.5)
+            self.assertEqual(inspection["cpu_frequency_mhz"], "1500")
+            self.assertEqual(inspection["memory"], "512M used, 1.1G available")
 
     def test_sender_reports_inspection_before_screen_capture(self) -> None:
         args = SimpleNamespace(quality=78, token="", device_id="smoke-pi")
