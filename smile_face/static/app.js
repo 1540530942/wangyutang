@@ -4,6 +4,8 @@ const controls = document.getElementById("controlPanel");
 const statusText = document.getElementById("statusText");
 const speakText = document.getElementById("speakText");
 const displayMode = new URLSearchParams(window.location.search).get("display") === "1";
+const apiBase = window.location.pathname.startsWith("/face/") ? "/face" : "";
+const apiPath = (path) => `${apiBase}${path}`;
 
 if (displayMode) document.body.classList.add("display-mode");
 
@@ -77,7 +79,7 @@ function roundRect(x, y, w, h, r) {
   ctx.arcTo(x + w, y, x + w, y + h, rr);
   ctx.arcTo(x + w, y + h, x, y + h, rr);
   ctx.arcTo(x, y + h, x, y, rr);
-  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.arcTo(x, y, x + rr, y, rr);
   ctx.closePath();
 }
 
@@ -121,7 +123,7 @@ function blinkFactor(nowMs) {
 
 async function pollState() {
   try {
-    const response = await fetch("/api/state", { cache: "no-store" });
+    const response = await fetch(apiPath("/api/state"), { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     remoteState = await response.json();
     connected = true;
@@ -145,12 +147,12 @@ if (controls) {
   controls.addEventListener("click", (event) => {
     const button = event.target.closest("button");
     if (!button) return;
-    if (button.dataset.emotion) postJson("/api/face/emotion", { emotion: button.dataset.emotion, intensity: 0.9, source: "web", message: button.textContent.trim() });
-    if (button.dataset.style) postJson("/api/face/style", { style: button.dataset.style, source: "web", message: styles[button.dataset.style].label });
+    if (button.dataset.emotion) postJson(apiPath("/api/face/emotion"), { emotion: button.dataset.emotion, intensity: 0.9, source: "web", message: button.textContent.trim() });
+    if (button.dataset.style) postJson(apiPath("/api/face/style"), { style: button.dataset.style, source: "web", message: styles[button.dataset.style].label });
   });
-  document.getElementById("blinkButton")?.addEventListener("click", () => postJson("/api/face/blink"));
-  document.getElementById("resetButton")?.addEventListener("click", () => postJson("/api/face/reset"));
-  document.getElementById("speakButton")?.addEventListener("click", () => postJson("/api/face/speak", { text: speakText?.value || "你好呀，我变可爱啦", emotion: "joy", source: "web" }));
+  document.getElementById("blinkButton")?.addEventListener("click", () => postJson(apiPath("/api/face/blink")));
+  document.getElementById("resetButton")?.addEventListener("click", () => postJson(apiPath("/api/face/reset")));
+  document.getElementById("speakButton")?.addEventListener("click", () => postJson(apiPath("/api/face/speak"), { text: speakText?.value || "你好呀，我变可爱啦", emotion: "joy", source: "web" }));
 }
 
 function drawBackground(w, h, t, palette) {
