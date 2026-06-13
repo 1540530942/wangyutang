@@ -587,29 +587,56 @@ def run_text(command: list[str], timeout: float = 3.0) -> str:
         return f"{exc.__class__.__name__}: {exc}"
 
 
+def parse_cpu_usage(stat_before: str, stat_after: str) -> float | None:
+    try:
+        before = [int(value) for value in stat_before.split()[1:]]
+        after = [int(value) for value in stat_after.split()[1:]]
+    except (IndexError, ValueError):
+        return None
+    if len(before) < 5 or len(after) < 5:
+        return None
+    total_delta = sum(after) - sum(before)
+    idle_delta = (after[3] + after[4]) - (before[3] + before[4])
+    if total_delta <= 0:
+        return None
+    return round(max(0.0, min(100.0, (1.0 - idle_delta / total_delta) * 100.0)), 1)
+
+
+def collect_cpu_usage_percent() -> float | None:
+    first = run_text(["sh", "-lc", "grep '^cpu ' /proc/stat"], timeout=1)
+    time.sleep(0.2)
+    second = run_text(["sh", "-lc", "grep '^cpu ' /proc/stat"], timeout=1)
+    return parse_cpu_usage(first, second)
+
+
 def collect_inspection(device_id: str, task_id: str) -> dict[str, object]:
     hostname = run_text(["hostname"])
     uptime = run_text(["uptime", "-p"])
-    throttled = run_text(["vcgencmd", "get_throttled"])
-    temp_raw = run_text(["vcgencmd", "measure_temp"])
+    throttled = run_text(["sh", "-lc", "command -v vcgencmd >/dev/null && vcgencmd get_throttled || echo unavailable"])
+    temp_raw = run_text(["sh", "-lc", "if command -v vcgencmd >/dev/null; then vcgencmd measure_temp; elif [ -r /sys/class/thermal/thermal_zone0/temp ]; then awk '{printf \"temp=%.1f\\047C\\n\", $1/1000}' /sys/class/thermal/thermal_zone0/temp; fi"])
     temperature_c = None
     if temp_raw.startswith("temp="):
         try:
             temperature_c = float(temp_raw.split("=", 1)[1].split("'")[0])
         except ValueError:
             temperature_c = None
-    wifi_ssid = run_text(["iwgetid", "-r"])
-    ip_address = run_text(["sh", "-lc", "ip -4 -o addr show wlan0 | awk '{print $4}' | head -1"])
+    wifi_ssid = run_text(["sh", "-lc", "iwgetid -r 2>/dev/null || nmcli -t -f active,ssid dev wifi 2>/dev/null | awk -F: '$1==\"yes\" {print $2; exit}'"])
+    ip_address = run_text(["sh", "-lc", "ip -4 -o addr show scope global | awk '{print $4}' | head -1"])
     gateway = run_text(["sh", "-lc", "ip route | awk '/^default/ {print $3; exit}'"])
     disk = run_text(["sh", "-lc", "df -h / | awk 'NR==2 {print $5 \" used, \" $4 \" free\"}'"])
     sender_service = run_text(["systemctl", "is-active", "camera-snapshot-sender.service"])
     load_average = run_text(["sh", "-lc", "cut -d' ' -f1-3 /proc/loadavg"])
+    cpu_frequency_mhz = run_text(["sh", "-lc", "if command -v vcgencmd >/dev/null; then vcgencmd measure_clock arm | awk -F= '{printf \"%.0f\", $2/1000000}'; elif [ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq ]; then awk '{printf \"%.0f\", $1/1000}' /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq; fi"])
+    memory = run_text(["sh", "-lc", "free -h | awk '/^Mem:/ {print $3 \" used, \" $7 \" available\"}'"])
     return {
         "device_id": device_id,
         "task_id": task_id,
         "hostname": hostname,
         "uptime": uptime,
         "temperature_c": temperature_c,
+        "cpu_usage_percent": collect_cpu_usage_percent(),
+        "cpu_frequency_mhz": cpu_frequency_mhz,
+        "memory": memory,
         "throttled": throttled,
         "wifi_ssid": wifi_ssid,
         "ip_address": ip_address,
@@ -874,22 +901,34 @@ def handle_task(
     mode = str(task.get("mode") or "single")
     print(f"[INFO] running task {task_id} kind={kind} mode={mode} query_gpio={query_gpio}", flush=True)
 
-    if kind == "screen":
-        jpeg = capture_desktop_screenshot_jpeg(args)
-        capture_source = "inspect" if mode == "inspect" else "screenshot"
-    elif kind == "face":
-        jpeg = capture_face_render_jpeg(session, args)
-        capture_source = "smile-face-render"
-    else:
-        jpeg, camera, capture_source = capture_camera_frame(camera, args)
-
-    gpio_meta = read_gpio_status(query_gpio)
+    inspection_payload: dict[str, object] | None = None
     if kind == "screen" and mode == "inspect":
-        upload_inspection(session, server, args.token, collect_inspection(args.device_id, task_id))
-    frame_id += 1
-    upload_frame(session, server, args.token, args.device_id, frame_id, task_id, kind, jpeg, gpio_meta, capture_source)
-    print(f"[ OK ] uploaded task {task_id} kind={kind}", flush=True)
-    return frame_id, camera, True
+        try:
+            inspection_payload = collect_inspection(args.device_id, task_id)
+        except Exception as exc:
+            print(f"[WARN] collect inspection for {task_id} failed: {exc}", flush=True)
+
+    try:
+        if kind == "screen":
+            jpeg = capture_desktop_screenshot_jpeg(args)
+            capture_source = "inspect" if mode == "inspect" else "screenshot"
+        elif kind == "face":
+            jpeg = capture_face_render_jpeg(session, args)
+            capture_source = "smile-face-render"
+        else:
+            jpeg, camera, capture_source = capture_camera_frame(camera, args)
+
+        gpio_meta = read_gpio_status(query_gpio)
+        frame_id += 1
+        upload_frame(session, server, args.token, args.device_id, frame_id, task_id, kind, jpeg, gpio_meta, capture_source)
+        print(f"[ OK ] uploaded task {task_id} kind={kind}", flush=True)
+        return frame_id, camera, True
+    finally:
+        if inspection_payload is not None:
+            try:
+                upload_inspection(session, server, args.token, inspection_payload)
+            except Exception as exc:
+                print(f"[WARN] upload inspection for {task_id} failed: {exc}", flush=True)
 
 
 def main() -> None:
