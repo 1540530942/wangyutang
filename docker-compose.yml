@@ -12,21 +12,8 @@ services:
       - ./robot_gateway/site:/srv:ro
       - robot_gateway_data:/data
       - robot_gateway_config:/config
-    depends_on:
-      remote-control-web:
-        condition: service_started
-      remote-control-api:
-        condition: service_healthy
-      camera-snapshot:
-        condition: service_healthy
-      action-move:
-        condition: service_healthy
-      audio-recognition:
-        condition: service_healthy
-      pi5-robot:
-        condition: service_healthy
-      smile-face:
-        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   remote-control-mqtt:

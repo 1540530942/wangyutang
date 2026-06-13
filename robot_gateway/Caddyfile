@@ -12,31 +12,31 @@
 	}
 
 	handle_path /remote/* {
-		reverse_proxy remote-control-web:5173
+		reverse_proxy {$REMOTE_WEB_UPSTREAM:host.docker.internal:5173}
 	}
 
 	handle_path /remote-api/* {
-		reverse_proxy remote-control-api:8000
+		reverse_proxy {$REMOTE_API_UPSTREAM:host.docker.internal:8000}
 	}
 
 	handle_path /camera/* {
-		reverse_proxy camera-snapshot:8099
+		reverse_proxy {$CAMERA_UPSTREAM:host.docker.internal:8099}
 	}
 
 	handle_path /action/* {
-		reverse_proxy action-move:8094
+		reverse_proxy {$ACTION_UPSTREAM:host.docker.internal:8094}
 	}
 
 	handle_path /audio/* {
-		reverse_proxy audio-recognition:8095
+		reverse_proxy {$AUDIO_UPSTREAM:host.docker.internal:8095}
 	}
 
 	handle_path /robot/* {
-		reverse_proxy pi5-robot:8093
+		reverse_proxy {$ROBOT_UPSTREAM:host.docker.internal:8093}
 	}
 
 	handle_path /face/* {
-		reverse_proxy smile-face:8096
+		reverse_proxy {$FACE_UPSTREAM:host.docker.internal:8096}
 	}
 
 	file_server
