@@ -189,6 +189,15 @@ h1 {
   animation: pig-hop 3.2s ease-in-out infinite;
 }
 
+.pig-side {
+  right: 86px;
+  bottom: 18px;
+  width: 92px;
+  height: 76px;
+  transform: scale(0.9);
+  animation: pig-side-sway 3.8s ease-in-out infinite;
+}
+
 .pig-shadow {
   position: absolute;
   right: 12px;
@@ -239,6 +248,37 @@ h1 {
   border-top: 4px solid #8f2f32;
   border-radius: 50%;
   transform: translateX(-50%) rotate(-14deg);
+}
+
+.pig-bow {
+  position: absolute;
+  top: -2px;
+  right: 22px;
+  z-index: 2;
+  width: 28px;
+  height: 18px;
+}
+
+.pig-bow::before,
+.pig-bow::after {
+  position: absolute;
+  top: 2px;
+  width: 15px;
+  height: 14px;
+  border: 2px solid #8f2f32;
+  border-radius: 60% 35% 60% 35%;
+  content: "";
+  background: #e85d45;
+}
+
+.pig-bow::before {
+  left: 0;
+  transform: rotate(24deg);
+}
+
+.pig-bow::after {
+  right: 0;
+  transform: rotate(-24deg);
 }
 
 .pig-eye {
@@ -490,6 +530,15 @@ h1 {
   }
   50% {
     transform: translateY(-18px) scale(0.86);
+  }
+}
+
+@keyframes pig-side-sway {
+  0%, 100% {
+    transform: translateX(0) translateY(0) scale(0.9) rotate(1deg);
+  }
+  50% {
+    transform: translateX(-26px) translateY(-10px) scale(0.93) rotate(-3deg);
   }
 }
 
