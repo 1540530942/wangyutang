@@ -177,25 +177,45 @@ h1 {
   bottom: 18px;
   width: 116px;
   height: 94px;
-  animation: pig-run 4.4s ease-in-out infinite;
+  animation: pig-family-bob 4.4s ease-in-out infinite;
 }
 
-.pig-mini {
-  right: 8px;
-  bottom: 52px;
+.pig-dad {
+  left: 4px;
+  width: 112px;
+  height: 92px;
+}
+
+.pig-child {
+  left: 50%;
+  bottom: 34px;
   width: 82px;
   height: 68px;
-  transform: scale(0.82);
-  animation: pig-hop 3.2s ease-in-out infinite;
+  transform: translateX(-50%) scale(0.86);
+  animation: pig-child-hop 3.2s ease-in-out infinite;
 }
 
-.pig-side {
-  right: 86px;
-  bottom: 18px;
-  width: 92px;
-  height: 76px;
-  transform: scale(0.9);
-  animation: pig-side-sway 3.8s ease-in-out infinite;
+.pig-mom {
+  right: 4px;
+  width: 112px;
+  height: 92px;
+  animation-delay: 0.24s;
+}
+
+.pig-label {
+  position: absolute;
+  right: 50%;
+  bottom: -36px;
+  transform: translateX(50%);
+  min-width: 48px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: #8f2f32;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-align: center;
+  background: rgba(255, 246, 242, 0.92);
+  box-shadow: 0 8px 18px rgba(143, 47, 50, 0.12);
 }
 
 .pig-shadow {
@@ -521,30 +541,21 @@ h1 {
   }
 }
 
-@keyframes pig-run {
+@keyframes pig-family-bob {
   0%, 100% {
-    transform: translateX(0) rotate(-1deg);
+    transform: translateY(0) rotate(-1deg);
   }
   50% {
-    transform: translateX(42px) translateY(-6px) rotate(2deg);
+    transform: translateY(-6px) rotate(2deg);
   }
 }
 
-@keyframes pig-hop {
+@keyframes pig-child-hop {
   0%, 100% {
-    transform: translateY(0) scale(0.82);
+    transform: translateX(-50%) translateY(0) scale(0.86);
   }
   50% {
-    transform: translateY(-18px) scale(0.86);
-  }
-}
-
-@keyframes pig-side-sway {
-  0%, 100% {
-    transform: translateX(0) translateY(0) scale(0.9) rotate(1deg);
-  }
-  50% {
-    transform: translateX(-26px) translateY(-10px) scale(0.93) rotate(-3deg);
+    transform: translateX(-50%) translateY(-18px) scale(0.9);
   }
 }
 

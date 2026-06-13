@@ -34,6 +34,7 @@
         color: #145248;
         background: #edf8f3;
       }
+      .warn { color: #7a3d12; background: #fff7ed; }
       .grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -63,7 +64,6 @@
         vertical-align: top;
       }
       th { background: #f4f7f8; }
-      .warn { color: #7a3d12; background: #fff7ed; }
       .topology {
         white-space: pre;
         font-family: Consolas, "Cascadia Mono", monospace;
@@ -79,37 +79,57 @@
     <main>
       <header>
         <h1>网络连接与远程访问拓扑</h1>
-        <p class="updated">最后更新：2026-05-16 12:50。反向 SSH 隧道已建立并验证通过。</p>
+        <p class="updated">最后更新：2026-06-13。当前文档按 WALLE 机器人平台入口和反向 SSH 隧道现状修订。</p>
       </header>
 
       <section>
         <h2>一句话结论</h2>
-        <p><span class="tag">当前可以远程进入树莓派</span></p>
+        <p><span class="tag">公网业务走 WALLE 网关，树莓派运维走腾讯云反向 SSH 隧道。</span></p>
         <p>
-          树莓派在内网 Wi-Fi <code>ChinaNet-dsge</code> 下，局域网 IP 是 <code>192.168.1.46</code>。
-          为了离开局域网后仍能访问，树莓派已主动向腾讯云 <code>110.40.154.41</code> 建立反向 SSH 隧道。
+          外网访问机器人业务时，优先走 <code>https://www.wangyutang.cn/</code>。
+          远程登录树莓派时，Windows 先连腾讯云 <code>110.40.154.41</code>，再通过腾讯云本机
+          <code>127.0.0.1:10022</code> 转进树莓派 SSH。当前检查结果是：腾讯云端口仍在监听，但 SSH banner 超时，需在树莓派侧排查
+          <code>reverse-ssh-tencent.service</code>。
         </p>
       </section>
 
       <section>
-        <h2>拓扑图</h2>
-        <pre class="topology">外网电脑 / 当前 Windows
+        <h2>当前业务拓扑</h2>
+        <pre class="topology">外网浏览器 / 当前 Windows
+        |
+        |  https://www.wangyutang.cn/
+        v
+腾讯云服务器 wangyutang.cn / 110.40.154.41
+        |
+        |  80/443 -> robot-gateway(Caddy)
+        v
+Docker 网络
+        |
+        |  /camera/* -> camera-snapshot:8099
+        |  /action/* -> action-move:8094
+        |  /audio/*  -> audio-recognition:8095
+        |  /robot/*  -> pi5-robot:8093
+        |  /face/*   -> smile-face:8096
+        v
+机器人平台服务</pre>
+      </section>
+
+      <section>
+        <h2>树莓派远程运维拓扑</h2>
+        <pre class="topology">外网 Windows
         |
         |  ssh tencent
         v
-腾讯云服务器 wangyutang.cn / 110.40.154.41
+腾讯云服务器 110.40.154.41
         |
         |  本机监听 127.0.0.1:10022
         |  由树莓派主动建立：ssh -R 127.0.0.1:10022:localhost:22
         v
 树莓派 raspberrypi
         |
-        |  wlan0
+        |  wlan0 / 局域网
         v
-局域网 ChinaNet-dsge / 192.168.1.0/24
-
-已验证链路：
-Windows -> Tencent Cloud -> 127.0.0.1:10022 -> Raspberry Pi SSH</pre>
+家庭 Wi-Fi</pre>
       </section>
 
       <div class="grid">
@@ -132,72 +152,40 @@ Windows -> Tencent Cloud -> 127.0.0.1:10022 -> Raspberry Pi SSH</pre>
           <table>
             <tr><th>项目</th><th>值</th></tr>
             <tr><td>主机名</td><td><code>raspberrypi</code></td></tr>
-            <tr><td>局域网 IP</td><td><code>192.168.1.46</code></td></tr>
-            <tr><td>Wi-Fi</td><td><code>ChinaNet-dsge</code></td></tr>
-            <tr><td>网关</td><td><code>192.168.1.1</code></td></tr>
+            <tr><td>局域网直连</td><td><code>ssh pi@raspberrypi.local</code> 或局域网 IP</td></tr>
+            <tr><td>远程跳板</td><td><code>raspberrypi-via-tencent</code></td></tr>
             <tr><td>SSH 用户</td><td><code>pi</code></td></tr>
-            <tr><td>SSH 密码</td><td>由 owner 提供，本文档不保存明文密码</td></tr>
+            <tr><td>SSH 私钥</td><td><code>C:\Users\Administrator\.ssh\codex_raspberrypi</code></td></tr>
           </table>
-          <pre>ssh pi@192.168.1.46</pre>
         </section>
       </div>
 
       <section>
-        <h2>最常用登录指令</h2>
-        <h3>同一个局域网内</h3>
-        <pre>ssh pi@192.168.1.46</pre>
-        <p>也可以使用主机名：</p>
-        <pre>ssh pi@raspberrypi.local</pre>
-        <h3>不在局域网内，走腾讯云反向隧道</h3>
-        <p>两步登录：</p>
+        <h2>推荐登录方式</h2>
+        <h3>方式一：使用本机 SSH alias</h3>
+        <p>这是最推荐的方式，配置集中在 Windows 的 <code>C:\Users\Administrator\.ssh\config</code>。</p>
+        <pre>ssh raspberrypi-via-tencent</pre>
+
+        <h3>方式二：一条命令显式跳板登录</h3>
+        <pre>ssh -o HostKeyAlias=raspberrypi-via-tencent -J tencent -p 10022 pi@127.0.0.1</pre>
+
+        <h3>方式三：两步登录</h3>
         <pre>ssh tencent
 ssh -p 10022 pi@127.0.0.1</pre>
-        <p>一条命令直达：</p>
-        <pre>ssh -o HostKeyAlias=raspberrypi-via-tencent -J tencent -p 10022 pi@127.0.0.1</pre>
+
+        <h3>方式四：同一局域网内直连</h3>
+        <pre>ssh pi@raspberrypi.local
+ssh pi@树莓派局域网IP</pre>
       </section>
 
-      <section>
-        <h2>反向 SSH 隧道</h2>
-        <p>树莓派上已配置常驻服务：</p>
-        <pre>/etc/systemd/system/reverse-ssh-tencent.service</pre>
-        <p>核心转发关系：</p>
-        <pre>腾讯云 127.0.0.1:10022  ->  树莓派 localhost:22</pre>
-        <p>树莓派服务中的核心命令：</p>
-        <pre>/usr/bin/ssh -N -T \
-  -i /home/pi/.ssh/id_ed25519_tencent_tunnel \
-  -o ExitOnForwardFailure=yes \
-  -o ServerAliveInterval=30 \
-  -o ServerAliveCountMax=3 \
-  -o StrictHostKeyChecking=yes \
-  -R 127.0.0.1:10022:localhost:22 \
-  root@110.40.154.41</pre>
-        <p>已验证状态：</p>
-        <pre>reverse-ssh-tencent.service: active
-Tencent Cloud listening: 127.0.0.1:10022
-remote login result: hostname=raspberrypi, user=pi</pre>
-      </section>
-
-      <section>
-        <h2>不在局域网时如何登录树莓派</h2>
-        <h3>方式一：两步登录</h3>
-        <pre>ssh tencent
-ssh -p 10022 pi@127.0.0.1</pre>
-        <h3>方式二：一条命令跳板登录</h3>
-        <pre>ssh -o HostKeyAlias=raspberrypi-via-tencent -J tencent -p 10022 pi@127.0.0.1</pre>
-        <p>
-          第二种方式会从 Windows 先连腾讯云，再通过腾讯云本机的 <code>127.0.0.1:10022</code> 转进树莓派。
-        </p>
-      </section>
-
-      <section>
-        <h2>在局域网内如何登录树莓派</h2>
-        <p>如果 Windows 和树莓派同在 <code>192.168.1.0/24</code>，可以直连：</p>
-        <pre>ssh pi@192.168.1.46
-ssh pi@raspberrypi.local</pre>
-        <p>当前已验证局域网直连成功：</p>
-        <pre>hostname: raspberrypi
-whoami: pi
-wlan0: 192.168.1.46</pre>
+      <section class="warn">
+        <h2>当前需要注意的状态</h2>
+        <ul>
+          <li>腾讯云上 <code>127.0.0.1:10022</code> 仍有 sshd 监听，说明反向隧道端口存在。</li>
+          <li>但从腾讯云本机登录 <code>ssh -p 10022 pi@127.0.0.1</code> 当前出现 banner 超时，不能直接视为端到端可用。</li>
+          <li>优先到树莓派本机排查 <code>reverse-ssh-tencent.service</code>、网络在线状态、SSH server 状态和隧道私钥权限。</li>
+          <li>业务访问不依赖树莓派 SSH 隧道；公网业务当前由 <code>robot-gateway</code> 转发到 Docker 内部服务。</li>
+        </ul>
       </section>
 
       <section>
@@ -205,46 +193,53 @@ wlan0: 192.168.1.46</pre>
         <table>
           <tr><th>用途</th><th>地址</th><th>说明</th></tr>
           <tr>
-            <td>机器人动作控制</td>
+            <td>WALLE 首页</td>
+            <td><code>https://www.wangyutang.cn/</code></td>
+            <td>机器人平台轻量入口。</td>
+          </tr>
+          <tr>
+            <td>动作控制</td>
             <td><code>https://www.wangyutang.cn/action/</code></td>
-            <td>树莓派 poller 主动从云端领取动作任务。</td>
+            <td>通过 Caddy 转发到 <code>action-move:8094</code>。</td>
           </tr>
           <tr>
             <td>动作服务健康检查</td>
             <td><code>https://www.wangyutang.cn/action/api/health</code></td>
-            <td>可查看树莓派在线状态、IP、Wi-Fi、最近任务。</td>
+            <td>公网推荐检查方式。</td>
           </tr>
           <tr>
-            <td>腾讯云本机动作服务</td>
-            <td><code>http://127.0.0.1:8094/api/health</code></td>
-            <td>登录腾讯云后本地检查。</td>
+            <td>网关健康检查</td>
+            <td><code>https://www.wangyutang.cn/api/health</code></td>
+            <td>检查 <code>robot-gateway</code> 是否正常。</td>
           </tr>
         </table>
+      </section>
+
+      <section>
+        <h2>常用检查命令</h2>
+        <h3>Windows 中</h3>
+        <pre>ssh tencent
+ssh raspberrypi-via-tencent</pre>
+        <h3>腾讯云上</h3>
+        <pre>ss -lntp | grep ':10022'
+docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+docker exec robot-gateway wget -qO- http://action-move:8094/api/health</pre>
+        <h3>树莓派上</h3>
+        <pre>systemctl status reverse-ssh-tencent.service --no-pager
+journalctl -u reverse-ssh-tencent.service -n 80 --no-pager
+systemctl status ssh --no-pager
+ip -4 addr show wlan0
+iwgetid -r</pre>
       </section>
 
       <section class="warn">
         <h2>安全边界</h2>
         <ul>
           <li>腾讯云公网 <code>22</code> 端口是腾讯云自己的 SSH，不是树莓派。</li>
-          <li>树莓派 SSH 隧道只监听腾讯云本机 <code>127.0.0.1:10022</code>，没有直接暴露到公网。</li>
-          <li>树莓派密码和 Wi-Fi 密码不写入本文档；需要时由 owner 临时提供。</li>
-          <li>如果要公开暴露 <code>10022</code>，需要额外评估安全组、密码强度和密钥登录策略；当前不建议。</li>
+          <li>树莓派 SSH 隧道只监听腾讯云本机 <code>127.0.0.1:10022</code>，不要直接暴露到公网。</li>
+          <li>树莓派密码和 Wi-Fi 密码不写入本文档，需要时由 owner 临时提供。</li>
+          <li>如果要公开暴露 <code>10022</code>，必须额外评估安全组、强密码、密钥登录和审计策略；当前不建议。</li>
         </ul>
-      </section>
-
-      <section>
-        <h2>常用检查命令</h2>
-        <h3>Windows 上</h3>
-        <pre>ssh tencent
-ssh -o HostKeyAlias=raspberrypi-via-tencent -J tencent -p 10022 pi@127.0.0.1</pre>
-        <h3>腾讯云上</h3>
-        <pre>ss -lntp | grep ':10022'
-curl -s http://127.0.0.1:8094/api/health</pre>
-        <h3>树莓派上</h3>
-        <pre>systemctl status reverse-ssh-tencent.service --no-pager
-journalctl -u reverse-ssh-tencent.service -n 80 --no-pager
-ip -4 addr show wlan0
-iwgetid -r</pre>
       </section>
     </main>
   </body>
