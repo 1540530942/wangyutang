@@ -15,12 +15,13 @@
 - `control_platform`
 - `llm_manager`
 
-下线后不再维护 Caddy 网关、模块注册表和 Web Manager 状态页。运行状态以 `docker-compose.yml`、模块健康检查和部署脚本为准。
+下线后不再维护旧 Control Platform 后端、模块注册表和 Web Manager 状态页。`robot_gateway` 只保留轻量首页和路径转发，运行状态以 `docker-compose.yml`、模块健康检查和部署脚本为准。
 
 ## 模块功能描述
 
 | 模块 | 功能定位 | 当前状态 | 主要入口 |
 | --- | --- | --- | --- |
+| `robot_gateway` | 轻量机器人平台首页和 Caddy 路径转发。 | 可运行，不维护注册表或后端聚合状态。 | `/`, `/api/health` |
 | `remote_control_cloud` | 远程控制云端：Vite 控制台、FastAPI 指令 API、MQTT Broker 配置。 | 可运行链路，面向云端/公网控制。 | Web `:5173`, API `:8000` |
 | `remote_control_edge` | 远程控制边缘侧：PC 串口服务、MQTT 串口桥、Arduino/ESP32 固件工程。 | 边缘运行，不作为 Compose 服务。 | 本地 PC/串口/PlatformIO |
 | `camera_snapshot` | TurboPi/Raspberry Pi 摄像头快照服务，支持单帧、持续上传、最新 JPEG 预览和 GPIO 状态上报。 | 可运行，依赖边缘上传器。 | `:8099` |
@@ -38,7 +39,7 @@
 2. 清理运行产物，避免日志、截图、音频、缓存进入版本库。
 3. 增加端到端健康检查，覆盖服务健康、关键 API schema、边缘在线状态和任务队列闭环。
 4. 统一机器人动作安全边界，包括最大速度、最大持续时间、急停优先级和操作来源记录。
-5. 明确公网暴露策略。如果后续需要域名网关，应作为新的独立网关模块引入，而不是恢复旧 `control_platform`。
+5. 明确公网暴露策略。`robot_gateway` 只做轻量入口和反向代理，不恢复旧 `control_platform`。
 
 ## 分模块建议
 

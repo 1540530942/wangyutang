@@ -44,6 +44,7 @@ $ReleaseRoot = Join-Path $RepoRoot "dist\tencent_releases"
 $ReleaseDir = Join-Path $ReleaseRoot $ReleaseId
 $ImagesDir = Join-Path $ReleaseDir "images"
 $InfraDir = Join-Path $ReleaseDir "infra"
+$GatewayDir = Join-Path $ReleaseDir "robot_gateway"
 $ScriptsDir = Join-Path $ReleaseDir "scripts"
 $DocsDir = Join-Path $ReleaseDir "docs"
 
@@ -80,9 +81,11 @@ Write-Step "Creating release directory $ReleaseDir"
 if (Test-Path -LiteralPath $ReleaseDir) {
   Remove-Item -LiteralPath $ReleaseDir -Recurse -Force
 }
-New-Item -ItemType Directory -Path $ImagesDir, $InfraDir, $ScriptsDir, $DocsDir -Force | Out-Null
+New-Item -ItemType Directory -Path $ImagesDir, $InfraDir, $GatewayDir, $ScriptsDir, $DocsDir -Force | Out-Null
 
 Copy-Item -LiteralPath "docker-compose.yml" -Destination (Join-Path $ReleaseDir "docker-compose.yml") -Force
+Copy-Item -LiteralPath "robot_gateway\Caddyfile" -Destination (Join-Path $GatewayDir "Caddyfile") -Force
+Copy-Item -LiteralPath "robot_gateway\site" -Destination (Join-Path $GatewayDir "site") -Recurse -Force
 Copy-IfExists ".env.example" (Join-Path $ReleaseDir ".env.example")
 Copy-IfExists ".env" (Join-Path $ReleaseDir ".env.local-copy")
 if (Test-Path -LiteralPath "remote_control_cloud\infra\mosquitto\mosquitto.conf") {
@@ -143,6 +146,8 @@ $VerifyResults = @()
 if (-not $SkipVerify) {
   Write-Step "Verifying service health URLs"
   $Checks = @(
+    "https://www.wangyutang.cn/api/health",
+    "https://www.wangyutang.cn/",
     "http://110.40.154.41:8000/api/health",
     "http://110.40.154.41:8099/api/health",
     "http://110.40.154.41:8094/api/health",

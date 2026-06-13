@@ -16,6 +16,7 @@
 
 | 模块 | README | 健康检查或替代验证 | Compose | 结论 |
 | --- | --- | --- | --- | --- |
+| `robot_gateway/` | 根 README 已说明 | `/api/health` | 已配置 | 符合 |
 | `remote_control_cloud/` | 已有 | `/api/health` | 已配置 | 符合 |
 | `remote_control_edge/` | 已有 | 本地服务、MQTT 桥、固件编译 | 不独立部署 | 符合 |
 | `camera_snapshot/` | 已有 | `/api/health` | 已配置 | 符合 |
@@ -28,7 +29,7 @@
 ## 本次调整
 
 - 移除统一门户、Web Manager、遥感、论文学习和 SLAM 实验模块。
-- 根 `docker-compose.yml` 只保留机器人平台相关运行服务。
+- 根 `docker-compose.yml` 只保留机器人平台相关运行服务和轻量机器人网关。
 - 部署脚本改为按剩余服务端口做健康检查。
 - 模块合入规范改为不依赖注册表和 Caddy。
 

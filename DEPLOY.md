@@ -19,6 +19,8 @@ Default SSH alias: tencent
 Server release root: /root/wangyutang_platform/releases
 Server current link: /root/wangyutang_platform/current
 Primary URLs:
+  https://www.wangyutang.cn/
+  https://www.wangyutang.cn/api/health
   http://110.40.154.41:5173/
   http://110.40.154.41:8000/api/health
   http://110.40.154.41:8099/api/health
@@ -71,7 +73,7 @@ The deployment script performs these steps:
 3. Build Docker images with docker compose build.
 4. Export the production images with docker save.
 5. Create a timestamped release directory under dist\tencent_releases.
-6. Copy docker-compose.yml, .env example files, runtime infra, scripts, and image archives into the release.
+6. Copy docker-compose.yml, robot gateway files, .env example files, runtime infra, scripts, and image archives into the release.
 7. Upload the release to /root/wangyutang_platform/releases/<timestamp>.
 8. Run scripts/tencent_apply_release.sh on the server.
 9. Verify service health URLs.
@@ -140,6 +142,7 @@ Then verify:
 
 ```bash
 curl -fsS http://127.0.0.1:8000/api/health
+curl -fsS http://127.0.0.1/api/health
 curl -fsS http://127.0.0.1:8099/api/health
 curl -fsS http://127.0.0.1:8094/api/health
 curl -fsS http://127.0.0.1:8095/api/health

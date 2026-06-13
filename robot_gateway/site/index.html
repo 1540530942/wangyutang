@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>王语棠机器人平台</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <p class="eyebrow">Wangyutang Robot Platform</p>
+        <h1>机器人平台控制台</h1>
+        <p class="lead">
+          当前仓库已聚焦到机器人运行链路：远程控制、摄像头、动作控制、语音识别、Pi5 机器人和表情屏。
+        </p>
+        <div class="hero-actions">
+          <a class="primary" href="/camera/">查看摄像头</a>
+          <a class="secondary" href="/action/">动作控制</a>
+        </div>
+      </section>
+
+      <section class="grid" aria-label="机器人模块">
+        <a class="card" href="/remote/">
+          <span class="tag">Remote</span>
+          <h2>远程控制</h2>
+          <p>云端控制台、指令 API 和 MQTT 控制链路。</p>
+          <strong>打开 /remote/</strong>
+        </a>
+        <a class="card" href="/camera/">
+          <span class="tag">Camera</span>
+          <h2>摄像头快照</h2>
+          <p>查看 TurboPi / Raspberry Pi 上传的实时截图和三通道画面。</p>
+          <strong>打开 /camera/</strong>
+        </a>
+        <a class="card" href="/action/">
+          <span class="tag">Motion</span>
+          <h2>动作控制</h2>
+          <p>机器人底盘、云台、RGB 和安全动作队列控制。</p>
+          <strong>打开 /action/</strong>
+        </a>
+        <a class="card" href="/audio/">
+          <span class="tag">Voice</span>
+          <h2>语音识别</h2>
+          <p>语音到意图、技能路由和动作执行结果监控。</p>
+          <strong>打开 /audio/</strong>
+        </a>
+        <a class="card" href="/robot/">
+          <span class="tag">Pi5</span>
+          <h2>Pi5 机器人</h2>
+          <p>巡查机器人 MVP、仿真服务和任务日志入口。</p>
+          <strong>打开 /robot/</strong>
+        </a>
+        <a class="card" href="/face/">
+          <span class="tag">Face</span>
+          <h2>表情屏</h2>
+          <p>同步 Wall-E 风格表情、说话动画和 LCD 显示。</p>
+          <strong>打开 /face/</strong>
+        </a>
+      </section>
+
+      <section class="status">
+        <h2>保留边界</h2>
+        <p>
+          已下线旧的论文学习、SLAM、遥感、Web Manager 和 Control Platform 门户。
+          这个首页只作为轻量入口，不再维护模块注册表或后台聚合服务。
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

@@ -6,6 +6,7 @@ This directory gathers the projects deployed behind `110.40.154.41` and the `wan
 
 | Path | Role | Public route |
 | --- | --- | --- |
+| `robot_gateway/` | Lightweight public homepage and Caddy gateway for robot modules | `/` |
 | `remote_control_cloud/` | Remote-control Vite UI, FastAPI command API, and MQTT config | direct service ports |
 | `remote_control_edge/` | PC/Arduino bridge, MQTT serial bridge, and PlatformIO firmware | part of `/remote/`, local hardware side |
 | `camera_snapshot/` | TurboPi / Raspberry Pi camera snapshot service | direct service port |
@@ -14,7 +15,7 @@ This directory gathers the projects deployed behind `110.40.154.41` and the `wan
 | `pi5_robot/` | Raspberry Pi 5 patrol robot MVP console, simulation robotd/visiond/harnessd, and hardware integration scaffold | direct service port |
 | `smile_face/` | Synchronized Wall-E-like robot expression screen for web and Raspberry Pi LCD kiosk display | direct service port |
 
-The repository is now focused on robot-platform services. Retired portal, web-manager, remote-sensing, paper-learning, and SLAM experiment modules have been removed from the active runtime.
+The repository is now focused on robot-platform services. Retired portal, web-manager, remote-sensing, paper-learning, and SLAM experiment modules have been removed from the active runtime. `robot_gateway/` keeps `https://www.wangyutang.cn/` as a lightweight robot-only entrypoint.
 
 ## Module Merge Guide
 
@@ -42,6 +43,9 @@ Useful local URLs:
 
 ```text
 http://127.0.0.1:5173/              remote-control web UI
+http://127.0.0.1/api/health         robot gateway
+http://127.0.0.1/camera/            camera through gateway
+http://127.0.0.1/action/            action through gateway
 http://127.0.0.1:8000/api/health    remote-control API
 http://127.0.0.1:8099/              camera snapshot service
 http://127.0.0.1:8094/              action move service

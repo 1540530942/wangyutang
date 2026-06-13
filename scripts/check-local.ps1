@@ -1,6 +1,7 @@
 $ErrorActionPreference = "Continue"
 
 $checks = @(
+  @{ Name = "robot-gateway"; Url = "http://127.0.0.1/api/health" },
   @{ Name = "remote-api"; Url = "http://127.0.0.1:8000/api/health" },
   @{ Name = "camera-snapshot"; Url = "http://127.0.0.1:8099/api/health" },
   @{ Name = "action-move"; Url = "http://127.0.0.1:8094/api/health" },

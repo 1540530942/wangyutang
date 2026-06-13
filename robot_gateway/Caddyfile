@@ -1,0 +1,43 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$WWW_DOMAIN:localhost}, http://110.40.154.41 {
+	encode zstd gzip
+	root * /srv
+
+	handle /api/health {
+		header Content-Type application/json
+		respond `{"status":"ok","service":"robot-gateway"}` 200
+	}
+
+	handle_path /remote/* {
+		reverse_proxy remote-control-web:5173
+	}
+
+	handle_path /remote-api/* {
+		reverse_proxy remote-control-api:8000
+	}
+
+	handle_path /camera/* {
+		reverse_proxy camera-snapshot:8099
+	}
+
+	handle_path /action/* {
+		reverse_proxy action-move:8094
+	}
+
+	handle_path /audio/* {
+		reverse_proxy audio-recognition:8095
+	}
+
+	handle_path /robot/* {
+		reverse_proxy pi5-robot:8093
+	}
+
+	handle_path /face/* {
+		reverse_proxy smile-face:8096
+	}
+
+	file_server
+}
