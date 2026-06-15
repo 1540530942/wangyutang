@@ -77,11 +77,56 @@ def _front_distance_estimate(observation: dict[str, Any] | None) -> float | None
     if observation is None:
         return None
     data = observation.get("data") if isinstance(observation.get("data"), dict) else {}
+    if isinstance(data.get("sonar"), dict):
+        data = data["sonar"]
+    elif isinstance(data.get("latest"), dict) and isinstance(data["latest"].get("sonar"), dict):
+        data = data["latest"]["sonar"]
     try:
         value = data.get("front_distance_estimate_cm")
         return float(value) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _front_distance_data(observation: dict[str, Any] | None) -> dict[str, Any]:
+    if observation is None or not isinstance(observation.get("data"), dict):
+        return {}
+    data = observation["data"]
+    if isinstance(data.get("sonar"), dict):
+        return data["sonar"]
+    if isinstance(data.get("latest"), dict) and isinstance(data["latest"].get("sonar"), dict):
+        return data["latest"]["sonar"]
+    return data
+
+
+def _front_distance_freshness_error(data: dict[str, Any], max_age_ms: int, now: float) -> tuple[str, dict[str, Any]] | None:
+    if data.get("available") is not True:
+        return "front_distance_unavailable", {"available": data.get("available")}
+    try:
+        confidence = float(data.get("confidence"))
+    except (TypeError, ValueError):
+        confidence = 0.0
+    if confidence < 0.6:
+        return "front_distance_low_confidence", {"confidence": confidence, "min_confidence": 0.6}
+    age_seconds = data.get("age_seconds")
+    try:
+        age_value = float(age_seconds) if age_seconds is not None else None
+    except (TypeError, ValueError):
+        age_value = None
+    timestamp_ages: list[float] = []
+    for timestamp_key in ("reported_at", "sampled_at"):
+        try:
+            timestamp = float(data.get(timestamp_key) or 0)
+        except (TypeError, ValueError):
+            timestamp = 0.0
+        if timestamp > 0:
+            timestamp_ages.append(max(0.0, now - timestamp))
+    if timestamp_ages:
+        timestamp_age = max(timestamp_ages)
+        age_value = max(age_value, timestamp_age) if age_value is not None else timestamp_age
+    if age_value is not None and age_value * 1000 > max_age_ms:
+        return "front_distance_stale", {"age_seconds": age_value, "observation_ttl_seconds": max_age_ms / 1000}
+    return None
 
 
 def _reject_with_safety_result(
@@ -164,6 +209,19 @@ def _check_skill_preconditions(
                     spec=spec,
                     detail={"required_observation": "front_distance_or_camera_snapshot"},
                 )
+            front_data = _front_distance_data(front_observation)
+            if front_observation_tool == "front_distance" or any(key in front_data for key in ("available", "confidence", "age_seconds", "reported_at")):
+                freshness_error = _front_distance_freshness_error(front_data, front_ttl, now)
+                if freshness_error is not None:
+                    reason, detail = freshness_error
+                    return _reject_with_safety_result(
+                        envelope,
+                        task,
+                        result,
+                        reason,
+                        spec=spec,
+                        detail={**detail, "required_observation": "front_distance"},
+                    )
             distance_cm = _front_distance_estimate(front_observation)
             if distance_cm is None:
                 return _reject_with_safety_result(

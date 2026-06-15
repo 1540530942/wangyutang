@@ -6,11 +6,28 @@ from typing import Any
 from audio_recognition.agent.react_agent import build_llm_react_agent, run_react_agent
 from audio_recognition.core.envelope import DecisionEnvelope, ToolCall
 from audio_recognition.safety.guard import has_emergency_intent, run_safety_guard, run_safety_guard_for_task
-from audio_recognition.skills.registry import resolve_catalog_path, resolve_registry_path
+from audio_recognition.skills.registry import load_skill_registry, resolve_catalog_path, resolve_registry_path
 from audio_recognition.tools.dispatcher import dispatch_envelope, dispatch_task
 from audio_recognition.tools.observation_executor import OBSERVATION_TOOLS, execute_observation_tool
 from audio_recognition.tools.tool_call_adapter import build_tool_result_message
 from audio_recognition.tools.tool_validator import validate_tool_call, validate_tool_calls
+
+
+def _exact_observation_alias_call(transcript: str, *, registry_path: Path, catalog_path: Path) -> ToolCall | None:
+    normalized = transcript.strip().casefold()
+    if not normalized:
+        return None
+    registry = load_skill_registry(registry_path, catalog_path)
+    for spec in registry.skills.values():
+        if spec.tool not in OBSERVATION_TOOLS:
+            continue
+        aliases = {spec.skill_id, spec.tool, *spec.aliases}
+        if normalized in {alias.strip().casefold() for alias in aliases if alias.strip()}:
+            return ToolCall(
+                tool=spec.tool,
+                args={"skill_id": spec.skill_id, "order": 0, "confidence": 1.0, "text": transcript.strip()},
+            )
+    return None
 
 
 def route_transcript(
@@ -33,6 +50,7 @@ def route_transcript(
         device_id=device_id,
     )
     first_task = next((task for task in envelope.tasks if task.status != "rejected"), None)
+    first_observation = envelope.observations[0] if envelope.observations else None
     first_execution = next((item.get("result", {}) for item in envelope.dispatch_results if item.get("status") not in {"rejected"}), {})
     execution = first_execution if isinstance(first_execution, dict) else {}
     plan = None
@@ -44,11 +62,20 @@ def route_transcript(
             "confidence": 1.0,
             "transcript": text.strip(),
         }
+    elif first_observation:
+        plan = {
+            "skill_id": str(first_observation.get("tool") or ""),
+            "route": "observation",
+            "planner": "exact_observation_alias" if first_observation.get("preflight") else "react_llm",
+            "confidence": 1.0,
+            "transcript": text.strip(),
+        }
     return {
         "plan": plan,
-        "skill_id": first_task.skill_id if first_task else "",
+        "skill_id": first_task.skill_id if first_task else str(first_observation.get("tool") or "") if first_observation else "",
         "action_task": execution.get("action_task"),
         "face_task": execution.get("face_task"),
+        "observation": first_observation,
         "action_error": execution.get("action_error", ""),
         "face_error": execution.get("face_error", ""),
         "envelope": envelope.model_dump(),
@@ -94,6 +121,22 @@ def decide_transcript(
                 result = dispatch_task(envelope, task, cloud_config=cloud_config or {}, source=source, dispatch_mode=dispatch_mode)
             envelope.react_turns[-1]["tool_result"] = result
         envelope.final_response = "emergency_stop"
+        envelope.t_agent_end = __import__("time").time()
+        return envelope
+    try:
+        preflight_observation = _exact_observation_alias_call(envelope.transcript, registry_path=registry_path, catalog_path=catalog_path)
+    except Exception as exc:  # noqa: BLE001 - exact alias is an optimization, not a hard dependency
+        envelope.add_error("observation_alias", str(exc))
+        preflight_observation = None
+    if preflight_observation:
+        envelope.reasoning_summary = "Exact observation alias matched before LLM."
+        envelope.tool_calls.append(preflight_observation)
+        envelope.react_turns.append({"turn": 0, "assistant_tool_call": preflight_observation.model_dump(), "preflight": True})
+        observation = execute_observation_tool(envelope, preflight_observation, cloud_config or {})
+        observation["preflight"] = True
+        tool_result = {"ok": observation.get("status") != "failed", "observation": observation}
+        envelope.react_turns[-1]["tool_result"] = tool_result
+        envelope.final_response = str(observation.get("status") or "completed")
         envelope.t_agent_end = __import__("time").time()
         return envelope
     try:

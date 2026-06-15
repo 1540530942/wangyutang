@@ -10,7 +10,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from audio_recognition.harness.react_loop import route_transcript, transcribe_audio_path
+from audio_recognition.harness.react_loop import transcribe_audio_path
 from audio_recognition.transport.model_provider import build_provider
 from audio_recognition.transport.recorder import record_wav
 
@@ -126,7 +126,7 @@ def process_wav(config: dict[str, Any], wav_path: str | Path) -> dict[str, Any]:
     provider = build_provider(provider_config)
     try:
         routed_audio = transcribe_audio_path(
-            base_dir=BASE_DIR,
+            base_dir=PACKAGE_DIR,
             wav_path=wav_path,
             provider=provider,
             router_config=config.get("router", {}),
@@ -155,20 +155,11 @@ def process_wav(config: dict[str, Any], wav_path: str | Path) -> dict[str, Any]:
 
     text = str(routed_audio.get("text") or "")
     plan = routed_audio.get("plan")
-    routed = route_transcript(
-        base_dir=BASE_DIR,
-        text=text,
-        router_config=config.get("router", {}),
-        cloud_config=cloud,
-        route_action=False,
-        source="edge_audio_listener",
-    )
-
     payload = {
         "device_id": device_id,
         "text": text or "noise_or_unrecognized_audio",
         "wav_path": str(wav_path),
-        "skill_id": str(routed.get("skill_id") or ""),
+        "skill_id": "",
         "audio_base64": base64.b64encode(wav_path.read_bytes()).decode("ascii"),
         "audio_mime": "audio/wav",
         "audio_filename": wav_path.name,
@@ -178,10 +169,7 @@ def process_wav(config: dict[str, Any], wav_path: str | Path) -> dict[str, Any]:
             "captured_audio": True,
             "recognized": bool(text),
             "plan": plan,
-            "action_task": routed.get("action_task"),
-            "action_error": routed.get("action_error", ""),
-            "face_task": routed.get("face_task"),
-            "face_error": routed.get("face_error", ""),
+            "route_owner": "audio_server",
         },
         "reported_at": time.time(),
     }

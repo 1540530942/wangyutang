@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 
 ToolStatus = Literal["pending", "validated", "rejected", "executed", "failed"]
-TaskStatus = Literal["pending", "running", "completed", "failed", "cancelled", "rejected"]
+TaskStatus = Literal["pending", "accepted", "running", "completed", "failed", "cancelled", "rejected", "expired"]
 RouteKind = Literal["action", "face", "observation", "system", "none"]
 
 

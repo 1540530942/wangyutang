@@ -23,6 +23,10 @@
 		reverse_proxy {$AUDIO_UPSTREAM:audio-recognition:8095}
 	}
 
+	handle_path /common/* {
+		reverse_proxy {$COMMON_UPSTREAM:host.docker.internal:8101}
+	}
+
 	handle_path /robot/* {
 		reverse_proxy {$ROBOT_UPSTREAM:pi5-robot:8093}
 	}

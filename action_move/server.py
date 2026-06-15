@@ -330,6 +330,15 @@ async def next_task(
         await asyncio.sleep(LONG_POLL_TICK_SECONDS)
 
 
+@app.get("/api/tasks/{task_id}")
+def get_task(task_id: str) -> dict[str, Any]:
+    refresh_tasks()
+    for task in tasks:
+        if task["id"] == task_id:
+            return {"task": public_task(task)}
+    raise HTTPException(status_code=404, detail="task not found")
+
+
 @app.post("/api/tasks/result")
 def complete_task(payload: TaskResult, x_action_token: Annotated[str | None, Header()] = None) -> dict[str, Any]:
     require_token(x_action_token)

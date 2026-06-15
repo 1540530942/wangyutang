@@ -212,6 +212,10 @@ class ReactPipelineTest(unittest.TestCase):
         self.assertEqual(registry.defaults["safety_thresholds"]["min_front_distance_estimate_cm"], 15)
         self.assertEqual(forward.risk, "medium")
         self.assertEqual(forward.pre_conditions, ("front_distance_clear",))
+        self.assertEqual(registry.get("camera_snapshot").route, "observation")
+        self.assertEqual(registry.get("front_distance").tool, "front_distance")
+        self.assertIn("看一下前面", registry.get("camera_snapshot").aliases)
+        self.assertIn("前方距离", registry.get("front_distance").aliases)
         self.assertIn("左转", registry.get("turn_left").aliases)
         self.assertIn("右转", registry.get("turn_right").aliases)
         self.assertIn("摄像头向左", registry.get("look_left").aliases)
@@ -354,6 +358,48 @@ class ReactPipelineTest(unittest.TestCase):
         self.assertEqual(envelope.dispatch_results[0]["status"], "dry_run")
         self.assertTrue(envelope.safety_result["allowed"])
 
+    def test_front_distance_low_confidence_rejects_forward_motion(self) -> None:
+        with patch(
+            "audio_recognition.agent.react_agent.requests.post",
+            side_effect=[observation_response("front_distance", order=1), action_response("move_forward", text="forward", order=2), finish_response(3)],
+        ), patch("audio_recognition.tools.observation_executor._get_json", return_value={"available": True, "front_distance_estimate_cm": 40, "confidence": 0.2}):
+            envelope = decide_transcript(
+                base_dir=BASE_DIR,
+                text="front distance then forward",
+                router_config=ROUTER_CONFIG,
+                cloud_config={"sensor_server": "http://sensor.local"},
+                dispatch_mode="dry_run",
+                source="unit",
+            )
+        self.assertEqual(envelope.tasks[0].status, "rejected")
+        self.assertEqual(envelope.safety_result["reason"], "front_distance_low_confidence")
+
+    def test_front_distance_old_reported_at_rejects_forward_motion(self) -> None:
+        with patch(
+            "audio_recognition.agent.react_agent.requests.post",
+            side_effect=[observation_response("front_distance", order=1), action_response("move_forward", text="forward", order=2), finish_response(3)],
+        ), patch(
+            "audio_recognition.tools.observation_executor._get_json",
+            return_value={
+                "available": True,
+                "front_distance_estimate_cm": 40,
+                "confidence": 0.9,
+                "age_seconds": 0.1,
+                "reported_at": 100.0,
+                "sampled_at": 100.0,
+            },
+        ):
+            envelope = decide_transcript(
+                base_dir=BASE_DIR,
+                text="front distance then forward",
+                router_config=ROUTER_CONFIG,
+                cloud_config={"sensor_server": "http://sensor.local"},
+                dispatch_mode="dry_run",
+                source="unit",
+            )
+        self.assertEqual(envelope.tasks[0].status, "rejected")
+        self.assertEqual(envelope.safety_result["reason"], "front_distance_stale")
+
     def test_negative_instruction_is_rejected_by_safety(self) -> None:
         with patch("audio_recognition.agent.react_agent.requests.post", side_effect=[action_response("turn_left", text="不要左转")]):
             envelope = decide_transcript(
@@ -407,10 +453,36 @@ class ReactPipelineTest(unittest.TestCase):
                 source="unit",
             )
         envelope.dispatch_results = []
-        with patch("audio_recognition.tools.executors.create_action_task", return_value={"task": {"id": "task-1"}}) as create_action_task:
+        with patch("audio_recognition.tools.executors.create_action_task", return_value={"task": {"id": "task-1", "status": "pending"}}) as create_action_task, patch(
+            "audio_recognition.tools.dispatcher._fetch_json",
+            return_value={"task": {"id": "task-1", "status": "complete"}},
+        ):
             envelope = dispatch_envelope(envelope, cloud_config={"action_enabled": True, "action_server": "http://action.local"}, source="unit", dispatch_mode="cloud_queue")
         create_action_task.assert_called_once()
         self.assertEqual(envelope.dispatch_results[0]["status"], "completed")
+        self.assertEqual(envelope.dispatch_results[0]["action_task_id"], "task-1")
+
+    def test_cloud_dispatch_accepted_does_not_wait_for_completion(self) -> None:
+        with patch("audio_recognition.agent.react_agent.requests.post", side_effect=[action_response("turn_left", text="宸﹁浆"), finish_response()]):
+            envelope = decide_transcript(
+                base_dir=BASE_DIR,
+                text="宸﹁浆",
+                router_config=ROUTER_CONFIG,
+                cloud_config={},
+                dispatch_mode="dry_run",
+                source="unit",
+            )
+        envelope.tasks[0].wait_until = "accepted"
+        envelope.dispatch_results = []
+        with patch("audio_recognition.tools.executors.create_action_task", return_value={"task": {"id": "task-accepted", "status": "pending"}}) as create_action_task, patch(
+            "audio_recognition.tools.dispatcher._fetch_json"
+        ) as fetch_json:
+            envelope = dispatch_envelope(envelope, cloud_config={"action_enabled": True, "action_server": "http://action.local"}, source="unit", dispatch_mode="cloud_queue")
+        create_action_task.assert_called_once()
+        fetch_json.assert_not_called()
+        self.assertEqual(envelope.dispatch_results[0]["status"], "accepted")
+        self.assertEqual(envelope.dispatch_results[0]["action_task_id"], "task-accepted")
+        self.assertEqual(envelope.dispatch_results[0]["action_status"], "pending")
 
     def test_local_first_dispatch_posts_to_edge_controller(self) -> None:
         with patch("audio_recognition.agent.react_agent.requests.post", side_effect=[action_response("turn_left", text="左转"), finish_response()]):
@@ -525,7 +597,7 @@ class ReactPipelineTest(unittest.TestCase):
         ), patch("audio_recognition.tools.observation_executor._post_json", return_value={"status": "ok", "front_distance_estimate_cm": 40, "has_person": False}) as post_json:
             envelope = decide_transcript(
                 base_dir=BASE_DIR,
-                text="看一下前面",
+                text="观察一下前方情况",
                 router_config=ROUTER_CONFIG,
                 cloud_config={"camera_server": "http://camera.local"},
                 dispatch_mode="dry_run",
@@ -537,6 +609,106 @@ class ReactPipelineTest(unittest.TestCase):
         self.assertEqual(envelope.observations[0]["data"]["front_distance_estimate_cm"], 40)
         self.assertEqual(post_json.call_args.args[1]["purpose"], "判断是否能前进")
 
+    def test_camera_snapshot_waits_for_matching_latest_frame(self) -> None:
+        requested_at = 1000.0
+        with patch(
+            "audio_recognition.agent.react_agent.requests.post",
+            side_effect=[observation_response("camera_snapshot"), finish_response(2)],
+        ), patch(
+            "audio_recognition.tools.observation_executor._post_json",
+            return_value={"ok": True, "task": {"id": "capture-1", "kind": "camera", "requested_at": requested_at}},
+        ) as post_json, patch(
+            "audio_recognition.tools.observation_executor._get_json",
+            side_effect=[
+                {"task_id": "old", "updated_at": requested_at - 1, "has_image": True},
+                {"task": {"id": "capture-1", "status": "pending"}},
+                {"task_id": "capture-1", "updated_at": requested_at + 1, "has_image": True, "frame_id": "fresh"},
+                {"task": {"id": "capture-1", "status": "complete"}},
+            ],
+        ) as get_json:
+            envelope = decide_transcript(
+                base_dir=BASE_DIR,
+                text="camera snapshot",
+                router_config=ROUTER_CONFIG,
+                cloud_config={"camera_server": "http://camera.local"},
+                dispatch_mode="dry_run",
+                source="unit",
+            )
+        post_json.assert_called_once()
+        self.assertEqual(get_json.call_args_list[-2].args[0], "http://camera.local/api/latest?kind=camera")
+        self.assertEqual(envelope.observations[0]["data"]["capture_task"]["id"], "capture-1")
+        self.assertEqual(envelope.observations[0]["data"]["latest"]["frame_id"], "fresh")
+
+    def test_exact_observation_alias_bypasses_llm(self) -> None:
+        with patch("audio_recognition.agent.react_agent.requests.post") as llm_post, patch(
+            "audio_recognition.tools.observation_executor._post_json",
+            return_value={"status": "ok", "front_distance_estimate_cm": 40, "has_image": True},
+        ):
+            envelope = decide_transcript(
+                base_dir=BASE_DIR,
+                text="看一下前面",
+                router_config=ROUTER_CONFIG,
+                cloud_config={"camera_server": "http://camera.local"},
+                dispatch_mode="dry_run",
+                source="unit",
+            )
+        llm_post.assert_not_called()
+        self.assertEqual(envelope.tool_calls[0].tool, "camera_snapshot")
+        self.assertEqual(envelope.observations[0]["status"], "completed")
+        self.assertTrue(envelope.observations[0]["preflight"])
+        self.assertEqual(envelope.tasks, [])
+
+    def test_route_transcript_reports_observation_plan(self) -> None:
+        with patch(
+            "audio_recognition.tools.observation_executor._post_json",
+            return_value={"status": "ok", "front_distance_estimate_cm": 40, "has_image": True},
+        ):
+            routed = route_transcript(
+                base_dir=BASE_DIR,
+                text="看一下前面",
+                router_config=ROUTER_CONFIG,
+                cloud_config={"camera_server": "http://camera.local"},
+                route_action=True,
+                source="unit",
+                device_id="unit-device",
+            )
+        self.assertEqual(routed["plan"]["route"], "observation")
+        self.assertEqual(routed["plan"]["skill_id"], "camera_snapshot")
+        self.assertEqual(routed["observation"]["tool"], "camera_snapshot")
+        self.assertIsNone(routed["action_task"])
+
+    def test_camera_snapshot_records_failed_capture_metadata(self) -> None:
+        requested_at = 1000.0
+        with patch(
+            "audio_recognition.agent.react_agent.requests.post",
+            side_effect=[observation_response("camera_snapshot"), finish_response(2)],
+        ), patch(
+            "audio_recognition.tools.observation_executor._post_json",
+            return_value={"ok": True, "task": {"id": "capture-1", "kind": "camera", "requested_at": requested_at}},
+        ), patch(
+            "audio_recognition.tools.observation_executor._get_json",
+            side_effect=[
+                {
+                    "task_id": "capture-1",
+                    "updated_at": requested_at + 1,
+                    "has_image": True,
+                    "capture_error": "Connection reset by peer",
+                },
+                {"task": {"id": "capture-1", "status": "failed", "capture_error": "Connection reset by peer"}},
+            ],
+        ):
+            envelope = decide_transcript(
+                base_dir=BASE_DIR,
+                text="camera snapshot",
+                router_config=ROUTER_CONFIG,
+                cloud_config={"camera_server": "http://camera.local"},
+                dispatch_mode="dry_run",
+                source="unit",
+            )
+        self.assertEqual(envelope.observations[0]["status"], "failed")
+        self.assertIn("Connection reset by peer", envelope.observations[0]["error"])
+        self.assertEqual(envelope.observations[0]["data"]["latest"]["task_id"], "capture-1")
+
     def test_observation_failure_is_recorded_and_loop_can_finish(self) -> None:
         with patch(
             "audio_recognition.agent.react_agent.requests.post",
@@ -544,7 +716,7 @@ class ReactPipelineTest(unittest.TestCase):
         ):
             envelope = decide_transcript(
                 base_dir=BASE_DIR,
-                text="\u770b\u4e00\u4e0b\u524d\u9762",
+                text="观察一下前方情况",
                 router_config=ROUTER_CONFIG,
                 cloud_config={},
                 dispatch_mode="dry_run",

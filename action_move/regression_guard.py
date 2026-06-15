@@ -94,8 +94,18 @@ def local_guard(guard: Guard) -> None:
     )
 
     tasks.clear()
+    empty_next = client.get("/api/tasks/next?wait_seconds=0")
+    guard.check(empty_next.status_code == 200 and empty_next.json()["task"] is None, "next-task polling endpoint is not shadowed")
+
+    tasks.clear()
     rgb_task = client.post("/api/tasks", json={"action": "rgb_on", "source": "guard-local"})
     guard.check(rgb_task.status_code == 200 and rgb_task.json()["task"]["skill_id"] == "rgb_on", "RGB task can be created locally")
+    rgb_task_id = rgb_task.json()["task"]["id"] if rgb_task.status_code == 200 else ""
+    fetched_rgb_task = client.get(f"/api/tasks/{rgb_task_id}") if rgb_task_id else None
+    guard.check(
+        fetched_rgb_task is not None and fetched_rgb_task.status_code == 200 and fetched_rgb_task.json()["task"]["id"] == rgb_task_id,
+        "single task lookup returns created task",
+    )
 
     tasks.clear()
     distance_task = client.post("/api/tasks", json={"action": "front_distance", "source": "guard-local"})
