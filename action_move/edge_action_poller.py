@@ -246,6 +246,40 @@ def announce_completion(
     return "\n".join(part for part in [fallback_reason, volume_output, f"[INFO] voice_prompt_played={prompt.name}{suffix}"] if part)
 
 
+def schedule_completion_voice(
+    action: str,
+    enabled: bool = True,
+    device: str = "",
+    tts_url: str = "",
+    tts_model: str = DEFAULT_TTS_MODEL,
+    tts_voice: str = DEFAULT_TTS_VOICE,
+    tts_language: str = DEFAULT_TTS_LANGUAGE,
+    volume_percent: object = None,
+) -> str:
+    if not enabled:
+        return ""
+
+    def worker() -> None:
+        try:
+            output = announce_completion(
+                action,
+                enabled=enabled,
+                device=device,
+                tts_url=tts_url,
+                tts_model=tts_model,
+                tts_voice=tts_voice,
+                tts_language=tts_language,
+                volume_percent=volume_percent,
+            )
+            if output:
+                print(output, flush=True)
+        except Exception as exc:  # noqa: BLE001 - voice must not block task result reporting
+            print(f"[WARN] async voice prompt failed: {type(exc).__name__}: {exc}", flush=True)
+
+    threading.Thread(target=worker, daemon=True).start()
+    return "[INFO] voice_prompt_scheduled=async"
+
+
 def first_ip_address() -> str:
     hostname_ips = command_text(["hostname", "-I"])
     for item in hostname_ips.split():
@@ -463,7 +497,7 @@ def main() -> int:
                         args.no_controller,
                     )
                 if ok:
-                    voice_output = announce_completion(
+                    voice_output = schedule_completion_voice(
                         action,
                         enabled=not args.no_voice,
                         device=args.voice_device,
