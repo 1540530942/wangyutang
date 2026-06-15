@@ -74,7 +74,14 @@ async function api(path, options = {}) {
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || response.statusText);
+    let message = text || response.statusText;
+    try {
+      const payload = JSON.parse(text);
+      message = payload.detail || payload.error || message;
+    } catch {
+      // Keep the raw response text when the server did not return JSON.
+    }
+    throw new Error(message);
   }
   return response.json();
 }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -72,10 +73,30 @@ def request_json(url: str, method: str = "GET", payload: dict[str, Any] | None =
 def local_guard(guard: Guard) -> None:
     sys.path.insert(0, str(PROJECT_DIR))
     from fastapi.testclient import TestClient
-    from action_move.server import app, tasks
+    from action_move.server import CLAIM_TIMEOUT_SECONDS, app, device_state, tasks
 
     tasks.clear()
     client = TestClient(app)
+
+    def set_device_online() -> None:
+        device_state.update(
+            {
+                "device_id": "guard-local",
+                "last_seen_at": time.time(),
+                "current_task_id": "",
+                "status": "idle",
+            }
+        )
+
+    def set_device_offline() -> None:
+        device_state.update(
+            {
+                "device_id": "guard-local",
+                "last_seen_at": 0.0,
+                "current_task_id": "",
+                "status": "offline",
+            }
+        )
 
     health = client.get("/api/health")
     guard.check(health.status_code == 200 and health.json()["status"] == "ok", "local action health works")
@@ -98,6 +119,11 @@ def local_guard(guard: Guard) -> None:
     guard.check(empty_next.status_code == 200 and empty_next.json()["task"] is None, "next-task polling endpoint is not shadowed")
 
     tasks.clear()
+    set_device_offline()
+    offline_rgb_task = client.post("/api/tasks", json={"action": "rgb_on", "source": "guard-local"})
+    guard.check(offline_rgb_task.status_code == 503, "ordinary tasks are rejected when edge device is offline")
+
+    set_device_online()
     rgb_task = client.post("/api/tasks", json={"action": "rgb_on", "source": "guard-local"})
     guard.check(rgb_task.status_code == 200 and rgb_task.json()["task"]["skill_id"] == "rgb_on", "RGB task can be created locally")
     rgb_task_id = rgb_task.json()["task"]["id"] if rgb_task.status_code == 200 else ""
@@ -118,6 +144,36 @@ def local_guard(guard: Guard) -> None:
     first_motion = client.post("/api/tasks", json={"action": "move_forward", "source": "guard-local"})
     second_motion = client.post("/api/tasks", json={"action": "move_backward", "source": "guard-local"})
     guard.check(first_motion.status_code == 200 and second_motion.status_code == 409, "motion queue rejects overlapping motion")
+
+    tasks.clear()
+    now = time.time()
+    timed_out_task = {
+        "id": "guard-timeout-task",
+        "action": "move_forward",
+        "skill_id": "move_forward",
+        "name_zh": "向前",
+        "type": "base_move",
+        "source": "guard-local",
+        "note": "",
+        "settings": {},
+        "status": "claimed",
+        "requested_at": now - 60,
+        "updated_at": now - 60,
+        "deadline_at": now + 60,
+        "claimed_at": now - CLAIM_TIMEOUT_SECONDS - 1,
+        "completed_at": 0.0,
+        "device_id": "guard-local",
+        "output": "",
+        "error": "",
+    }
+    tasks.append(timed_out_task)
+    device_state["current_task_id"] = timed_out_task["id"]
+    timeout_health = client.get("/api/health")
+    timeout_device = timeout_health.json()["device"] if timeout_health.status_code == 200 else {}
+    guard.check(
+        timed_out_task["status"] == "failed" and timeout_device.get("current_task_id") == "",
+        "claimed task timeout clears stale current task",
+    )
 
 
 def static_guard(guard: Guard) -> None:
