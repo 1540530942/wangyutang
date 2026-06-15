@@ -172,6 +172,10 @@ def refresh_tasks() -> None:
             task["updated_at"] = now
             task["completed_at"] = now
             task["error"] = f"claimed task timed out after {int(CLAIM_TIMEOUT_SECONDS)}s"
+            if device_state.get("current_task_id") == task["id"]:
+                device_state["current_task_id"] = ""
+                device_state["status"] = "failed"
+                device_state["last_result"] = public_task(task)
 
 
 def public_task(task: dict[str, Any]) -> dict[str, Any]:
@@ -269,6 +273,8 @@ def create_task(payload: ActionRequest) -> dict[str, Any]:
         if payload.verification_code != "123":
             raise HTTPException(status_code=403, detail="invalid shutdown verification code")
         expire_pending_motion_tasks("cancelled by remote shutdown")
+    elif not current_device().get("online"):
+        raise HTTPException(status_code=503, detail="robot edge device is offline")
     elif skill["type"] in MOTION_TYPES and has_active_motion_task():
         raise HTTPException(status_code=409, detail="a motion task is already active")
     now = time.time()
