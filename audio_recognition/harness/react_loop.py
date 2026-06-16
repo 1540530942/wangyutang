@@ -162,10 +162,18 @@ def route_transcript(
         source=source,
         device_id=device_id,
     )
-    first_task = next((task for task in envelope.tasks if task.status != "rejected"), None)
+    first_task = next((task for task in envelope.tasks if task.status != "rejected"), None) or (envelope.tasks[0] if envelope.tasks else None)
     first_observation = envelope.observations[0] if envelope.observations else None
-    first_execution = next((item.get("result", {}) for item in envelope.dispatch_results if item.get("status") not in {"rejected"}), {})
+    first_dispatch = next((item for item in envelope.dispatch_results if item.get("status") not in {"rejected"}), None) or (
+        envelope.dispatch_results[0] if envelope.dispatch_results else {}
+    )
+    first_execution = first_dispatch.get("result", {}) if isinstance(first_dispatch, dict) else {}
     execution = first_execution if isinstance(first_execution, dict) else {}
+    action_task = execution.get("action_task")
+    if action_task == {}:
+        action_task = None
+    action_error = str(execution.get("action_error") or first_dispatch.get("error") or (first_task.error if first_task and first_task.route == "action" else "") or "")
+    face_error = str(execution.get("face_error") or (first_task.error if first_task and first_task.route == "face" else "") or "")
     plan = None
     if first_task:
         planner = "exact_action_alias" if envelope.react_turns and envelope.react_turns[0].get("preflight") else "react_llm"
@@ -187,11 +195,11 @@ def route_transcript(
     return {
         "plan": plan,
         "skill_id": first_task.skill_id if first_task else str(first_observation.get("tool") or "") if first_observation else "",
-        "action_task": execution.get("action_task"),
+        "action_task": action_task,
         "face_task": execution.get("face_task"),
         "observation": first_observation,
-        "action_error": execution.get("action_error", ""),
-        "face_error": execution.get("face_error", ""),
+        "action_error": action_error,
+        "face_error": face_error,
         "envelope": envelope.model_dump(),
     }
 

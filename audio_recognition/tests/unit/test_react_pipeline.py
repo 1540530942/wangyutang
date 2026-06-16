@@ -291,6 +291,25 @@ class ReactPipelineTest(unittest.TestCase):
         self.assertEqual(envelope.tasks[0].skill_id, "move_forward")
         self.assertEqual(envelope.dispatch_results[0]["status"], "dry_run")
 
+    def test_route_transcript_reports_rejected_forward_action(self) -> None:
+        with patch("audio_recognition.agent.react_agent.requests.post") as llm_post, patch(
+            "audio_recognition.tools.observation_executor._get_json",
+            return_value={"available": True, "front_distance_estimate_cm": 25, "confidence": 0.9, "age_seconds": 99},
+        ):
+            routed = route_transcript(
+                base_dir=BASE_DIR,
+                text="\u524d\u8fdb",
+                router_config=ROUTER_CONFIG,
+                cloud_config={"sensor_server": "http://sensor.local"},
+                route_action=True,
+                source="unit",
+            )
+        llm_post.assert_not_called()
+        self.assertEqual(routed["skill_id"], "move_forward")
+        self.assertEqual(routed["plan"]["route"], "action")
+        self.assertEqual(routed["action_error"], "front_distance_stale")
+        self.assertIsNone(routed["action_task"])
+
     def test_exact_compound_action_aliases_bypass_llm(self) -> None:
         with patch("audio_recognition.agent.react_agent.requests.post") as llm_post:
             envelope = decide_transcript(
