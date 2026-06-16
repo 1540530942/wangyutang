@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import io
 import json
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from audio_recognition.skills.catalog_loader import create_action_task
 from audio_recognition.tools.dispatcher import dispatch_envelope
 from audio_recognition.core.envelope import DecisionEnvelope, ToolCall
 from audio_recognition.storage.envelope_store import load_envelope, save_envelope
@@ -144,6 +147,18 @@ def finish_response(order: int = 2) -> Mock:
 
 
 class ReactPipelineTest(unittest.TestCase):
+    def test_create_action_task_reports_http_detail(self) -> None:
+        error = urllib.error.HTTPError(
+            "http://action.local/api/tasks",
+            503,
+            "Service Unavailable",
+            {},
+            io.BytesIO(b'{"detail":"robot edge device is offline"}'),
+        )
+        with patch("urllib.request.urlopen", side_effect=error):
+            with self.assertRaisesRegex(RuntimeError, "robot edge device is offline"):
+                create_action_task("http://action.local", "turn_left")
+
     def test_tool_schema_is_generated_from_skill_catalog(self) -> None:
         schema = build_react_tools_schema(CATALOG_PATH)
         functions = {item["function"]["name"]: item["function"] for item in schema}

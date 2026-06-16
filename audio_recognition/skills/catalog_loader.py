@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
@@ -46,8 +47,29 @@ def create_action_task(action_server: str, skill_id: str, source: str = "audio_r
         open_url = opener.open
     else:
         open_url = urllib.request.urlopen
-    with open_url(request, timeout=12) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with open_url(request, timeout=12) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = _http_error_detail(exc)
+        if detail:
+            raise RuntimeError(detail) from exc
+        raise
+
+
+def _http_error_detail(exc: urllib.error.HTTPError) -> str:
+    try:
+        raw = exc.read().decode("utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 - best effort diagnostics for upstream HTTP errors
+        return ""
+    if not raw:
+        return ""
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return raw.strip()
+    detail = payload.get("detail") if isinstance(payload, dict) else ""
+    return str(detail or raw).strip()
 
 
 def is_loopback_url(url: str) -> bool:
