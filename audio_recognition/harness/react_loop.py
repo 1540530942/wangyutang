@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,118 @@ from audio_recognition.tools.dispatcher import dispatch_envelope, dispatch_task
 from audio_recognition.tools.observation_executor import OBSERVATION_TOOLS, execute_observation_tool
 from audio_recognition.tools.tool_call_adapter import build_tool_result_message
 from audio_recognition.tools.tool_validator import validate_tool_call, validate_tool_calls
+
+
+EXACT_ACTION_ALIASES = {
+    "forward": "move_forward",
+    "\u524d\u8fdb": "move_forward",
+    "\u5411\u524d": "move_forward",
+    "\u5411\u524d\u8d70": "move_forward",
+    "\u5f80\u524d\u8d70": "move_forward",
+    "\u5411\u524d\u79fb\u52a8": "move_forward",
+    "backward": "move_backward",
+    "\u540e\u9000": "move_backward",
+    "\u5411\u540e": "move_backward",
+    "\u5411\u540e\u8d70": "move_backward",
+    "\u5f80\u540e\u8d70": "move_backward",
+    "\u5de6\u8f6c": "turn_left",
+    "\u5411\u5de6\u8f6c": "turn_left",
+    "\u5f80\u5de6\u8f6c": "turn_left",
+    "\u671d\u5de6\u8f6c": "turn_left",
+    "\u5411\u5de6\u65cb\u8f6c": "turn_left",
+    "\u6389\u5934": "turn_left",
+    "\u539f\u5730\u6389\u5934": "turn_left",
+    "\u53f3\u8f6c": "turn_right",
+    "\u5411\u53f3\u8f6c": "turn_right",
+    "\u5f80\u53f3\u8f6c": "turn_right",
+    "\u671d\u53f3\u8f6c": "turn_right",
+    "\u5411\u53f3\u65cb\u8f6c": "turn_right",
+    "\u5de6\u79fb": "move_left",
+    "\u5411\u5de6\u79fb": "move_left",
+    "\u5f80\u5de6\u8d70": "move_left",
+    "\u53f3\u79fb": "move_right",
+    "\u5411\u53f3\u79fb": "move_right",
+    "\u5f80\u53f3\u8d70": "move_right",
+}
+EXACT_ACTION_SPLIT_RE = re.compile(r"(?:\s+|[\uff0c,;\uff1b\u3001]+|\u7136\u540e|\u518d|\u63a5\u7740|\u5e76\u4e14|\u540e)+")
+
+
+def _normalized_exact_text(text: str) -> str:
+    return re.sub(r"[\s\u3002\uff01!\uff1f?]+", "", text.strip().casefold())
+
+
+def _exact_action_sequence(transcript: str) -> list[tuple[str, str]] | None:
+    normalized = _normalized_exact_text(transcript)
+    if not normalized:
+        return None
+    if normalized in EXACT_ACTION_ALIASES:
+        return [(EXACT_ACTION_ALIASES[normalized], transcript.strip())]
+    parts = [item for item in EXACT_ACTION_SPLIT_RE.split(transcript.strip()) if item.strip()]
+    if len(parts) <= 1:
+        return None
+    sequence: list[tuple[str, str]] = []
+    for part in parts:
+        key = _normalized_exact_text(part)
+        skill_id = EXACT_ACTION_ALIASES.get(key)
+        if not skill_id:
+            return None
+        sequence.append((skill_id, part.strip()))
+    return sequence or None
+
+
+def _append_rejected_result(envelope: DecisionEnvelope, task: Any) -> dict[str, Any]:
+    result = {"task_id": task.task_id, "skill_id": task.skill_id, "status": "rejected", "error": task.error}
+    envelope.dispatch_results.append(result)
+    return result
+
+
+def _run_exact_action_sequence(
+    envelope: DecisionEnvelope,
+    sequence: list[tuple[str, str]],
+    *,
+    registry_path: Path,
+    catalog_path: Path,
+    cloud_config: dict[str, Any] | None,
+    source: str,
+    dispatch_mode: str,
+) -> DecisionEnvelope:
+    envelope.reasoning_summary = "Exact action alias matched before LLM."
+    for index, (skill_id, fragment) in enumerate(sequence, start=1):
+        if skill_id == "move_forward":
+            observation_call = ToolCall(
+                tool="front_distance",
+                args={"skill_id": "front_distance", "order": index - 0.5, "confidence": 1.0, "text": fragment},
+            )
+            envelope.tool_calls.append(observation_call)
+            envelope.react_turns.append({"turn": len(envelope.react_turns), "assistant_tool_call": observation_call.model_dump(), "preflight": True})
+            observation = execute_observation_tool(envelope, observation_call, cloud_config or {})
+            observation["preflight"] = True
+            envelope.react_turns[-1]["tool_result"] = {"ok": observation.get("status") != "failed", "observation": observation}
+
+        call = ToolCall(
+            tool="dispatch_action",
+            args={"skill_id": skill_id, "order": index, "wait_until": "completed", "confidence": 1.0, "text": fragment},
+        )
+        envelope.tool_calls.append(call)
+        envelope.react_turns.append({"turn": len(envelope.react_turns), "assistant_tool_call": call.model_dump(), "preflight": True})
+        task = validate_tool_call(envelope, call, registry_path=registry_path, catalog_path=catalog_path)
+        if not task:
+            result = {"ok": False, "error": "tool_call_rejected", "tool": call.tool}
+            envelope.react_turns[-1]["tool_result"] = result
+            continue
+        checked_task = run_safety_guard_for_task(envelope, task, registry_path=registry_path, catalog_path=catalog_path)
+        if checked_task.status == "rejected":
+            task.status = checked_task.status
+            task.error = checked_task.error
+            result = _append_rejected_result(envelope, task)
+        else:
+            result = dispatch_task(envelope, task, cloud_config=cloud_config or {}, source=source, dispatch_mode=dispatch_mode)
+        envelope.react_turns[-1]["tool_result"] = result
+        if result.get("status") not in {"completed", "dry_run"}:
+            break
+    envelope.final_response = str(envelope.dispatch_results[-1].get("status") if envelope.dispatch_results else "done")
+    envelope.t_agent_end = __import__("time").time()
+    return envelope
 
 
 def _exact_observation_alias_call(transcript: str, *, registry_path: Path, catalog_path: Path) -> ToolCall | None:
@@ -55,10 +168,11 @@ def route_transcript(
     execution = first_execution if isinstance(first_execution, dict) else {}
     plan = None
     if first_task:
+        planner = "exact_action_alias" if envelope.react_turns and envelope.react_turns[0].get("preflight") else "react_llm"
         plan = {
             "skill_id": first_task.skill_id,
             "route": first_task.route,
-            "planner": "react_llm",
+            "planner": planner,
             "confidence": 1.0,
             "transcript": text.strip(),
         }
@@ -123,6 +237,17 @@ def decide_transcript(
         envelope.final_response = "emergency_stop"
         envelope.t_agent_end = __import__("time").time()
         return envelope
+    exact_actions = _exact_action_sequence(envelope.transcript)
+    if exact_actions:
+        return _run_exact_action_sequence(
+            envelope,
+            exact_actions,
+            registry_path=registry_path,
+            catalog_path=catalog_path,
+            cloud_config=cloud_config,
+            source=source,
+            dispatch_mode=dispatch_mode,
+        )
     try:
         preflight_observation = _exact_observation_alias_call(envelope.transcript, registry_path=registry_path, catalog_path=catalog_path)
     except Exception as exc:  # noqa: BLE001 - exact alias is an optimization, not a hard dependency
