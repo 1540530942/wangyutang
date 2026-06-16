@@ -240,7 +240,7 @@ class ReactPipelineTest(unittest.TestCase):
         with patch("audio_recognition.agent.react_agent.requests.post", side_effect=[action_response("turn_left", text="左转"), finish_response()]):
             envelope = decide_transcript(
                 base_dir=BASE_DIR,
-                text="左转",
+                text="请左转一下",
                 router_config=ROUTER_CONFIG,
                 cloud_config={},
                 dispatch_mode="dry_run",
@@ -272,6 +272,40 @@ class ReactPipelineTest(unittest.TestCase):
         self.assertEqual([task.skill_id for task in envelope.tasks], ["turn_left", "turn_right"])
         self.assertEqual([task.order for task in envelope.tasks], [1, 2])
 
+    def test_exact_forward_alias_observes_distance_before_dispatch(self) -> None:
+        with patch("audio_recognition.agent.react_agent.requests.post") as llm_post, patch(
+            "audio_recognition.tools.observation_executor._get_json",
+            return_value={"available": True, "front_distance_estimate_cm": 40, "confidence": 0.9},
+        ):
+            envelope = decide_transcript(
+                base_dir=BASE_DIR,
+                text="\u524d\u8fdb",
+                router_config=ROUTER_CONFIG,
+                cloud_config={"sensor_server": "http://sensor.local"},
+                dispatch_mode="dry_run",
+                source="unit",
+            )
+        llm_post.assert_not_called()
+        self.assertEqual(envelope.observations[0]["tool"], "front_distance")
+        self.assertTrue(envelope.observations[0]["preflight"])
+        self.assertEqual(envelope.tasks[0].skill_id, "move_forward")
+        self.assertEqual(envelope.dispatch_results[0]["status"], "dry_run")
+
+    def test_exact_compound_action_aliases_bypass_llm(self) -> None:
+        with patch("audio_recognition.agent.react_agent.requests.post") as llm_post:
+            envelope = decide_transcript(
+                base_dir=BASE_DIR,
+                text="\u5411\u5de6\u8f6c\u7136\u540e\u6389\u5934",
+                router_config=ROUTER_CONFIG,
+                cloud_config={},
+                dispatch_mode="dry_run",
+                source="unit",
+            )
+        llm_post.assert_not_called()
+        self.assertEqual([task.skill_id for task in envelope.tasks], ["turn_left", "turn_left"])
+        self.assertEqual([task.order for task in envelope.tasks], [1, 2])
+        self.assertEqual([item["status"] for item in envelope.dispatch_results], ["dry_run", "dry_run"])
+
     def test_native_tool_call_is_normalized_to_internal_tool_call(self) -> None:
         with patch(
             "audio_recognition.agent.react_agent.requests.post",
@@ -292,7 +326,7 @@ class ReactPipelineTest(unittest.TestCase):
         ):
             envelope = decide_transcript(
                 base_dir=BASE_DIR,
-                text="左转",
+                text="请左转一下",
                 router_config=ROUTER_CONFIG,
                 cloud_config={},
                 dispatch_mode="dry_run",
@@ -466,7 +500,7 @@ class ReactPipelineTest(unittest.TestCase):
         with patch("audio_recognition.agent.react_agent.requests.post", side_effect=[action_response("turn_left", text="宸﹁浆"), finish_response()]):
             envelope = decide_transcript(
                 base_dir=BASE_DIR,
-                text="宸﹁浆",
+                text="请左转一下",
                 router_config=ROUTER_CONFIG,
                 cloud_config={},
                 dispatch_mode="dry_run",
@@ -756,7 +790,7 @@ class ReactPipelineTest(unittest.TestCase):
         with patch("audio_recognition.agent.react_agent.requests.post", side_effect=[multi_tool_response(), finish_response(2)]):
             envelope = decide_transcript(
                 base_dir=BASE_DIR,
-                text="\u524d\u8fdb\u7136\u540e\u53f3\u8f6c",
+                text="\u8bf7\u524d\u8fdb\u7136\u540e\u53f3\u8f6c",
                 router_config=ROUTER_CONFIG,
                 cloud_config={},
                 dispatch_mode="dry_run",
@@ -771,7 +805,7 @@ class ReactPipelineTest(unittest.TestCase):
         with patch("audio_recognition.agent.react_agent.requests.post", return_value=invalid_native_arguments_response()):
             envelope = decide_transcript(
                 base_dir=BASE_DIR,
-                text="\u524d\u8fdb",
+                text="\u8bf7\u524d\u8fdb\u4e00\u6b65",
                 router_config=ROUTER_CONFIG,
                 cloud_config={},
                 dispatch_mode="dry_run",
@@ -791,7 +825,7 @@ class ReactPipelineTest(unittest.TestCase):
         ):
             envelope = decide_transcript(
                 base_dir=BASE_DIR,
-                text="左转",
+                text="请左转一下",
                 router_config=ROUTER_CONFIG,
                 cloud_config={},
                 dispatch_mode="dry_run",
