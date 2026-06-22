@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  pi5-monitor-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: pi5-monitor-server
+    restart: unless-stopped
+    ports:
+      - "8098:8098"
+    volumes:
+      - pi5_monitor_db:/var/lib/pi5-monitor-server
+      - pi5_monitor_logs:/var/log/pi5-monitor-server
+    environment:
+      PI5_MONITOR_API_KEY: ${PI5_MONITOR_API_KEY:-changeme}
+      PI5_ALERT_WECHAT_WEBHOOK: ${PI5_ALERT_WECHAT_WEBHOOK:-}
+      PI5_ALERT_TELEGRAM_TOKEN: ${PI5_ALERT_TELEGRAM_TOKEN:-}
+      PI5_ALERT_TELEGRAM_CHAT_ID: ${PI5_ALERT_TELEGRAM_CHAT_ID:-}
+      PI5_ALERT_WEBHOOK: ${PI5_ALERT_WEBHOOK:-}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8098/api/monitor/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  pi5_monitor_db:
+  pi5_monitor_logs:
