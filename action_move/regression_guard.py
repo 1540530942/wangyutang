@@ -104,6 +104,11 @@ def local_guard(guard: Guard) -> None:
     skills = client.get("/api/skills").json()["skills"]
     skill_ids = {item["id"] for item in skills}
     guard.check(REQUIRED_SKILLS.issubset(skill_ids), "local skill catalog contains required skills")
+    look_skills = {item["id"]: item for item in skills if item["id"].startswith("look_")}
+    guard.check(
+        all("delta" in look_skills[item]["servo"] for item in ("look_left", "look_right", "look_up", "look_down")),
+        "camera look skills use incremental servo deltas",
+    )
 
     bad_shutdown = client.post("/api/tasks", json={"action": "remote_shutdown", "verification_code": "000"})
     guard.check(bad_shutdown.status_code == 403, "remote shutdown rejects wrong verification code")

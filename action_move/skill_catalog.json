@@ -3,8 +3,8 @@
   "robot": "TurboPi",
   "notes": [
     "Image calibration shows PWM servo 2 is the horizontal pan axis, while PWM servo 1 changes the vertical/pitch view.",
-    "Left/right look skills use servo2=1800 for left and servo2=1200 for right after image-difference verification.",
-    "Up/down look skills are mapped to the pitch axis on servo1 with conservative 1000/1700 positions.",
+    "Camera look skills are incremental: each press nudges the current servo position inside calibrated bounds.",
+    "Left/right use servo2 with positive/negative delta; up/down use servo1 with negative/positive delta.",
     "Base movement uses /cmd_vel and always publishes stop after a timed burst.",
     "Movement and turn commands are open-loop units. The web setting defines the requested unit distance or angle; the executor converts it to a bounded duration."
   ],
@@ -44,6 +44,8 @@
     "stop_publish_times": 3,
     "servo_duration_s": 0.35,
     "pwm_center": 1500,
+    "camera_servo_min": 1000,
+    "camera_servo_max": 2000,
     "camera_server": "https://www.wangyutang.cn/camera",
     "capture_after_servo": true,
     "capture_after_move": false,
@@ -150,7 +152,10 @@
       ],
       "servo": {
         "id": 2,
-        "position": 1800,
+        "delta": 100,
+        "default_position": 1500,
+        "min": 1200,
+        "max": 1800,
         "axis": "pan"
       }
     },
@@ -168,7 +173,10 @@
       ],
       "servo": {
         "id": 2,
-        "position": 1200,
+        "delta": -100,
+        "default_position": 1500,
+        "min": 1200,
+        "max": 1800,
         "axis": "pan"
       }
     },
@@ -185,7 +193,10 @@
       ],
       "servo": {
         "id": 1,
-        "position": 1000,
+        "delta": -100,
+        "default_position": 1500,
+        "min": 1000,
+        "max": 1700,
         "axis": "tilt"
       }
     },
@@ -202,7 +213,10 @@
       ],
       "servo": {
         "id": 1,
-        "position": 1700,
+        "delta": 100,
+        "default_position": 1500,
+        "min": 1000,
+        "max": 1700,
         "axis": "tilt"
       }
     },

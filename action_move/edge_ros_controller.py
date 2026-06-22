@@ -118,6 +118,8 @@ class TurboPiController(Node):
         self.stop_event = threading.Event()
         self.last_action = ""
         self.last_executed_at = 0.0
+        center = int(defaults.get("pwm_center", 1500))
+        self.servo_positions: dict[int, int] = {1: center, 2: center}
 
     def execute(self, action: str, settings: dict[str, Any] | None = None) -> dict[str, Any]:
         started = time.time()
@@ -154,7 +156,7 @@ class TurboPiController(Node):
                     self.publish_servo_reset(defaults)
                     self.request_camera_capture(defaults)
                 elif skill["type"] == "camera_servo":
-                    self.publish_servo(skill, defaults)
+                    output.append(self.publish_servo(skill, defaults))
                     self.request_camera_capture(defaults)
                 elif skill["type"] == "rgb_light":
                     self.publish_rgb(skill, defaults)
@@ -239,11 +241,23 @@ class TurboPiController(Node):
             for topic, publisher in self.cmd_vel_pubs.items()
         }
 
-    def publish_servo(self, skill: dict[str, Any], defaults: dict[str, Any]) -> None:
+    def resolve_servo_position(self, servo: dict[str, Any], defaults: dict[str, Any]) -> tuple[int, int, int | None]:
+        servo_id = int(servo["id"])
+        fallback = int(servo.get("default_position", defaults.get("pwm_center", 1500)))
+        current = int(self.servo_positions.get(servo_id, fallback))
+        minimum = int(servo.get("min", defaults.get("camera_servo_min", 1000)))
+        maximum = int(servo.get("max", defaults.get("camera_servo_max", 2000)))
+        if "delta" in servo:
+            delta = int(servo.get("delta", 0))
+            return servo_id, int(round(clamp(current + delta, minimum, maximum))), delta
+        return servo_id, int(round(clamp(float(servo["position"]), minimum, maximum))), None
+
+    def publish_servo(self, skill: dict[str, Any], defaults: dict[str, Any]) -> str:
         servo = skill["servo"]
+        servo_id, position, delta = self.resolve_servo_position(servo, defaults)
         state = PWMServoState()
-        state.id = [int(servo["id"])]
-        state.position = [int(servo["position"])]
+        state.id = [servo_id]
+        state.position = [position]
         state.offset = []
         message = SetPWMServoState()
         message.duration = float(defaults.get("servo_duration_s", 0.35))
@@ -251,6 +265,9 @@ class TurboPiController(Node):
         self.servo_pub.publish(message)
         rclpy.spin_once(self, timeout_sec=0.0)
         time.sleep(message.duration)
+        self.servo_positions[servo_id] = position
+        delta_text = "absolute" if delta is None else f"delta={delta}"
+        return f"[INFO] servo_id={servo_id} position={position} {delta_text}"
 
     def publish_servo_reset(self, defaults: dict[str, Any]) -> None:
         center = int(defaults.get("pwm_center", 1500))
@@ -263,6 +280,7 @@ class TurboPiController(Node):
             state.position = [center]
             state.offset = []
             message.state.append(state)
+            self.servo_positions[servo_id] = center
         self.servo_pub.publish(message)
         rclpy.spin_once(self, timeout_sec=0.0)
         time.sleep(message.duration)

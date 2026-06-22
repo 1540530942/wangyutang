@@ -52,10 +52,10 @@ The skill catalog lives in `skill_catalog.json`.
 | 急停 | `emergency_stop` | `/cmd_vel` zero Twist |
 | Reset / 复位 | `reset_pose` | zero Twist + PWM servo 1/2 -> 1500 |
 | 远程关机 | `remote_shutdown` | host `sudo shutdown -h now`, requires code `123` |
-| 向左看 | `look_left` | PWM servo 2 -> 1800 |
-| 向右看 | `look_right` | PWM servo 2 -> 1200 |
-| 向上看 | `look_up` | PWM servo 1 -> 1000 |
-| 向下看 | `look_down` | PWM servo 1 -> 1700 |
+| 向左看 | `look_left` | PWM servo 2 += 100, bounded to 1200..1800 |
+| 向右看 | `look_right` | PWM servo 2 -= 100, bounded to 1200..1800 |
+| 向上看 | `look_up` | PWM servo 1 -= 100, bounded to 1000..1700 |
+| 向下看 | `look_down` | PWM servo 1 += 100, bounded to 1000..1700 |
 | 向前走 | `move_forward` | `/cmd_vel linear.x = 0.35` |
 | 向后走 | `move_backward` | `/cmd_vel linear.x = -0.35` |
 | 向左走 | `move_left` | `/cmd_vel linear.y = 0.35` |
@@ -63,7 +63,7 @@ The skill catalog lives in `skill_catalog.json`.
 | 向左转 | `turn_left` | `/cmd_vel angular.z = 5.0` |
 | 向右转 | `turn_right` | `/cmd_vel angular.z = -5.0` |
 
-The left/right camera mapping was corrected by image review: PWM servo 2 is the horizontal pan axis. PWM servo 1 changes the vertical/pitch view.
+The left/right camera mapping was corrected by image review: PWM servo 2 is the horizontal pan axis. PWM servo 1 changes the vertical/pitch view. Camera look controls are incremental: every click nudges the current servo position by one bounded step instead of jumping directly to an endpoint.
 
 ## Unit Controls
 

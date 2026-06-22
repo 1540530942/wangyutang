@@ -140,6 +140,7 @@ def _summarize(ev: dict) -> str:
 
 
 def main():
+    global SERVER, API_KEY, DEVICE_ID, HEADERS
     parser = argparse.ArgumentParser(description="Pi5 Monitor 查询工具")
     parser.add_argument("--server", default=SERVER)
     parser.add_argument("--api-key", default=API_KEY)
@@ -159,7 +160,6 @@ def main():
     ep.add_argument("--types", "-t", default=None, help="逗号分隔的事件类型")
 
     args = parser.parse_args()
-    global SERVER, API_KEY, DEVICE_ID, HEADERS
     SERVER = args.server
     API_KEY = args.api_key
     DEVICE_ID = args.device

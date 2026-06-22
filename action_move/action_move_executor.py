@@ -13,6 +13,8 @@ from typing import Any
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_CATALOG = BASE_DIR / "skill_catalog.json"
+DATA_DIR = BASE_DIR / "data"
+SERVO_STATE_FILE = DATA_DIR / "servo_state.json"
 ROS_SETUP = "source /opt/ros/humble/setup.bash && source /home/ubuntu/ros2_ws/install/setup.bash"
 
 
@@ -63,6 +65,44 @@ def run_in_container_text(container: str, command: str, dry_run: bool) -> str:
 
 def clamp(value: float, minimum: float, maximum: float) -> float:
     return max(minimum, min(maximum, value))
+
+
+def load_servo_positions(defaults: dict[str, Any]) -> dict[int, int]:
+    center = int(defaults.get("pwm_center", 1500))
+    positions = {1: center, 2: center}
+    try:
+        data = json.loads(SERVO_STATE_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return positions
+    if isinstance(data, dict):
+        for key, value in data.items():
+            try:
+                positions[int(key)] = int(value)
+            except (TypeError, ValueError):
+                continue
+    return positions
+
+
+def save_servo_positions(positions: dict[int, int]) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    payload = {str(key): int(value) for key, value in positions.items()}
+    SERVO_STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def resolve_servo_position(servo: dict[str, Any], defaults: dict[str, Any]) -> tuple[int, int, int | None]:
+    servo_id = int(servo["id"])
+    fallback = int(servo.get("default_position", defaults.get("pwm_center", 1500)))
+    positions = load_servo_positions(defaults)
+    current = int(positions.get(servo_id, fallback))
+    minimum = int(servo.get("min", defaults.get("camera_servo_min", 1000)))
+    maximum = int(servo.get("max", defaults.get("camera_servo_max", 2000)))
+    if "delta" in servo:
+        delta = int(servo.get("delta", 0))
+        position = int(round(clamp(current + delta, minimum, maximum)))
+    else:
+        delta = None
+        position = int(round(clamp(float(servo["position"]), minimum, maximum)))
+    return servo_id, position, delta
 
 
 def merged_defaults(catalog: dict[str, Any], params: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -135,6 +175,8 @@ def execute_reset_pose(defaults: dict[str, Any], dry_run: bool) -> None:
     )
     command = f"{ROS_SETUP} && ros2 topic pub --once --wait-matching-subscriptions 0 {topic} ros_robot_controller_msgs/msg/SetPWMServoState '{message}'"
     run_in_container(str(defaults.get("ros_container", "turbopi")), command, dry_run)
+    if not dry_run:
+        save_servo_positions({1: center, 2: center})
 
 
 def execute_remote_shutdown(dry_run: bool) -> None:
@@ -147,16 +189,23 @@ def execute_remote_shutdown(dry_run: bool) -> None:
 
 def execute_camera_servo(skill: dict[str, Any], defaults: dict[str, Any], dry_run: bool) -> None:
     servo = skill["servo"]
+    servo_id, position, delta = resolve_servo_position(servo, defaults)
     duration = float(defaults.get("servo_duration_s", 0.35))
     topic = str(defaults.get("pwm_servo_topic", "/ros_robot_controller/pwm_servo/set_state"))
     message = (
         "{"
         f"duration: {duration}, "
-        f"state: [{{id: [{int(servo['id'])}], position: [{int(servo['position'])}], offset: []}}]"
+        f"state: [{{id: [{servo_id}], position: [{position}], offset: []}}]"
         "}"
     )
+    delta_text = "absolute" if delta is None else f"delta={delta}"
+    print(f"[INFO] servo_id={servo_id} position={position} {delta_text}")
     command = f"{ROS_SETUP} && ros2 topic pub --once --wait-matching-subscriptions 0 {topic} ros_robot_controller_msgs/msg/SetPWMServoState '{message}'"
     run_in_container(str(defaults.get("ros_container", "turbopi")), command, dry_run)
+    if not dry_run:
+        positions = load_servo_positions(defaults)
+        positions[servo_id] = position
+        save_servo_positions(positions)
 
 
 def execute_base_move(skill: dict[str, Any], defaults: dict[str, Any], dry_run: bool) -> None:
