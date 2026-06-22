@@ -40,6 +40,8 @@ ACTION_SERVER = os.getenv("AUDIO_ACTION_SERVER", "http://action-move:8094")
 FACE_SERVER = os.getenv("AUDIO_FACE_SERVER", "http://127.0.0.1:8096")
 CAMERA_SERVER = os.getenv("AUDIO_CAMERA_SERVER", "http://camera-snapshot:8099")
 COMMON_ASR_URL = os.getenv("COMMON_ASR_URL", "https://www.wangyutang.cn/common/api/asr/transcribe")
+VISION_ANALYZE_URL = os.getenv("AUDIO_VISION_ANALYZE_URL", "https://www.wangyutang.cn/common/api/vision/spark/analyze-json")
+VISION_LLM_MODEL = os.getenv("AUDIO_VISION_LLM_MODEL", "qwen3.6-35b-a3b-fp8")
 MAX_RESULTS = 100
 MAX_EVENTS = 200
 MAX_DASHBOARD_RESULTS = 40
@@ -339,6 +341,8 @@ def simulate_route_text(*, text: str, device_id: str, source: str, raw: dict[str
             "action_enabled": True,
             "sensor_server": CAMERA_SERVER,
             "camera_server": CAMERA_SERVER,
+            "vision_analyze_url": VISION_ANALYZE_URL,
+            "vision_llm_model": VISION_LLM_MODEL,
         },
         route_action=False,
         source=source,
@@ -674,6 +678,8 @@ def add_result(payload: AudioResult, x_audio_token: Annotated[str | None, Header
             "action_enabled": True,
             "sensor_server": CAMERA_SERVER,
             "camera_server": CAMERA_SERVER,
+            "vision_analyze_url": VISION_ANALYZE_URL,
+            "vision_llm_model": VISION_LLM_MODEL,
         },
         route_action=text != "noise_or_unrecognized_audio",
         source="audio_result",
@@ -900,6 +906,8 @@ def recognize_text(payload: TextCommand, x_audio_token: Annotated[str | None, He
             "action_enabled": True,
             "sensor_server": CAMERA_SERVER,
             "camera_server": CAMERA_SERVER,
+            "vision_analyze_url": VISION_ANALYZE_URL,
+            "vision_llm_model": VISION_LLM_MODEL,
         },
         route_action=payload.route_action,
         source="audio_recognition",

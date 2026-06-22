@@ -1,0 +1,21 @@
+[Unit]
+Description=Common API tunnel to spark-c9a7 vLLM (port 8000 → local 18000)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=common-api
+ExecStart=/usr/bin/ssh -N -T \
+  -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 \
+  -o ServerAliveCountMax=3 \
+  -o StrictHostKeyChecking=accept-new \
+  -i /etc/common_api/spark_c9a7_tunnel_key \
+  -L 127.0.0.1:18000:127.0.0.1:8000 \
+  archer@spark-c9a7
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

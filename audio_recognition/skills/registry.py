@@ -14,14 +14,14 @@ from audio_recognition.skills.catalog_loader import load_catalog
 from audio_recognition.skills.face_router import FACE_SKILL_IDS
 
 
-OBSERVATION_TOOLS = {"camera_snapshot", "front_distance", "get_robot_state", "ask_confirmation"}
+OBSERVATION_TOOLS = {"camera_snapshot", "front_distance", "get_robot_state", "ask_confirmation", "inspect_scene"}
 SYSTEM_TOOLS = {"finish"}
 DEFAULT_REGISTRY_RELATIVE_PATH = "skills/registry.yaml"
 DEFAULT_REGISTRY_DEFAULTS: dict[str, Any] = {
     "max_action_duration_ms": 1000,
     "max_turn_duration_ms": 800,
     "max_face_duration_ms": 5000,
-    "observation_ttl_ms": {"camera_snapshot": 2000, "front_distance": 2000, "get_robot_state": 5000},
+    "observation_ttl_ms": {"camera_snapshot": 2000, "front_distance": 2000, "get_robot_state": 5000, "inspect_scene": 15000},
     "safety_thresholds": {"min_front_distance_estimate_cm": 15},
 }
 

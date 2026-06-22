@@ -26,5 +26,10 @@
   {"id": "face_blink_basic", "transcript": "眨眨眼", "expected_skill_id": "face_blink", "expected_route": "face"},
   {"id": "face_reset_basic", "transcript": "表情复位", "expected_skill_id": "face_reset", "expected_route": "face"},
   {"id": "ignored_completion", "transcript": "您的指令已经完成了", "expected_skill_id": "", "expected_route": "none"},
-  {"id": "unmatched_text", "transcript": "今天上海天气怎么样", "expected_skill_id": "", "expected_route": "none"}
+  {"id": "unmatched_text", "transcript": "今天上海天气怎么样", "expected_skill_id": "", "expected_route": "none"},
+  {"id": "inspect_person_basic",   "transcript": "前面有没有人",  "expected_skill_id": "inspect_scene", "expected_route": "observation"},
+  {"id": "inspect_person_alias1",  "transcript": "有没有人",      "expected_skill_id": "inspect_scene", "expected_route": "observation"},
+  {"id": "inspect_person_alias2",  "transcript": "前面有人吗",    "expected_skill_id": "inspect_scene", "expected_route": "observation"},
+  {"id": "inspect_scene_basic",    "transcript": "前方有什么",    "expected_skill_id": "inspect_scene", "expected_route": "observation"},
+  {"id": "inspect_obstacle_basic", "transcript": "前面有障碍物吗","expected_skill_id": "inspect_scene", "expected_route": "observation"}
 ]

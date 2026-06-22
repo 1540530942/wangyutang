@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -9,7 +11,7 @@ from typing import Any
 from audio_recognition.core.envelope import DecisionEnvelope, ToolCall
 
 
-OBSERVATION_TOOLS = {"camera_snapshot", "front_distance", "get_robot_state", "ask_confirmation"}
+OBSERVATION_TOOLS = {"camera_snapshot", "front_distance", "get_robot_state", "ask_confirmation", "inspect_scene"}
 
 
 class _ObservationToolError(RuntimeError):
@@ -23,11 +25,31 @@ def _get_json(url: str, timeout: float = 5) -> dict[str, Any]:
         return json.loads(response.read().decode("utf-8"))
 
 
+def _get_bytes(url: str, timeout: float = 10) -> tuple[bytes, str]:
+    with urllib.request.urlopen(url, timeout=timeout) as response:
+        return response.read(), response.headers.get("content-type") or "image/jpeg"
+
+
 def _post_json(url: str, payload: dict[str, Any], timeout: float = 10) -> dict[str, Any]:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json; charset=utf-8"}, method="POST")
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _call_vision_analyze(
+    *,
+    analyze_url: str,
+    image_b64: str,
+    question: str,
+    model: str = "",
+    timeout: float = 60,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {"image_base64": image_b64, "question": question}
+    if model:
+        payload["model"] = model
+    raw = _post_json(analyze_url, payload, timeout=timeout)
+    return {"answer": str(raw.get("text") or "").strip(), "raw": raw}
 
 
 def _capture_kind(task: dict[str, Any], args: dict[str, Any]) -> str:
@@ -124,6 +146,47 @@ def execute_observation_tool(envelope: DecisionEnvelope, call: ToolCall, cloud_c
                 "confirmed": False,
                 "answer": None,
                 "timeout": False,
+            }
+        elif call.tool == "inspect_scene":
+            camera_server = str(cloud_config.get("camera_server") or "").rstrip("/")
+            if not camera_server:
+                raise RuntimeError("camera_server is required for inspect_scene")
+            analyze_url = str(
+                cloud_config.get("vision_analyze_url")
+                or os.environ.get("AUDIO_VISION_ANALYZE_URL")
+                or ""
+            )
+            if not analyze_url:
+                raise RuntimeError("vision_analyze_url is required; set AUDIO_VISION_ANALYZE_URL")
+            vision_model = str(
+                cloud_config.get("vision_llm_model")
+                or os.environ.get("AUDIO_VISION_LLM_MODEL")
+                or ""
+            )
+            frame_meta: dict[str, Any] = {}
+            try:
+                capture_payload = _post_json(f"{camera_server}/api/capture", {"mode": "single"})
+                task = capture_payload.get("task") if isinstance(capture_payload.get("task"), dict) else {}
+                if task.get("id"):
+                    frame_meta = _wait_for_latest_frame(camera_server, task, {"timeout_ms": 8000})
+                else:
+                    frame_meta = capture_payload
+            except TimeoutError:
+                frame_meta = {"warning": "fresh_frame_timeout_using_cached"}
+            img_bytes, _ = _get_bytes(f"{camera_server}/api/latest.jpg")
+            img_b64 = base64.b64encode(img_bytes).decode()
+            question = str(call.args.get("question") or envelope.transcript or "图片里有什么？")
+            vision_result = _call_vision_analyze(
+                analyze_url=analyze_url,
+                image_b64=img_b64,
+                question=question,
+                model=vision_model,
+            )
+            observation["data"] = {
+                "question": question,
+                "answer": vision_result.get("answer", ""),
+                "vision_model": vision_model,
+                "frame": {k: v for k, v in frame_meta.items() if k not in {"latest", "capture_task", "control"}},
             }
         else:
             raise RuntimeError(f"unsupported observation tool: {call.tool}")
