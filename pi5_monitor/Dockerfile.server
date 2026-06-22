@@ -1,0 +1,15 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY server/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY server/ ./server/
+COPY analyzer/ ./server/analyzer/
+
+RUN mkdir -p /var/lib/pi5-monitor-server /var/log/pi5-monitor-server
+
+WORKDIR /app/server
+
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8098"]

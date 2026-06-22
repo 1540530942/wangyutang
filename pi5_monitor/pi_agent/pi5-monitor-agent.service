@@ -1,0 +1,29 @@
+[Unit]
+Description=Pi5 Monitor Agent — SSH/network/power/shutdown forensics collector
+Documentation=https://github.com/your-org/wangyutang-platform
+After=network-online.target
+Wants=network-online.target
+# 在关机序列中尽量晚被停止（Before=shutdown.target）
+Before=shutdown.target reboot.target halt.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/pi5-monitor/pi_agent
+ExecStart=/opt/pi5-monitor/venv/bin/python3 agent.py
+Restart=always
+RestartSec=5
+TimeoutStopSec=25
+
+# 关机前调用快照脚本
+ExecStop=/opt/pi5-monitor/pi_agent/hooks/pre_shutdown.sh
+
+EnvironmentFile=-/etc/pi5-monitor/env
+StandardOutput=append:/var/log/pi5-monitor/agent.log
+StandardError=append:/var/log/pi5-monitor/agent.log
+
+# 阻止系统在关机前立刻杀掉我们（给 ExecStop 留时间）
+KillMode=none
+
+[Install]
+WantedBy=multi-user.target
