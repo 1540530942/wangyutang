@@ -258,6 +258,14 @@ def schedule_completion_voice(
 ) -> str:
     if not enabled:
         return ""
+    try:
+        volume = max(0, min(100, int(round(float(volume_percent)))))
+    except (TypeError, ValueError):
+        volume = 90
+    if volume <= 0:
+        selected_device = device or os.getenv("ACTION_VOICE_DEVICE", "").strip() or detect_usb_audio_device()
+        volume_output = apply_voice_volume(selected_device, volume_percent)
+        return "\n".join(part for part in [volume_output, "[INFO] voice_prompt_skipped=muted"] if part)
 
     def worker() -> None:
         try:

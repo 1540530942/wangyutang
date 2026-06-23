@@ -17,4 +17,7 @@ data/
 dist/
 cloud_image_verify/
 movement_verify_local/
+action_move/movement_verify/
+audio_recognition/analysis_html_report/
+wangyutang_analysis_report/
 .venv/

@@ -28,10 +28,10 @@ CLAIM_TIMEOUT_SECONDS = 35.0
 MAX_LONG_POLL_SECONDS = 20.0
 LONG_POLL_TICK_SECONDS = 0.1
 DEFAULT_SETTINGS = {
-    "unit_distance_cm": 5.0,
+    "unit_distance_cm": 1.0,
     "turn_angle_deg": 5.0,
-    "sensitivity": 1.0,
-    "voice_volume_percent": 90.0,
+    "sensitivity": 0.5,
+    "voice_volume_percent": 0.0,
     "rgb_red": 0,
     "rgb_green": 0,
     "rgb_blue": 0,

@@ -72,6 +72,7 @@ def request_json(url: str, method: str = "GET", payload: dict[str, Any] | None =
 
 def local_guard(guard: Guard) -> None:
     sys.path.insert(0, str(PROJECT_DIR))
+    from action_move import edge_action_poller
     from fastapi.testclient import TestClient
     from action_move.server import CLAIM_TIMEOUT_SECONDS, app, device_state, tasks
 
@@ -178,6 +179,20 @@ def local_guard(guard: Guard) -> None:
     guard.check(
         timed_out_task["status"] == "failed" and timeout_device.get("current_task_id") == "",
         "claimed task timeout clears stale current task",
+    )
+
+    original_apply_voice_volume = edge_action_poller.apply_voice_volume
+    original_detect_usb_audio_device = edge_action_poller.detect_usb_audio_device
+    try:
+        edge_action_poller.apply_voice_volume = lambda *_args, **_kwargs: "[INFO] voice_volume_percent=0 mixer_control=mock"
+        edge_action_poller.detect_usb_audio_device = lambda: "plughw:0,0"
+        muted_voice = edge_action_poller.schedule_completion_voice("move_forward", volume_percent=0)
+    finally:
+        edge_action_poller.apply_voice_volume = original_apply_voice_volume
+        edge_action_poller.detect_usb_audio_device = original_detect_usb_audio_device
+    guard.check(
+        "voice_prompt_skipped=muted" in muted_voice and "voice_prompt_scheduled=async" not in muted_voice,
+        "muted voice prompt is not scheduled asynchronously",
     )
 
 

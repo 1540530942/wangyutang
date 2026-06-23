@@ -36,14 +36,14 @@ let lastCameraFrameId = "";
 let lastCameraPulseAt = 0;
 let lastCameraObjectUrl = "";
 let lastSonarReportAt = 0;
-let lastVoiceVolumePercent = 90;
+let lastVoiceVolumePercent = 30;
 let settingsDirty = false;
 let lastTouchActionAt = 0;
 let currentSettings = {
-  unit_distance_cm: 5,
+  unit_distance_cm: 1,
   turn_angle_deg: 5,
-  sensitivity: 1,
-  voice_volume_percent: 90,
+  sensitivity: 0.5,
+  voice_volume_percent: 0,
   rgb_red: 0,
   rgb_green: 0,
   rgb_blue: 0,
@@ -342,9 +342,9 @@ function setMotionLocked(locked) {
 
 function getFormSettings() {
   return {
-    unit_distance_cm: Number(unitDistanceInput.value || 5),
+    unit_distance_cm: Number(unitDistanceInput.value || 1),
     turn_angle_deg: Number(turnAngleInput.value || 5),
-    sensitivity: Number(sensitivityInput.value || 1),
+    sensitivity: Number(sensitivityInput.value || 0.5),
     voice_volume_percent: Number(currentSettings.voice_volume_percent || 0),
     rgb_red: clampRgb(rgbRedInput.value),
     rgb_green: clampRgb(rgbGreenInput.value),
@@ -410,7 +410,7 @@ async function saveSettings() {
 
 async function setVoiceVolume(enabled) {
   const nextVolume = enabled
-    ? (currentSettings.voice_volume_percent > 0 ? currentSettings.voice_volume_percent : lastVoiceVolumePercent || 90)
+    ? (currentSettings.voice_volume_percent > 0 ? currentSettings.voice_volume_percent : lastVoiceVolumePercent || 30)
     : 0;
   if (enabled && nextVolume > 0) {
     lastVoiceVolumePercent = nextVolume;

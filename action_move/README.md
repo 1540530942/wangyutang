@@ -56,12 +56,12 @@ The skill catalog lives in `skill_catalog.json`.
 | 向右看 | `look_right` | PWM servo 2 -= 100, bounded to 1200..1800 |
 | 向上看 | `look_up` | PWM servo 1 -= 100, bounded to 1000..1700 |
 | 向下看 | `look_down` | PWM servo 1 += 100, bounded to 1000..1700 |
-| 向前走 | `move_forward` | `/cmd_vel linear.x = 0.35` |
-| 向后走 | `move_backward` | `/cmd_vel linear.x = -0.35` |
-| 向左走 | `move_left` | `/cmd_vel linear.y = 0.35` |
-| 向右走 | `move_right` | `/cmd_vel linear.y = -0.35` |
-| 向左转 | `turn_left` | `/cmd_vel angular.z = 5.0` |
-| 向右转 | `turn_right` | `/cmd_vel angular.z = -5.0` |
+| 向前走 | `move_forward` | `/cmd_vel linear.x = 0.18` |
+| 向后走 | `move_backward` | `/cmd_vel linear.x = -0.18` |
+| 向左走 | `move_left` | `/cmd_vel linear.y = 0.12` |
+| 向右走 | `move_right` | `/cmd_vel linear.y = -0.12` |
+| 向左转 | `turn_left` | `/cmd_vel angular.z = 0.4` |
+| 向右转 | `turn_right` | `/cmd_vel angular.z = -0.4` |
 
 The left/right camera mapping was corrected by image review: PWM servo 2 is the horizontal pan axis. PWM servo 1 changes the vertical/pitch view. Camera look controls are incremental: every click nudges the current servo position by one bounded step instead of jumping directly to an endpoint.
 
@@ -69,9 +69,9 @@ The left/right camera mapping was corrected by image review: PWM servo 2 is the 
 
 The cloud service persists runtime settings in `data/settings.json`:
 
-- `unit_distance_cm`: movement unit distance, default `5`.
+- `unit_distance_cm`: movement unit distance, default `1`.
 - `turn_angle_deg`: heading turn unit, default `5`.
-- `sensitivity`: duration multiplier control, default `1.0`.
+- `sensitivity`: duration multiplier control, default `0.5`.
 - `voice_volume_percent`: completion voice volume, `0` means muted and any positive value enables playback.
 
 Each task stores a settings snapshot when it is created. The Raspberry Pi poller passes that snapshot into `action_move_executor.py`, so an action keeps the units that were visible on the page when the button was pressed.
@@ -88,7 +88,7 @@ The executor maps one unit to bounded timed `/cmd_vel` bursts:
 Dry-run a skill:
 
 ```bash
-python3 action_move_executor.py turn_left --params-json '{"unit_distance_cm":5,"turn_angle_deg":5,"sensitivity":1}' --dry-run
+python3 action_move_executor.py turn_left --params-json '{"unit_distance_cm":1,"turn_angle_deg":5,"sensitivity":0.5}' --dry-run
 ```
 
 Execute it on the Raspberry Pi host while the `turbopi` ROS container is running:

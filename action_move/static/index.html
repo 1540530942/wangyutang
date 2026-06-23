@@ -22,7 +22,7 @@
       <section class="panel">
         <div class="panel-title">
           <h2>安全控制</h2>
-          <span id="unitSummary">距离 5 cm · 转向 5° · 灵敏度 1x</span>
+          <span id="unitSummary">距离 1 cm · 转向 5° · 灵敏度 0.5x</span>
         </div>
         <div class="safety-grid">
           <button class="danger" data-action="emergency_stop">急停</button>
@@ -79,7 +79,7 @@
         <form class="settings-form" id="settingsForm">
           <label>
             <span>运动单位距离</span>
-            <input id="unitDistanceInput" type="number" min="1" max="50" step="1" value="5" />
+            <input id="unitDistanceInput" type="number" min="1" max="50" step="1" value="1" />
             <em>cm</em>
           </label>
           <label>
@@ -89,7 +89,7 @@
           </label>
           <label>
             <span>灵敏度</span>
-            <input id="sensitivityInput" type="number" min="0.2" max="2" step="0.1" value="1" />
+            <input id="sensitivityInput" type="number" min="0.2" max="2" step="0.1" value="0.5" />
             <em>x</em>
           </label>
         </form>
