@@ -231,7 +231,7 @@
         "向前移动"
       ],
       "twist": {
-        "linear_x": 0.35,
+        "linear_x": 0.18,
         "linear_y": 0.0,
         "angular_z": 0.0
       }
@@ -247,7 +247,7 @@
         "向后移动"
       ],
       "twist": {
-        "linear_x": -0.35,
+        "linear_x": -0.18,
         "linear_y": 0.0,
         "angular_z": 0.0
       }
@@ -264,7 +264,7 @@
       ],
       "twist": {
         "linear_x": 0.0,
-        "linear_y": 0.35,
+        "linear_y": 0.12,
         "angular_z": 0.0
       }
     },
@@ -280,7 +280,7 @@
       ],
       "twist": {
         "linear_x": 0.0,
-        "linear_y": -0.45,
+        "linear_y": -0.12,
         "angular_z": 0.0
       }
     },
@@ -298,7 +298,7 @@
       "twist": {
         "linear_x": 0.0,
         "linear_y": 0.0,
-        "angular_z": 5.0
+        "angular_z": 0.4
       }
     },
     {
@@ -318,7 +318,7 @@
       "twist": {
         "linear_x": 0.0,
         "linear_y": 0.0,
-        "angular_z": -5.0
+        "angular_z": -0.4
       }
     }
   ]
