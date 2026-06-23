@@ -74,7 +74,16 @@ class CameraSnapshotSmokeTests(unittest.TestCase):
                 "gateway": "",
                 "disk": "",
                 "sender_service": "",
+                "action_poller_service": "",
+                "action_controller_service": "",
+                "reverse_ssh_service": "",
+                "turbopi_container": "",
+                "gateway_ping": "",
+                "kernel_power_log": "",
+                "wifi_log": "",
+                "last_reboots": "",
                 "load_average": "",
+                "diagnosis": {},
             }
         )
         server.state["updated_at"] = 0.0
@@ -264,6 +273,26 @@ class CameraSnapshotSmokeTests(unittest.TestCase):
             self.assertEqual(inspection["cpu_usage_percent"], 23.5)
             self.assertEqual(inspection["cpu_frequency_mhz"], "1500")
             self.assertEqual(inspection["memory"], "512M used, 1.1G available")
+            self.assertIn("diagnosis", inspection)
+
+    def test_inspection_diagnoses_power_undervoltage(self) -> None:
+        with TestClient(server.app) as client:
+            response = client.post(
+                "/api/inspection",
+                json={
+                    "device_id": "smoke-pi",
+                    "task_id": "inspect-uv",
+                    "hostname": "pi-host",
+                    "throttled": "throttled=0x50000",
+                    "kernel_power_log": "kernel: hwmon hwmon3: Undervoltage detected!",
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+            inspection = client.get("/api/inspection").json()
+            diagnosis = inspection["diagnosis"]
+            self.assertEqual(diagnosis["root_cause"], "power_undervoltage")
+            self.assertEqual(diagnosis["level"], "critical")
+            self.assertGreaterEqual(diagnosis["confidence"], 0.8)
 
     def test_sender_reports_inspection_before_screen_capture(self) -> None:
         args = SimpleNamespace(quality=78, token="", device_id="smoke-pi")

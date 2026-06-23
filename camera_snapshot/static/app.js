@@ -67,6 +67,9 @@ const elements = {
   inspectDisk: document.getElementById("inspectDisk"),
   inspectService: document.getElementById("inspectService"),
   inspectLoad: document.getElementById("inspectLoad"),
+  diagnosisSummary: document.getElementById("diagnosisSummary"),
+  diagnosisEvidence: document.getElementById("diagnosisEvidence"),
+  diagnosisRecommendation: document.getElementById("diagnosisRecommendation"),
 };
 
 let control = { task: null, tasks: {} };
@@ -156,10 +159,45 @@ function clearInspection() {
     elements.inspectDisk,
     elements.inspectService,
     elements.inspectLoad,
+    elements.diagnosisSummary,
   ].forEach((element) => setValue(element, "-"));
+  setValue(elements.diagnosisSummary, "-", "");
+  if (elements.diagnosisEvidence) elements.diagnosisEvidence.textContent = "等待巡检证据。";
+  if (elements.diagnosisRecommendation) elements.diagnosisRecommendation.textContent = "-";
   if (elements.inspectionHint) {
     elements.inspectionHint.textContent = "尚未巡检，点击按钮让树莓派上报 CPU、内存、网络和服务状态。";
   }
+}
+
+function diagnosisMode(level) {
+  if (level === "critical") return "bad";
+  if (level === "warn") return "warn";
+  if (level === "ok") return "ok";
+  return "";
+}
+
+function formatDiagnosis(diagnosis) {
+  if (!diagnosis || !diagnosis.summary) {
+    return {
+      summary: "暂无诊断结论",
+      mode: "warn",
+      evidence: "等待树莓派上传巡检证据。",
+      recommendation: "-",
+    };
+  }
+  const confidence = Number(diagnosis.confidence);
+  const confidenceLabel = Number.isFinite(confidence) ? `（置信度 ${Math.round(confidence * 100)}%）` : "";
+  const evidence = Array.isArray(diagnosis.evidence) && diagnosis.evidence.length ? diagnosis.evidence.join("；") : "暂无证据。";
+  const recommendations =
+    Array.isArray(diagnosis.recommendations) && diagnosis.recommendations.length
+      ? diagnosis.recommendations.join("；")
+      : "-";
+  return {
+    summary: `${diagnosis.summary}${confidenceLabel}`,
+    mode: diagnosisMode(diagnosis.level),
+    evidence,
+    recommendation: recommendations,
+  };
 }
 
 function isTaskActive(task) {
@@ -250,6 +288,10 @@ async function loadInspection() {
     setValue(elements.inspectDisk, inspection.disk);
     setValue(elements.inspectService, service, service === "active" ? "ok" : "bad");
     setValue(elements.inspectLoad, inspection.load_average);
+    const diagnosis = formatDiagnosis(inspection.diagnosis);
+    setValue(elements.diagnosisSummary, diagnosis.summary, diagnosis.mode);
+    if (elements.diagnosisEvidence) elements.diagnosisEvidence.textContent = `证据：${diagnosis.evidence}`;
+    if (elements.diagnosisRecommendation) elements.diagnosisRecommendation.textContent = `建议：${diagnosis.recommendation}`;
     return inspection;
   } catch (error) {
     clearInspection();

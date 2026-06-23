@@ -124,6 +124,15 @@ latest_inspection = {
     "disk": "",
     "sender_service": "",
     "load_average": "",
+    "action_poller_service": "",
+    "action_controller_service": "",
+    "reverse_ssh_service": "",
+    "turbopi_container": "",
+    "gateway_ping": "",
+    "kernel_power_log": "",
+    "wifi_log": "",
+    "last_reboots": "",
+    "diagnosis": {},
 }
 if INSPECTION_FILE.exists():
     try:
@@ -255,7 +264,8 @@ def normalize_gpio(value: object, default: int = 26) -> int:
 
 def latest_seen_at() -> float:
     latest_frame_at = max(float(meta.get("updated_at") or 0) for meta in latest_meta_by_kind.values())
-    return max(float(gpio_status.get("reported_at") or 0), latest_frame_at)
+    inspection_at = float(latest_inspection.get("reported_at") or 0)
+    return max(float(gpio_status.get("reported_at") or 0), latest_frame_at, inspection_at)
 
 
 def device_status() -> dict[str, object]:
@@ -273,6 +283,117 @@ def device_status() -> dict[str, object]:
         "last_seen_at": last_seen_at,
         "age_seconds": age_seconds,
         "online_threshold_seconds": DEVICE_ONLINE_SECONDS,
+    }
+
+
+def throttled_flags(throttled: object) -> set[str]:
+    text = str(throttled or "")
+    if "0x" not in text.lower():
+        return set()
+    try:
+        value = int(text.lower().rsplit("0x", 1)[1].split()[0], 16)
+    except (IndexError, ValueError):
+        return set()
+    flags: set[str] = set()
+    if value & ((1 << 0) | (1 << 16)):
+        flags.add("undervoltage")
+    if value & ((1 << 1) | (1 << 17)):
+        flags.add("frequency_capped")
+    if value & ((1 << 2) | (1 << 18)):
+        flags.add("throttled")
+    if value & ((1 << 3) | (1 << 19)):
+        flags.add("soft_temperature_limit")
+    return flags
+
+
+def diagnose_inspection(inspection: dict[str, object], device: dict[str, object]) -> dict[str, object]:
+    evidence: list[str] = []
+    recommendations: list[str] = []
+    root_cause = "unknown"
+    level = "ok"
+    confidence = 0.35
+
+    online = bool(device.get("online"))
+    if not online and device.get("last_seen_at"):
+        evidence.append(f"设备心跳已离线 {int(float(device.get('age_seconds') or 0))} 秒")
+
+    throttled = str(inspection.get("throttled") or "")
+    power_log = str(inspection.get("kernel_power_log") or "")
+    flags = throttled_flags(throttled)
+    power_text = f"{throttled}\n{power_log}".lower()
+    if "undervoltage" in flags or "under-voltage" in power_text or "undervoltage" in power_text:
+        root_cause = "power_undervoltage"
+        level = "critical"
+        confidence = 0.9
+        if throttled:
+            evidence.append(f"vcgencmd 返回 {throttled}")
+        if power_log:
+            evidence.append("内核日志包含欠压/电压告警")
+        recommendations.extend(
+            [
+                "更换稳定的 5V/5A 级树莓派电源和短粗电源线",
+                "将树莓派供电与电机供电分离，或增加足够稳压",
+                "在供电确认前降低底盘移动速度和持续时间",
+            ]
+        )
+
+    wifi_log = str(inspection.get("wifi_log") or "")
+    gateway_ping = str(inspection.get("gateway_ping") or "")
+    network_text = f"{wifi_log}\n{gateway_ping}".lower()
+    if root_cause == "unknown" and any(token in network_text for token in ("disconnect", "deauth", "timed out", "unreachable", "failed")):
+        root_cause = "network_lost"
+        level = "critical" if not online else "warn"
+        confidence = 0.72
+        evidence.append("Wi-Fi/网关诊断显示断开或不可达")
+        recommendations.extend(["检查 Wi-Fi 信号和路由器稳定性", "关闭树莓派 wlan0 省电模式"])
+
+    service_fields = {
+        "camera-snapshot-sender.service": inspection.get("sender_service"),
+        "action-move-poller.service": inspection.get("action_poller_service"),
+        "action-move-controller.service": inspection.get("action_controller_service"),
+    }
+    inactive = [name for name, status in service_fields.items() if str(status or "") and str(status) != "active"]
+    if root_cause == "unknown" and inactive:
+        root_cause = "service_down"
+        level = "critical" if not online else "warn"
+        confidence = 0.68
+        evidence.append("非 active 服务: " + ", ".join(inactive))
+        recommendations.append("检查并重启非 active 的 systemd 服务")
+
+    last_reboots = str(inspection.get("last_reboots") or "")
+    if root_cause == "unknown" and any(token in last_reboots.lower() for token in ("crash", "reboot", "shutdown")):
+        root_cause = "reboot_or_crash"
+        level = "warn"
+        confidence = 0.62
+        evidence.append("发现近期 reboot/crash 记录")
+        recommendations.append("查看 journalctl -b -1 中上一次关机/重启前后的日志")
+
+    if root_cause == "unknown" and not online:
+        root_cause = "cloud_ok_pi_offline"
+        level = "critical"
+        confidence = 0.58
+        evidence.append("Camera 云端 API 可用，但树莓派心跳已过期")
+        recommendations.append("检查树莓派供电、Wi-Fi，以及是否发生重启")
+
+    if root_cause == "unknown":
+        evidence.append("最近巡检没有发现明确的供电、网络、服务或重启证据")
+        recommendations.append("复现断连后再运行一次远程巡检")
+
+    summary_by_cause = {
+        "power_undervoltage": "高度怀疑树莓派断连由供电欠压导致。",
+        "network_lost": "怀疑树莓派 Wi-Fi/网络断连。",
+        "service_down": "怀疑树莓派上的 camera/action 服务异常。",
+        "reboot_or_crash": "发现近期重启/崩溃证据，需要查看上一轮启动日志。",
+        "cloud_ok_pi_offline": "云端服务正常，但树莓派当前离线。",
+        "unknown": "巡检证据不足，暂时无法明确根因。",
+    }
+    return {
+        "level": level,
+        "root_cause": root_cause,
+        "confidence": confidence,
+        "summary": summary_by_cause[root_cause],
+        "evidence": evidence[:6],
+        "recommendations": recommendations[:5],
     }
 
 
@@ -349,7 +470,9 @@ async def upload_sonar_status(
 
 @app.get("/api/inspection")
 def latest_inspection_status() -> dict[str, object]:
-    return dict(latest_inspection)
+    data = dict(latest_inspection)
+    data["diagnosis"] = diagnose_inspection(data, device_status())
+    return data
 
 
 @app.post("/api/gpio")
@@ -409,8 +532,17 @@ async def upload_inspection(
             "disk": str(payload.get("disk") or ""),
             "sender_service": str(payload.get("sender_service") or ""),
             "load_average": str(payload.get("load_average") or ""),
+            "action_poller_service": str(payload.get("action_poller_service") or ""),
+            "action_controller_service": str(payload.get("action_controller_service") or ""),
+            "reverse_ssh_service": str(payload.get("reverse_ssh_service") or ""),
+            "turbopi_container": str(payload.get("turbopi_container") or ""),
+            "gateway_ping": str(payload.get("gateway_ping") or ""),
+            "kernel_power_log": str(payload.get("kernel_power_log") or "")[:2000],
+            "wifi_log": str(payload.get("wifi_log") or "")[:2000],
+            "last_reboots": str(payload.get("last_reboots") or "")[:2000],
         }
     )
+    latest_inspection["diagnosis"] = diagnose_inspection(latest_inspection, device_status())
     INSPECTION_FILE.write_text(json.dumps(latest_inspection, ensure_ascii=False), encoding="utf-8")
     return {"ok": True, "inspection": dict(latest_inspection)}
 

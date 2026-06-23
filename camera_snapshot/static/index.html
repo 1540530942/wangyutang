@@ -142,6 +142,12 @@
         <button id="inspectionRunButton" class="primary secondary" type="button">立即远程巡检</button>
       </div>
       <div class="inspection-grid">
+        <div class="diagnosis-panel">
+          <span>断连诊断</span>
+          <strong id="diagnosisSummary">-</strong>
+          <p id="diagnosisEvidence">等待巡检证据。</p>
+          <p id="diagnosisRecommendation">-</p>
+        </div>
         <div><span>主机</span><strong id="inspectHost">-</strong></div>
         <div><span>温度</span><strong id="inspectTemp">-</strong></div>
         <div><span>CPU 占用</span><strong id="inspectCpu">-</strong></div>
@@ -158,6 +164,6 @@
       </div>
     </section>
   </main>
-  <script src="./static/app.js?v=20260614-inspection-action"></script>
+  <script src="./static/app.js?v=20260624-disconnect-diagnosis"></script>
 </body>
 </html>

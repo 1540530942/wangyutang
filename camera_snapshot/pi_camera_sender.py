@@ -625,6 +625,28 @@ def collect_inspection(device_id: str, task_id: str) -> dict[str, object]:
     gateway = run_text(["sh", "-lc", "ip route | awk '/^default/ {print $3; exit}'"])
     disk = run_text(["sh", "-lc", "df -h / | awk 'NR==2 {print $5 \" used, \" $4 \" free\"}'"])
     sender_service = run_text(["systemctl", "is-active", "camera-snapshot-sender.service"])
+    action_poller_service = run_text(["systemctl", "is-active", "action-move-poller.service"])
+    action_controller_service = run_text(["systemctl", "is-active", "action-move-controller.service"])
+    reverse_ssh_service = run_text(["systemctl", "is-active", "reverse-ssh-tencent.service"])
+    turbopi_container = run_text(["sh", "-lc", "docker ps --filter name=turbopi --format '{{.Names}} {{.Status}}' | head -3"], timeout=3)
+    gateway_ping = run_text(["sh", "-lc", "gw=$(ip route | awk '/^default/ {print $3; exit}'); if [ -n \"$gw\" ]; then ping -c 1 -W 2 \"$gw\" >/dev/null && echo ok || echo failed; else echo no-gateway; fi"], timeout=4)
+    kernel_power_log = run_text(
+        [
+            "sh",
+            "-lc",
+            "journalctl -k --since '2 hours ago' --no-pager 2>/dev/null | grep -Ei 'undervoltage|under-voltage|voltage|thrott' | tail -20",
+        ],
+        timeout=4,
+    )
+    wifi_log = run_text(
+        [
+            "sh",
+            "-lc",
+            "journalctl --since '2 hours ago' --no-pager 2>/dev/null | grep -Ei 'wlan|brcm|disconnect|deauth|carrier|link is down|timed out' | tail -30",
+        ],
+        timeout=4,
+    )
+    last_reboots = run_text(["sh", "-lc", "last -x | head -20"], timeout=3)
     load_average = run_text(["sh", "-lc", "cut -d' ' -f1-3 /proc/loadavg"])
     cpu_frequency_mhz = run_text(["sh", "-lc", "if command -v vcgencmd >/dev/null; then vcgencmd measure_clock arm | awk -F= '{printf \"%.0f\", $2/1000000}'; elif [ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq ]; then awk '{printf \"%.0f\", $1/1000}' /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq; fi"])
     memory = run_text(["sh", "-lc", "free -h | awk '/^Mem:/ {print $3 \" used, \" $7 \" available\"}'"])
@@ -643,6 +665,14 @@ def collect_inspection(device_id: str, task_id: str) -> dict[str, object]:
         "gateway": gateway,
         "disk": disk,
         "sender_service": sender_service,
+        "action_poller_service": action_poller_service,
+        "action_controller_service": action_controller_service,
+        "reverse_ssh_service": reverse_ssh_service,
+        "turbopi_container": turbopi_container,
+        "gateway_ping": gateway_ping,
+        "kernel_power_log": kernel_power_log,
+        "wifi_log": wifi_log,
+        "last_reboots": last_reboots,
         "load_average": load_average,
     }
 

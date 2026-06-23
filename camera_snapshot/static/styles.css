@@ -263,6 +263,14 @@ button.primary.danger {
   background: rgba(23, 29, 34, 0.82);
 }
 
+.inspection-grid .diagnosis-panel {
+  grid-column: 1 / -1;
+  border-color: rgba(85, 167, 255, 0.34);
+  background:
+    radial-gradient(circle at 4% 0%, rgba(85, 167, 255, 0.14), transparent 32%),
+    linear-gradient(180deg, rgba(29, 37, 43, 0.95), rgba(13, 17, 19, 0.96));
+}
+
 .channel-meta dt,
 .meta span,
 .inspection-grid span {
@@ -280,6 +288,13 @@ button.primary.danger {
   overflow-wrap: anywhere;
   white-space: normal;
   font-weight: 750;
+}
+
+.diagnosis-panel p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .channel-meta dd[data-mode="ok"],
