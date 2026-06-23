@@ -17,3 +17,4 @@ data/
 dist/
 cloud_image_verify/
 movement_verify_local/
+.venv/

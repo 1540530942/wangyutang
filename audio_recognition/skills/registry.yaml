@@ -7,6 +7,7 @@ defaults:
     camera_snapshot: 2000
     front_distance: 2000
     get_robot_state: 5000
+    inspect_scene: 15000
   safety_thresholds:
     min_front_distance_estimate_cm: 15
 skills:
@@ -94,6 +95,23 @@ skills:
     tool: front_distance
     max_duration_ms: 2000
     aliases: [front distance, distance ahead, 前方距离, 前面距离, 测距, 看看距离, 前面有多远]
+  - id: inspect_scene
+    route: observation
+    tool: inspect_scene
+    max_duration_ms: 15000
+    aliases:
+      - inspect scene
+      - 前面有没有人
+      - 有没有人
+      - 前面有人吗
+      - 前方有人吗
+      - 看看前面有没有人
+      - 前面是什么
+      - 前方有什么
+      - 帮我看看前面
+      - 前面有障碍物吗
+      - 前面有什么障碍
+      - 分析一下前面
   - id: face_neutral
     route: face
     tool: dispatch_face

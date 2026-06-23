@@ -1,0 +1,49 @@
+[
+  {"id": "move_forward_basic",  "transcript": "前进",      "expected_skill_id": "move_forward",  "expected_route": "action", "tags": ["move", "basic"],
+   "obs_check": {"sonar_delta_cm": -5, "tolerance_cm": 4}},
+
+  {"id": "move_forward_alias1", "transcript": "往前走",    "expected_skill_id": "move_forward",  "expected_route": "action", "tags": ["move", "alias"]},
+  {"id": "move_forward_alias2", "transcript": "向前移动",  "expected_skill_id": "move_forward",  "expected_route": "action", "tags": ["move", "alias"]},
+
+  {"id": "move_backward_basic", "transcript": "后退",      "expected_skill_id": "move_backward", "expected_route": "action", "tags": ["move", "basic"],
+   "obs_check": {"sonar_delta_cm": 5, "tolerance_cm": 4}},
+
+  {"id": "move_backward_alias", "transcript": "往后走",    "expected_skill_id": "move_backward", "expected_route": "action", "tags": ["move", "alias"]},
+
+  {"id": "move_left_basic",     "transcript": "左移",      "expected_skill_id": "move_left",     "expected_route": "action", "tags": ["move", "basic"]},
+  {"id": "move_left_alias",     "transcript": "向左平移",  "expected_skill_id": "move_left",     "expected_route": "action", "tags": ["move", "alias"]},
+
+  {"id": "move_right_basic",    "transcript": "右移",      "expected_skill_id": "move_right",    "expected_route": "action", "tags": ["move", "basic"]},
+  {"id": "move_right_alias",    "transcript": "向右平移",  "expected_skill_id": "move_right",    "expected_route": "action", "tags": ["move", "alias"]},
+
+  {"id": "turn_left_basic",     "transcript": "左转",      "expected_skill_id": "turn_left",     "expected_route": "action", "tags": ["turn", "basic"]},
+  {"id": "turn_left_alias",     "transcript": "向左旋转",  "expected_skill_id": "turn_left",     "expected_route": "action", "tags": ["turn", "alias"]},
+
+  {"id": "turn_right_basic",    "transcript": "右转",      "expected_skill_id": "turn_right",    "expected_route": "action", "tags": ["turn", "basic"]},
+  {"id": "turn_right_alias",    "transcript": "向右转",    "expected_skill_id": "turn_right",    "expected_route": "action", "tags": ["turn", "alias"]},
+
+  {"id": "look_left_basic",     "transcript": "向左看",    "expected_skill_id": "look_left",     "expected_route": "action", "tags": ["look", "basic"]},
+  {"id": "look_right_basic",    "transcript": "向右看",    "expected_skill_id": "look_right",    "expected_route": "action", "tags": ["look", "basic"]},
+  {"id": "look_up_basic",       "transcript": "向上看",    "expected_skill_id": "look_up",       "expected_route": "action", "tags": ["look", "basic"]},
+  {"id": "look_down_basic",     "transcript": "向下看",    "expected_skill_id": "look_down",     "expected_route": "action", "tags": ["look", "basic"]},
+
+  {"id": "reset_pose_basic",    "transcript": "复位",      "expected_skill_id": "reset_pose",    "expected_route": "action", "tags": ["basic"]},
+  {"id": "emergency_stop_basic","transcript": "急停",      "expected_skill_id": "emergency_stop","expected_route": "action", "tags": ["safety", "basic"]},
+  {"id": "emergency_stop_en",   "transcript": "stop",      "expected_skill_id": "emergency_stop","expected_route": "action", "tags": ["safety", "alias"]},
+
+  {"id": "face_happy_basic",    "transcript": "笑一笑",    "expected_skill_id": "face_happy",    "expected_route": "face",   "tags": ["face", "basic"]},
+  {"id": "face_sad_basic",      "transcript": "委屈一下",  "expected_skill_id": "face_sad",      "expected_route": "face",   "tags": ["face", "basic"]},
+  {"id": "face_angry_basic",    "transcript": "生气一点",  "expected_skill_id": "face_angry",    "expected_route": "face",   "tags": ["face", "basic"]},
+
+  {"id": "negative_weather",    "transcript": "今天天气怎么样", "expected_skill_id": "", "expected_route": "none", "tags": ["negative"]},
+  {"id": "negative_completion", "transcript": "您的指令已经完成了", "expected_skill_id": "", "expected_route": "none", "tags": ["negative"]},
+
+  {"id": "inspect_person_basic",    "transcript": "前面有没有人",      "expected_skill_id": "inspect_scene", "expected_route": "observation", "tags": ["observe", "vision", "basic"]},
+  {"id": "inspect_person_alias1",   "transcript": "有没有人",           "expected_skill_id": "inspect_scene", "expected_route": "observation", "tags": ["observe", "vision", "alias"]},
+  {"id": "inspect_person_alias2",   "transcript": "前面有人吗",         "expected_skill_id": "inspect_scene", "expected_route": "observation", "tags": ["observe", "vision", "alias"]},
+  {"id": "inspect_person_alias3",   "transcript": "前方有人吗",         "expected_skill_id": "inspect_scene", "expected_route": "observation", "tags": ["observe", "vision", "alias"]},
+  {"id": "inspect_scene_basic",     "transcript": "前方有什么",         "expected_skill_id": "inspect_scene", "expected_route": "observation", "tags": ["observe", "vision", "basic"]},
+  {"id": "inspect_obstacle_basic",  "transcript": "前面有障碍物吗",     "expected_skill_id": "inspect_scene", "expected_route": "observation", "tags": ["observe", "vision", "basic"]},
+  {"id": "inspect_scene_alias1",    "transcript": "帮我看看前面",       "expected_skill_id": "inspect_scene", "expected_route": "observation", "tags": ["observe", "vision", "alias"]},
+  {"id": "inspect_scene_alias2",    "transcript": "分析一下前面",       "expected_skill_id": "inspect_scene", "expected_route": "observation", "tags": ["observe", "vision", "alias"]}
+]

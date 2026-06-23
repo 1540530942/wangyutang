@@ -132,6 +132,22 @@ def build_react_tools_schema(registry_path: str | Path | None = None, catalog_pa
         {
             "type": "function",
             "function": {
+                "name": "inspect_scene",
+                "description": "Capture a camera image and analyze it with a vision model to answer questions about what is visible in front of the robot (e.g., whether there are people, obstacles, or objects). Use this when the user asks about scene content rather than requesting a raw snapshot.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "question": {"type": "string", "description": "The question to ask the vision model about the scene, in Chinese."},
+                        "focus": {"type": "string"},
+                        **common,
+                    },
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "finish",
                 "description": "Finish the ReAct loop when all requested positive commands are handled.",
                 "parameters": {"type": "object", "properties": {"message": {"type": "string"}, "final": {"type": "string"}}, "additionalProperties": False},
