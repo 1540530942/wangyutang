@@ -3,6 +3,8 @@ const ctx = canvas.getContext("2d");
 const controls = document.getElementById("controlPanel");
 const statusText = document.getElementById("statusText");
 const speakText = document.getElementById("speakText");
+const displayEnabled = document.getElementById("displayEnabled");
+const displayStatus = document.getElementById("displayStatus");
 const displayMode = new URLSearchParams(window.location.search).get("display") === "1";
 const apiBase = window.location.pathname.startsWith("/face/") ? "/face" : "";
 const apiPath = (path) => `${apiBase}${path}`;
@@ -46,6 +48,7 @@ const styles = {
 
 let remoteState = {
   emotion: "neutral", style: "mochi", intensity: 0.65,
+  display_enabled: false,
   speaking_until: 0, mouth_open_until: 0, blink_nonce: 0,
   message: "", now: Date.now() / 1000, speaking: false, mouth_open: false
 };
@@ -130,9 +133,16 @@ async function pollState() {
     lastPollAt = Date.now();
     const style = styles[remoteState.style]?.label || remoteState.style;
     if (statusText) statusText.textContent = `${style} · ${remoteState.emotion}${remoteState.speaking ? " · talking" : ""}`;
+    if (displayEnabled) displayEnabled.checked = Boolean(remoteState.display_enabled);
+    if (displayStatus) {
+      displayStatus.textContent = remoteState.display_enabled
+        ? "已开启：树莓派 LCD 正在同步表情"
+        : "默认关闭：树莓派 LCD 低功耗待命";
+    }
   } catch {
     connected = false;
     if (statusText) statusText.textContent = "offline";
+    if (displayStatus) displayStatus.textContent = "连接失败，暂时无法切换 LCD";
   }
 }
 setInterval(pollState, 360);
@@ -153,6 +163,7 @@ if (controls) {
   document.getElementById("blinkButton")?.addEventListener("click", () => postJson(apiPath("/api/face/blink")));
   document.getElementById("resetButton")?.addEventListener("click", () => postJson(apiPath("/api/face/reset")));
   document.getElementById("speakButton")?.addEventListener("click", () => postJson(apiPath("/api/face/speak"), { text: speakText?.value || "你好呀，我变可爱啦", emotion: "joy", source: "web" }));
+  displayEnabled?.addEventListener("change", () => postJson(apiPath("/api/display"), { enabled: displayEnabled.checked, source: "web" }));
 }
 
 function drawBackground(w, h, t, palette) {

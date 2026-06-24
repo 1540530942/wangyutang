@@ -104,6 +104,83 @@ body::before {
   font-size: 12px;
 }
 
+.display-switch-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(110, 76, 112, 0.16);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.56);
+  box-shadow: inset 0 -4px 0 rgba(147, 235, 207, 0.16);
+}
+
+.display-switch-card strong,
+.display-switch-card small {
+  display: block;
+}
+
+.display-switch-card strong {
+  font-size: 15px;
+}
+
+.display-switch-card small {
+  margin-top: 3px;
+  color: #8d728f;
+  font-size: 12px;
+}
+
+.display-switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 62px;
+  height: 34px;
+}
+
+.display-switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.display-switch span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: rgba(141, 114, 143, 0.24);
+  box-shadow: inset 0 2px 6px rgba(83, 61, 83, 0.16);
+  transition: background 160ms ease, box-shadow 160ms ease;
+}
+
+.display-switch span::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fffdf8;
+  box-shadow: 0 4px 10px rgba(83, 61, 83, 0.20);
+  transition: transform 160ms ease;
+}
+
+.display-switch input:checked + span {
+  background: linear-gradient(135deg, var(--mint), var(--peach));
+  box-shadow: inset 0 2px 6px rgba(83, 61, 83, 0.10), 0 0 0 4px rgba(147, 235, 207, 0.16);
+}
+
+.display-switch input:checked + span::after {
+  transform: translateX(28px);
+}
+
 .button-grid,
 .style-grid {
   display: grid;

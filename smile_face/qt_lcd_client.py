@@ -15,6 +15,9 @@ from PyQt5.QtWidgets import QApplication, QWidget
 
 API_URL = os.getenv("FACE_API_URL", "https://www.wangyutang.cn/face/api/state")
 FPS_MS = 33
+IDLE_MS = 2000
+POLL_ACTIVE_SECONDS = 0.35
+POLL_IDLE_SECONDS = 2.0
 
 
 @dataclass
@@ -22,6 +25,7 @@ class FaceState:
     emotion: str = "neutral"
     style: str = "mochi"
     intensity: float = 0.65
+    display_enabled: bool = False
     speaking_until: float = 0
     mouth_open_until: float = 0
     blink_nonce: int = 0
@@ -68,6 +72,7 @@ class FaceWindow(QWidget):
         self.state = FaceState(now=time.time())
         self.render = dict(EMOTIONS["neutral"])
         self.last_poll = 0.0
+        self.was_display_enabled = False
         self.last_nonce = 0
         self.next_blink = time.monotonic() + 1.8
         self.blink_started = -999.0
@@ -78,9 +83,21 @@ class FaceWindow(QWidget):
 
     def tick(self) -> None:
         now = time.monotonic()
-        if now - self.last_poll > 0.35:
+        poll_seconds = POLL_ACTIVE_SECONDS if self.state.display_enabled else POLL_IDLE_SECONDS
+        if now - self.last_poll > poll_seconds:
             self.poll_state()
             self.last_poll = now
+        if not self.state.display_enabled:
+            if self.timer.interval() != IDLE_MS:
+                self.timer.setInterval(IDLE_MS)
+            if self.was_display_enabled:
+                self.was_display_enabled = False
+                self.update()
+            return
+        if not self.was_display_enabled:
+            self.was_display_enabled = True
+            self.timer.setInterval(FPS_MS)
+            self.update()
         if self.state.blink_nonce != self.last_nonce:
             self.last_nonce = self.state.blink_nonce
             self.blink_started = now
@@ -97,6 +114,7 @@ class FaceWindow(QWidget):
                 emotion=str(data.get("emotion", self.state.emotion)),
                 style=str(data.get("style", self.state.style)),
                 intensity=float(data.get("intensity", self.state.intensity)),
+                display_enabled=bool(data.get("display_enabled", False)),
                 speaking_until=float(data.get("speaking_until", 0)),
                 mouth_open_until=float(data.get("mouth_open_until", 0)),
                 blink_nonce=int(data.get("blink_nonce", self.state.blink_nonce)),
@@ -110,6 +128,9 @@ class FaceWindow(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
         w, h = self.width(), self.height()
+        if not self.state.display_enabled:
+            painter.fillRect(0, 0, w, h, Qt.black)
+            return
         t = time.monotonic()
         target = EMOTIONS.get(self.state.emotion, EMOTIONS["neutral"])
         for key, value in target.items():

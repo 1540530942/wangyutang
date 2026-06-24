@@ -35,6 +35,7 @@ class FaceState(BaseModel):
     emotion: Emotion = "neutral"
     style: FaceStyle = "mochi"
     intensity: float = Field(0.65, ge=0, le=1)
+    display_enabled: bool = False
     speaking_until: float = 0
     mouth_open_until: float = 0
     blink_nonce: int = 0
@@ -71,6 +72,11 @@ class SpeakRequest(BaseModel):
 class MouthRequest(BaseModel):
     open: bool = True
     duration_ms: int = Field(MIN_FACE_ACTION_DURATION_MS, ge=0, le=60000)
+    source: str = "api"
+
+
+class DisplayRequest(BaseModel):
+    enabled: bool = False
     source: str = "api"
 
 
@@ -113,6 +119,7 @@ def health() -> dict[str, object]:
         "emotion": state.emotion,
         "style": state.style,
         "speaking": state.speaking_until > current,
+        "display_enabled": state.display_enabled,
         "updated_at": state.updated_at,
     }
 
@@ -120,6 +127,14 @@ def health() -> dict[str, object]:
 @app.get("/api/state")
 def get_state() -> dict[str, object]:
     return snapshot()
+
+
+@app.post("/api/display")
+def set_display(payload: DisplayRequest) -> dict[str, object]:
+    state.display_enabled = payload.enabled
+    state.source = payload.source
+    state.updated_at = now()
+    return {"ok": True, "state": snapshot()}
 
 
 @app.get("/api/face/render.jpg")

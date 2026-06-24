@@ -6,109 +6,164 @@
     <title>TurboPi 在线巡检</title>
     <style>
       :root {
-        --bg: #eef2ed;
-        --card: #fbfcf7;
-        --ink: #16201b;
-        --muted: #607067;
-        --line: #d7ded6;
+        --bg: #eef1ea;
+        --paper: #fffdf6;
+        --ink: #14201b;
+        --muted: #627166;
+        --line: #d9dfd4;
+        --soft: #f3f6ef;
         --ok: #126b45;
-        --warn: #9b5b05;
-        --bad: #a02218;
+        --bad: #a1261d;
+        --warn: #9a5d0b;
         --accent: #176b73;
       }
       * { box-sizing: border-box; }
       body {
         margin: 0;
         min-height: 100vh;
-        background:
-          radial-gradient(circle at top left, rgba(23, 107, 115, 0.18), transparent 34rem),
-          linear-gradient(135deg, #eef2ed 0%, #f7efe0 100%);
         color: var(--ink);
+        background:
+          radial-gradient(circle at 10% 0%, rgba(23, 107, 115, 0.18), transparent 32rem),
+          radial-gradient(circle at 85% 20%, rgba(154, 93, 11, 0.12), transparent 24rem),
+          linear-gradient(135deg, #eef1ea 0%, #f8eedf 100%);
         font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
       }
-      main { width: min(1180px, calc(100vw - 28px)); margin: 0 auto; padding: 24px 0 36px; }
-      header, section {
-        background: rgba(251, 252, 247, 0.94);
+      main {
+        width: min(1220px, calc(100vw - 28px));
+        margin: 0 auto;
+        padding: 24px 0 40px;
+      }
+      header, .card {
+        background: rgba(255, 253, 246, 0.95);
         border: 1px solid var(--line);
-        border-radius: 16px;
-        box-shadow: 0 18px 50px rgba(22, 32, 27, 0.08);
+        border-radius: 18px;
+        box-shadow: 0 18px 50px rgba(20, 32, 27, 0.08);
       }
       header {
-        display: flex;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: 1fr auto;
         gap: 18px;
-        align-items: flex-start;
-        padding: 22px;
-        margin-bottom: 14px;
+        padding: 24px;
+        margin-bottom: 16px;
       }
-      h1, h2, p { margin: 0; }
-      h1 { font-size: 30px; letter-spacing: -0.03em; }
-      h2 { font-size: 17px; margin-bottom: 12px; }
+      h1, h2, h3, p { margin: 0; }
+      h1 { font-size: clamp(26px, 4vw, 38px); letter-spacing: -0.04em; }
+      h2 { font-size: 18px; margin-bottom: 12px; }
+      h3 { font-size: 15px; margin-bottom: 4px; }
       p, .muted { color: var(--muted); }
+      code {
+        padding: 2px 6px;
+        border-radius: 7px;
+        background: #e9efe8;
+        color: #173b3f;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+      }
       .pill {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        padding: 8px 12px;
-        border-radius: 999px;
+        padding: 9px 13px;
         border: 1px solid var(--line);
+        border-radius: 999px;
         background: white;
-        font-weight: 700;
+        font-weight: 800;
       }
       .pill.ok { color: var(--ok); }
       .pill.bad { color: var(--bad); }
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 14px;
-      }
-      section { padding: 18px; }
-      .wide { grid-column: 1 / -1; }
-      .kv {
-        display: grid;
-        grid-template-columns: 130px 1fr;
-        gap: 8px 12px;
-        font-size: 14px;
-      }
-      .kv b { color: var(--muted); font-weight: 600; }
-      pre {
-        margin: 0;
-        padding: 12px;
-        max-height: 360px;
-        overflow: auto;
-        border-radius: 12px;
-        background: #111a16;
-        color: #dbf5df;
-        font-size: 12px;
-        line-height: 1.45;
-        white-space: pre-wrap;
-      }
-      .cards { display: grid; gap: 8px; }
-      .task {
-        padding: 10px 12px;
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        background: white;
-        font-size: 13px;
-      }
-      .task strong { display: block; margin-bottom: 4px; }
-      .task.failed { border-color: #ecc0ba; background: #fff7f5; }
-      .task.complete { border-color: #b9dcc8; background: #f5fbf6; }
-      .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
       button, a.button {
         border: 0;
         border-radius: 12px;
         background: var(--accent);
         color: white;
         padding: 10px 14px;
-        font-weight: 700;
-        cursor: pointer;
+        font-weight: 800;
         text-decoration: none;
+        cursor: pointer;
       }
-      .small { font-size: 12px; }
-      @media (max-width: 780px) {
-        header { display: grid; }
-        .grid { grid-template-columns: 1fr; }
+      .layout {
+        display: grid;
+        grid-template-columns: 1.05fr 1fr;
+        gap: 14px;
+      }
+      .card { padding: 18px; }
+      .wide { grid-column: 1 / -1; }
+      .kv {
+        display: grid;
+        grid-template-columns: 128px 1fr;
+        gap: 9px 12px;
+        font-size: 14px;
+      }
+      .kv b { color: var(--muted); font-weight: 700; }
+      .list {
+        display: grid;
+        gap: 10px;
+      }
+      .item {
+        display: grid;
+        grid-template-columns: minmax(160px, 0.42fr) 1fr;
+        gap: 10px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: white;
+      }
+      .item .name {
+        overflow-wrap: anywhere;
+        font-family: Consolas, "Cascadia Mono", monospace;
+        font-size: 13px;
+      }
+      .item .role { color: var(--muted); font-size: 14px; line-height: 1.45; }
+      .status-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        margin-right: 7px;
+        border-radius: 50%;
+        background: var(--warn);
+      }
+      .status-dot.ok { background: var(--ok); }
+      .status-dot.bad { background: var(--bad); }
+      .task {
+        padding: 11px 12px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: white;
+        font-size: 13px;
+      }
+      .task.complete { border-color: #b9dcc8; background: #f4fbf5; }
+      .task.failed { border-color: #edc2bb; background: #fff7f5; }
+      .task strong { display: block; margin-bottom: 5px; }
+      .raw-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+      pre {
+        margin: 0;
+        padding: 12px;
+        max-height: 300px;
+        overflow: auto;
+        border-radius: 14px;
+        background: #101914;
+        color: #dcf4df;
+        font-size: 12px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+      }
+      details summary {
+        cursor: pointer;
+        color: var(--accent);
+        font-weight: 800;
+        margin-bottom: 12px;
+      }
+      @media (max-width: 860px) {
+        header, .layout, .raw-grid, .item { grid-template-columns: 1fr; }
+        .actions { justify-content: flex-start; }
         .kv { grid-template-columns: 1fr; }
       }
     </style>
@@ -118,45 +173,69 @@
       <header>
         <div>
           <h1>TurboPi 在线巡检</h1>
-          <p>只读展示树莓派服务、进程、Docker、ROS 节点/topic 和最近动作结果。</p>
+          <p>在线查看树莓派程序、服务、ROS 节点和消息。页面只读，不会发送运动指令。</p>
         </div>
-        <div class="controls">
+        <div class="actions">
           <span id="onlinePill" class="pill">读取中</span>
-          <button id="refreshBtn" type="button">刷新</button>
+          <button id="refreshBtn" type="button">立即刷新</button>
           <a class="button" href="../">返回控制台</a>
         </div>
       </header>
-      <div class="grid">
-        <section>
-          <h2>设备状态</h2>
+
+      <div class="layout">
+        <section class="card">
+          <h2>设备总览</h2>
           <div class="kv" id="deviceKv"></div>
         </section>
-        <section>
-          <h2>安全保护</h2>
+
+        <section class="card">
+          <h2>安全与保护</h2>
           <div class="kv" id="safetyKv"></div>
         </section>
-        <section>
-          <h2>服务状态</h2>
-          <pre id="servicesPre">读取中...</pre>
+
+        <section class="card">
+          <h2>系统服务</h2>
+          <div class="list" id="servicesList"></div>
         </section>
-        <section>
-          <h2>Docker</h2>
-          <pre id="dockerPre">读取中...</pre>
+
+        <section class="card">
+          <h2>关键进程</h2>
+          <div class="list" id="processList"></div>
         </section>
-        <section class="wide">
-          <h2>ROS 节点和消息</h2>
-          <pre id="rosPre">读取中...</pre>
+
+        <section class="card wide">
+          <h2>ROS 节点说明</h2>
+          <div class="list" id="nodesList"></div>
         </section>
-        <section>
-          <h2>高 CPU 进程</h2>
-          <pre id="processPre">读取中...</pre>
+
+        <section class="card wide">
+          <h2>ROS 消息 Topic 说明</h2>
+          <div class="list" id="topicsList"></div>
         </section>
-        <section>
+
+        <section class="card">
+          <h2>Docker 容器</h2>
+          <div class="list" id="dockerList"></div>
+        </section>
+
+        <section class="card">
           <h2>最近任务</h2>
-          <div class="cards" id="tasksBox"></div>
+          <div class="list" id="tasksBox"></div>
+        </section>
+
+        <section class="card wide">
+          <details>
+            <summary>展开原始诊断输出</summary>
+            <div class="raw-grid">
+              <pre id="servicesPre">读取中...</pre>
+              <pre id="dockerPre">读取中...</pre>
+              <pre id="rosPre">读取中...</pre>
+              <pre id="processPre">读取中...</pre>
+            </div>
+          </details>
         </section>
       </div>
     </main>
-    <script src="./diagnostics.js?v=20260624"></script>
+    <script src="./diagnostics.js?v=20260624-layout"></script>
   </body>
 </html>
