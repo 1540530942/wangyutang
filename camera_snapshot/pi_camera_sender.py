@@ -21,7 +21,7 @@ DEFAULT_TOKEN = os.environ.get("CAMERA_SNAPSHOT_TOKEN", "")
 DEFAULT_QUERY_GPIO = int(os.environ.get("CAMERA_SNAPSHOT_DEFAULT_GPIO", "26"))
 DEFAULT_FACE_RENDER_URL = os.environ.get("CAMERA_SNAPSHOT_FACE_RENDER_URL", "https://www.wangyutang.cn/face/api/face/render.jpg")
 DEFAULT_SONAR_CONTAINER = os.environ.get("CAMERA_SONAR_CONTAINER", "turbopi")
-DEFAULT_SONAR_UPLOAD_INTERVAL_SECONDS = float(os.environ.get("CAMERA_SONAR_UPLOAD_INTERVAL_SECONDS", "1.0"))
+DEFAULT_SONAR_UPLOAD_INTERVAL_SECONDS = float(os.environ.get("CAMERA_SONAR_UPLOAD_INTERVAL_SECONDS", "0"))
 CAPTURE_KINDS = ("screen", "face", "camera")
 
 
