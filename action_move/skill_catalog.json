@@ -32,18 +32,16 @@
     "rgb_red": 0,
     "rgb_green": 0,
     "rgb_blue": 0,
-    "unit_distance_cm": 1.0,
+    "unit_distance_cm": 5.0,
     "turn_angle_deg": 5.0,
-    "sensitivity": 0.5,
+    "sensitivity": 1.0,
     "move_duration_ms_at_5cm": 800,
     "turn_duration_ms_at_5deg": 450,
     "min_move_duration_ms": 180,
     "max_move_duration_ms": 3000,
     "min_turn_duration_ms": 180,
     "max_turn_duration_ms": 2500,
-    "scale_velocity_by_sensitivity": true,
-    "min_velocity_scale": 0.25,
-    "max_velocity_scale": 1.0,
+    "scale_velocity_by_sensitivity": false,
     "stop_publish_times": 3,
     "move_ramp_ms": 250,
     "move_start_scale": 0.35,
@@ -269,7 +267,7 @@
       ],
       "twist": {
         "linear_x": 0.0,
-        "linear_y": 0.12,
+        "linear_y": 0.35,
         "angular_z": 0.0
       }
     },
@@ -285,7 +283,7 @@
       ],
       "twist": {
         "linear_x": 0.0,
-        "linear_y": -0.12,
+        "linear_y": -0.45,
         "angular_z": 0.0
       }
     },
@@ -303,7 +301,7 @@
       "twist": {
         "linear_x": 0.0,
         "linear_y": 0.0,
-        "angular_z": 0.4
+        "angular_z": 5.0
       }
     },
     {
@@ -323,7 +321,7 @@
       "twist": {
         "linear_x": 0.0,
         "linear_y": 0.0,
-        "angular_z": -0.4
+        "angular_z": -5.0
       }
     }
   ]
