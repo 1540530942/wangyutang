@@ -134,6 +134,15 @@ def unit_duration_ms(defaults: dict[str, Any], kind: str) -> int:
     return int(round(clamp(base * (unit / 5.0) / sensitivity, lower, upper)))
 
 
+def velocity_scale(defaults: dict[str, Any]) -> float:
+    if not bool(defaults.get("scale_velocity_by_sensitivity", True)):
+        return 1.0
+    sensitivity = float(defaults.get("sensitivity", 1.0))
+    minimum = float(defaults.get("min_velocity_scale", 0.25))
+    maximum = float(defaults.get("max_velocity_scale", 1.0))
+    return clamp(sensitivity, minimum, maximum)
+
+
 def cmd_vel_topics(defaults: dict[str, Any]) -> list[str]:
     topics = defaults.get("cmd_vel_topics")
     if not isinstance(topics, list) or not topics:
@@ -211,12 +220,13 @@ def execute_camera_servo(skill: dict[str, Any], defaults: dict[str, Any], dry_ru
 def execute_base_move(skill: dict[str, Any], defaults: dict[str, Any], dry_run: bool) -> None:
     twist = skill["twist"]
     duration_ms = unit_duration_ms(defaults, "move")
+    scale = velocity_scale(defaults)
     rate = 10
     times = max(1, round(duration_ms / 1000 * rate))
     move_msg = (
         "{"
-        f"linear: {{x: {float(twist['linear_x'])}, y: {float(twist['linear_y'])}, z: 0.0}}, "
-        f"angular: {{x: 0.0, y: 0.0, z: {float(twist['angular_z'])}}}"
+        f"linear: {{x: {float(twist['linear_x']) * scale}, y: {float(twist['linear_y']) * scale}, z: 0.0}}, "
+        f"angular: {{x: 0.0, y: 0.0, z: {float(twist['angular_z']) * scale}}}"
         "}"
     )
     stop_msg = "{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"
@@ -235,12 +245,13 @@ def execute_base_move(skill: dict[str, Any], defaults: dict[str, Any], dry_run: 
 def execute_base_turn(skill: dict[str, Any], defaults: dict[str, Any], dry_run: bool) -> None:
     twist = skill["twist"]
     duration_ms = unit_duration_ms(defaults, "turn")
+    scale = velocity_scale(defaults)
     rate = 10
     times = max(1, round(duration_ms / 1000 * rate))
     move_msg = (
         "{"
-        f"linear: {{x: {float(twist['linear_x'])}, y: {float(twist['linear_y'])}, z: 0.0}}, "
-        f"angular: {{x: 0.0, y: 0.0, z: {float(twist['angular_z'])}}}"
+        f"linear: {{x: {float(twist['linear_x']) * scale}, y: {float(twist['linear_y']) * scale}, z: 0.0}}, "
+        f"angular: {{x: 0.0, y: 0.0, z: {float(twist['angular_z']) * scale}}}"
         "}"
     )
     stop_msg = "{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"

@@ -41,6 +41,9 @@
     "max_move_duration_ms": 3000,
     "min_turn_duration_ms": 180,
     "max_turn_duration_ms": 2500,
+    "scale_velocity_by_sensitivity": true,
+    "min_velocity_scale": 0.25,
+    "max_velocity_scale": 1.0,
     "stop_publish_times": 3,
     "move_ramp_ms": 250,
     "move_start_scale": 0.35,
@@ -233,7 +236,7 @@
         "向前移动"
       ],
       "twist": {
-        "linear_x": 0.18,
+        "linear_x": 0.35,
         "linear_y": 0.0,
         "angular_z": 0.0
       }
@@ -249,7 +252,7 @@
         "向后移动"
       ],
       "twist": {
-        "linear_x": -0.18,
+        "linear_x": -0.35,
         "linear_y": 0.0,
         "angular_z": 0.0
       }

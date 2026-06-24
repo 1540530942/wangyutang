@@ -82,6 +82,15 @@ def unit_duration_ms(defaults: dict[str, Any], kind: str) -> int:
     return int(round(clamp(base * (unit / 5.0) / sensitivity, lower, upper)))
 
 
+def velocity_scale(defaults: dict[str, Any]) -> float:
+    if not bool(defaults.get("scale_velocity_by_sensitivity", True)):
+        return 1.0
+    sensitivity = float(defaults.get("sensitivity", 1.0))
+    minimum = float(defaults.get("min_velocity_scale", 0.25))
+    maximum = float(defaults.get("max_velocity_scale", 1.0))
+    return clamp(sensitivity, minimum, maximum)
+
+
 def cmd_vel_topics(defaults: dict[str, Any]) -> list[str]:
     topics = defaults.get("cmd_vel_topics")
     if not isinstance(topics, list) or not topics:
@@ -238,7 +247,8 @@ class TurboPiController(Node):
         stop_times: int,
         defaults: dict[str, Any],
     ) -> list[str]:
-        message = self.make_twist(twist)
+        target_scale = velocity_scale(defaults)
+        message = self.scale_twist(self.make_twist(twist), target_scale)
         rate_hz = 20.0
         interval = 1.0 / rate_hz
         started = time.monotonic()
@@ -264,6 +274,7 @@ class TurboPiController(Node):
             "[INFO] cmd_vel_subscription_counts="
             + ",".join(f"{topic}:{count}" for topic, count in topic_counts.items()),
             f"[INFO] move_ramp_ms={int(ramp_seconds * 1000)} move_start_scale={start_scale}",
+            f"[INFO] velocity_scale={target_scale}",
         ]
 
     def publish_stop(self, times: int = 3) -> None:
