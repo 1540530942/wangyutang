@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
+import traceback
 from pathlib import Path
+from urllib import error as urlerror
 from urllib import request
 
 
@@ -22,6 +25,25 @@ SAFE_SETTINGS = {
 }
 
 ACTIONS = ["reset_pose", "move_forward", "move_backward", "move_left", "move_right"]
+
+
+def exception_info(exc: BaseException) -> dict:
+    info = {
+        "type": type(exc).__name__,
+        "message": str(exc),
+        "traceback": traceback.format_exception_only(type(exc), exc),
+    }
+    if isinstance(exc, urlerror.HTTPError):
+        info.update({"url": exc.url, "code": exc.code, "reason": exc.reason})
+        try:
+            body = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            body = ""
+        if body:
+            info["body"] = body[:2000]
+    elif isinstance(exc, urlerror.URLError):
+        info["reason"] = str(exc.reason)
+    return info
 
 
 def http_json(url: str, method: str = "GET", payload: dict | None = None, timeout: float = 20) -> dict:
@@ -110,46 +132,75 @@ def run_once() -> dict:
     }
     (out_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    initial_health = health()
-    summary["initial_health"] = initial_health
-    if not initial_health.get("online"):
-        summary["status"] = "skipped_offline"
-        return summary
+    try:
+        initial_health = health()
+        summary["initial_health"] = initial_health
+        if not initial_health.get("online"):
+            summary["status"] = "skipped_offline"
+            return summary
 
-    summary["settings_post"] = post_settings()
-    for action in ACTIONS:
-        before_health = health()
-        before = capture(out_dir, f"{action}_before")
-        task = create_action(action)
-        result = wait_task(str(task["id"]))
-        time.sleep(1.0)
-        after_health = health()
-        after = capture(out_dir, f"{action}_after") if after_health.get("online") else None
-        step = {
-            "action": action,
-            "task_id": task["id"],
-            "before_health": before_health,
-            "result": result,
-            "after_health": after_health,
-            "before_capture": before,
-            "after_capture": after,
-        }
-        if after:
-            step["camera_diff"] = image_diff(before["path"], after["path"])
-        summary["steps"].append(step)
+        summary["settings_post"] = post_settings()
+        for action in ACTIONS:
+            phase = "before_health"
+            step = {"action": action}
+            try:
+                before_health = health()
+                step["before_health"] = before_health
+                phase = "before_capture"
+                before = capture(out_dir, f"{action}_before")
+                step["before_capture"] = before
+                phase = "create_action"
+                task = create_action(action)
+                step["task_id"] = task["id"]
+                phase = "wait_task"
+                result = wait_task(str(task["id"]))
+                step["result"] = result
+                time.sleep(1.0)
+                phase = "after_health"
+                after_health = health()
+                step["after_health"] = after_health
+                phase = "after_capture"
+                after = capture(out_dir, f"{action}_after") if after_health.get("online") else None
+                step["after_capture"] = after
+                if after:
+                    step["camera_diff"] = image_diff(before["path"], after["path"])
+                summary["steps"].append(step)
+                (out_dir / "summary.json").write_text(
+                    json.dumps(summary, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+                if action != "reset_pose" and (
+                    result.get("status") != "complete" or not after_health.get("online")
+                ):
+                    summary["status"] = "stopped_after_failure"
+                    summary["failed_action"] = action
+                    break
+            except Exception as exc:  # noqa: BLE001 - diagnostics must survive partial outages.
+                step["status"] = "exception"
+                step["failed_phase"] = phase
+                step["error"] = exception_info(exc)
+                try:
+                    step["after_exception_health"] = health()
+                except Exception as health_exc:  # noqa: BLE001
+                    step["after_exception_health_error"] = exception_info(health_exc)
+                summary["steps"].append(step)
+                summary["status"] = "stopped_after_exception"
+                summary["failed_action"] = action
+                summary["failed_phase"] = phase
+                break
+        else:
+            summary["status"] = "complete"
+    except Exception as exc:  # noqa: BLE001 - keep the scheduler log structured.
+        summary["status"] = "error"
+        summary["error"] = exception_info(exc)
+    finally:
+        summary["finished_at"] = time.time()
         (out_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-        if action != "reset_pose" and (result.get("status") != "complete" or not after_health.get("online")):
-            summary["status"] = "stopped_after_failure"
-            summary["failed_action"] = action
-            break
-    else:
-        summary["status"] = "complete"
-
-    summary["finished_at"] = time.time()
-    (out_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     return summary
 
 
 if __name__ == "__main__":
     result = run_once()
     print(json.dumps(result, ensure_ascii=False, indent=2))
+    if result.get("status") != "complete":
+        sys.exit(1)

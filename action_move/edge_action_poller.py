@@ -20,6 +20,8 @@ BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_SERVER = "https://www.wangyutang.cn/action"
 IDLE_HEARTBEAT_SECONDS = 5.0
 ACTION_TIMEOUT_SECONDS = 20
+DIAGNOSTIC_HEARTBEAT_SECONDS = 30.0
+DEFAULT_DISABLED_ACTIONS = "move_forward,move_backward,move_left,move_right,turn_left,turn_right"
 VOICE_PROMPT_DIR = BASE_DIR / "voice_prompts"
 DEFAULT_TTS_URL = "https://www.wangyutang.cn/common/api/tts/speech"
 DEFAULT_TTS_MODEL = "qwen3-tts-12hz-1.7b-customvoice"
@@ -174,6 +176,55 @@ def command_text(command: list[str], timeout: float = 2.0) -> str:
         return subprocess.check_output(command, text=True, stderr=subprocess.DEVNULL, timeout=timeout).strip()
     except (subprocess.SubprocessError, OSError):
         return ""
+
+
+def compact_lines(text: str, limit: int = 80) -> list[str]:
+    lines = [line.rstrip() for line in text.splitlines() if line.strip()]
+    return lines[:limit]
+
+
+def collect_diagnostics() -> dict[str, Any]:
+    disabled_actions = os.getenv("ACTION_DISABLED_ACTIONS", DEFAULT_DISABLED_ACTIONS)
+    service_output = command_text(
+        ["systemctl", "is-active", "action-move-poller", "action-move-controller", "camera-snapshot-sender", "docker"],
+        timeout=3,
+    )
+    process_output = command_text(
+        [
+            "bash",
+            "-lc",
+            "ps -eo pid,user,stat,pcpu,pmem,cmd --sort=-pcpu | head -25",
+        ],
+        timeout=3,
+    )
+    ros_output = command_text(
+        [
+            "docker",
+            "exec",
+            "-u",
+            "ubuntu",
+            "turbopi",
+            "bash",
+            "-lc",
+            "source /opt/ros/humble/setup.bash && source /home/ubuntu/ros2_ws/install/setup.bash "
+            "&& echo NODES && ros2 node list "
+            "&& echo TOPICS && ros2 topic list -t | grep -E 'cmd_vel|motor|servo|camera|image|sonar' "
+            "&& echo CMDVEL && ros2 topic info /cmd_vel "
+            "&& echo MOTOR && ros2 topic info /ros_robot_controller/set_motor_speeds",
+        ],
+        timeout=10,
+    )
+    docker_output = command_text(["docker", "ps", "--format", "{{.Names}}\t{{.Status}}\t{{.Image}}"], timeout=3)
+    return {
+        "reported_at": time.time(),
+        "uptime": command_text(["uptime"], timeout=2),
+        "throttled": command_text(["vcgencmd", "get_throttled"], timeout=2),
+        "disabled_actions": disabled_actions,
+        "services": compact_lines(service_output, 12),
+        "docker": compact_lines(docker_output, 12),
+        "top_processes": compact_lines(process_output, 30),
+        "ros": compact_lines(ros_output, 120),
+    }
 
 
 def announce_completion(
@@ -393,6 +444,20 @@ def execute_action(
 ) -> tuple[bool, str, str]:
     if action == "remote_shutdown":
         return run_remote_shutdown()
+    disabled_actions = {
+        item.strip()
+        for item in os.getenv("ACTION_DISABLED_ACTIONS", DEFAULT_DISABLED_ACTIONS).split(",")
+        if item.strip()
+    }
+    if action in disabled_actions:
+        return (
+            False,
+            "",
+            (
+                f"action disabled on edge: {action}; recent chassis motor load caused a Raspberry Pi reboot. "
+                "Check motor power, wiring, common ground, and peak-current capacity before re-enabling."
+            ),
+        )
     if no_controller:
         return run_action(action, settings)
     ok, stdout, stderr = controller_execute(controller_url, action, settings)
@@ -442,18 +507,29 @@ def execute_with_running_heartbeats(
     return bool(result["ok"]), str(result["stdout"]), str(result["stderr"])
 
 
-def heartbeat(server: str, token: str, device_id: str, status: str, detail: str = "", current_task_id: str = "") -> None:
+def heartbeat(
+    server: str,
+    token: str,
+    device_id: str,
+    status: str,
+    detail: str = "",
+    current_task_id: str = "",
+    diagnostics: dict[str, Any] | None = None,
+) -> None:
     network = network_status()
+    payload = {
+        "device_id": device_id,
+        "status": status,
+        "detail": detail[:300],
+        "current_task_id": current_task_id,
+        **network,
+    }
+    if diagnostics:
+        payload["diagnostics"] = diagnostics
     request_json(
         f"{server.rstrip('/')}/api/device/heartbeat",
         method="POST",
-        payload={
-            "device_id": device_id,
-            "status": status,
-            "detail": detail[:300],
-            "current_task_id": current_task_id,
-            **network,
-        },
+        payload=payload,
         token=token,
     )
 
@@ -476,6 +552,7 @@ def main() -> int:
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
     last_idle_heartbeat = 0.0
+    last_diagnostic_heartbeat = 0.0
 
     while True:
         try:
@@ -531,7 +608,12 @@ def main() -> int:
                 )
                 last_idle_heartbeat = 0.0
             elif time.monotonic() - last_idle_heartbeat >= IDLE_HEARTBEAT_SECONDS:
-                heartbeat(args.server, args.token, args.device_id, "idle")
+                diagnostics = None
+                now = time.monotonic()
+                if now - last_diagnostic_heartbeat >= DIAGNOSTIC_HEARTBEAT_SECONDS:
+                    diagnostics = collect_diagnostics()
+                    last_diagnostic_heartbeat = now
+                heartbeat(args.server, args.token, args.device_id, "idle", diagnostics=diagnostics)
                 last_idle_heartbeat = time.monotonic()
         except (urllib.error.URLError, TimeoutError, subprocess.SubprocessError, OSError) as exc:
             print(f"[WARN] {exc}", flush=True)

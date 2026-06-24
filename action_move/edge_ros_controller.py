@@ -173,12 +173,26 @@ class TurboPiController(Node):
                     self.stop_event.clear()
                     duration_ms = unit_duration_ms(defaults, "move")
                     output.append(f"[INFO] duration_ms={duration_ms}")
-                    output.extend(self.publish_twist_burst(skill["twist"], duration_ms, int(defaults.get("stop_publish_times", 3))))
+                    output.extend(
+                        self.publish_twist_burst(
+                            skill["twist"],
+                            duration_ms,
+                            int(defaults.get("stop_publish_times", 3)),
+                            defaults,
+                        )
+                    )
                 elif skill["type"] == "base_turn":
                     self.stop_event.clear()
                     duration_ms = unit_duration_ms(defaults, "turn")
                     output.append(f"[INFO] duration_ms={duration_ms}")
-                    output.extend(self.publish_twist_burst(skill["twist"], duration_ms, int(defaults.get("stop_publish_times", 3))))
+                    output.extend(
+                        self.publish_twist_burst(
+                            skill["twist"],
+                            duration_ms,
+                            int(defaults.get("stop_publish_times", 3)),
+                            defaults,
+                        )
+                    )
                 else:
                     raise ValueError(f"unsupported skill type: {skill['type']}")
                 self.last_action = skill["id"]
@@ -207,16 +221,41 @@ class TurboPiController(Node):
         message.angular.z = float(twist.get("angular_z", 0.0))
         return message
 
-    def publish_twist_burst(self, twist: dict[str, Any], duration_ms: int, stop_times: int) -> list[str]:
+    def scale_twist(self, twist: Twist, scale: float) -> Twist:
+        message = Twist()
+        message.linear.x = twist.linear.x * scale
+        message.linear.y = twist.linear.y * scale
+        message.linear.z = 0.0
+        message.angular.x = 0.0
+        message.angular.y = 0.0
+        message.angular.z = twist.angular.z * scale
+        return message
+
+    def publish_twist_burst(
+        self,
+        twist: dict[str, Any],
+        duration_ms: int,
+        stop_times: int,
+        defaults: dict[str, Any],
+    ) -> list[str]:
         message = self.make_twist(twist)
         rate_hz = 20.0
         interval = 1.0 / rate_hz
-        deadline = time.monotonic() + max(duration_ms, 0) / 1000.0
+        started = time.monotonic()
+        deadline = started + max(duration_ms, 0) / 1000.0
+        ramp_seconds = max(float(defaults.get("move_ramp_ms", 0)), 0.0) / 1000.0
+        start_scale = clamp(float(defaults.get("move_start_scale", 1.0)), 0.1, 1.0)
         topic_counts = self.cmd_vel_subscription_counts()
         while time.monotonic() < deadline and not self.stop_event.is_set():
+            elapsed = time.monotonic() - started
+            if ramp_seconds > 0 and elapsed < ramp_seconds:
+                scale = start_scale + (1.0 - start_scale) * (elapsed / ramp_seconds)
+                publish_message = self.scale_twist(message, scale)
+            else:
+                publish_message = message
             with self.publish_lock:
                 for publisher in self.cmd_vel_pubs.values():
-                    publisher.publish(message)
+                    publisher.publish(publish_message)
                 rclpy.spin_once(self, timeout_sec=0.0)
             time.sleep(interval)
         self.publish_stop(stop_times)
@@ -224,6 +263,7 @@ class TurboPiController(Node):
             "[INFO] cmd_vel_topics=" + ",".join(self.cmd_vel_pubs.keys()),
             "[INFO] cmd_vel_subscription_counts="
             + ",".join(f"{topic}:{count}" for topic, count in topic_counts.items()),
+            f"[INFO] move_ramp_ms={int(ramp_seconds * 1000)} move_start_scale={start_scale}",
         ]
 
     def publish_stop(self, times: int = 3) -> None:

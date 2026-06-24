@@ -53,6 +53,7 @@ device_state: dict[str, Any] = {
     "ip_address": "",
     "wifi_ssid": "",
     "gateway": "",
+    "diagnostics": {},
 }
 
 
@@ -83,6 +84,7 @@ class DeviceHeartbeat(BaseModel):
     ip_address: str = Field("", max_length=120)
     wifi_ssid: str = Field("", max_length=120)
     gateway: str = Field("", max_length=120)
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
 
 
 class TaskResult(BaseModel):
@@ -229,6 +231,21 @@ def health() -> dict[str, Any]:
         "settings": load_settings(),
         "pending_tasks": sum(1 for task in tasks if task["status"] == "pending"),
         "skills": len(read_catalog().get("skills", [])),
+    }
+
+
+@app.get("/api/diagnostics")
+def diagnostics() -> dict[str, Any]:
+    refresh_tasks()
+    device = current_device()
+    return {
+        "status": "ok",
+        "service": "TurboPi Action Move",
+        "device": device,
+        "diagnostics": device.get("diagnostics") or {},
+        "settings": load_settings(),
+        "pending_tasks": sum(1 for task in tasks if task["status"] == "pending"),
+        "recent_tasks": [public_task(task) for task in reversed(tasks[-12:])],
     }
 
 
@@ -387,4 +404,6 @@ def heartbeat(payload: DeviceHeartbeat, x_action_token: Annotated[str | None, He
             "gateway": payload.gateway,
         }
     )
+    if payload.diagnostics:
+        device_state["diagnostics"] = payload.diagnostics
     return {"ok": True, "device": current_device()}

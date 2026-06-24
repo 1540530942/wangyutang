@@ -42,6 +42,8 @@
     "min_turn_duration_ms": 180,
     "max_turn_duration_ms": 2500,
     "stop_publish_times": 3,
+    "move_ramp_ms": 250,
+    "move_start_scale": 0.35,
     "servo_duration_s": 0.35,
     "pwm_center": 1500,
     "camera_servo_min": 1000,
