@@ -92,6 +92,29 @@
           <details><summary>原始返回</summary><pre id="visionRaw">{}</pre></details>
         </article>
 
+        <article class="panel panel-spark-vision">
+          <div class="panel-head">
+            <div>
+              <span class="panel-index">04</span>
+              <h2>视觉理解 Spark</h2>
+            </div>
+            <code>POST /api/vision/spark/analyze-json</code>
+          </div>
+          <div class="split-row">
+            <label><span class="field-label">模型</span><input id="sparkVisionModel" class="text-input" value="qwen3.6-35b-a3b" /></label>
+            <label><span class="field-label">问题</span><input id="sparkVisionQuestion" class="text-input" value="前面有没有人？" /></label>
+          </div>
+          <label class="drop-zone image-zone" for="sparkImageFile">
+            <input id="sparkImageFile" type="file" accept="image/*" />
+            <img id="sparkImagePreview" alt="图片预览" />
+            <span>选择图片</span>
+            <strong id="sparkImageName">JPG / PNG / WebP</strong>
+          </label>
+          <button id="runSparkVision" class="run-button">运行 Spark 视觉理解</button>
+          <div class="result-box"><textarea id="sparkVisionResult" readonly placeholder="视觉理解结果（spark-c9a7 离线时会返回 502）"></textarea></div>
+          <details><summary>原始返回</summary><pre id="sparkVisionRaw">{}</pre></details>
+        </article>
+
         <article class="panel panel-llm wide">
           <div class="panel-head">
             <div>
