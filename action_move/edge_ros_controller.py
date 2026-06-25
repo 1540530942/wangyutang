@@ -13,7 +13,7 @@ from typing import Any
 import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
-from ros_robot_controller_msgs.msg import PWMServoState, RGBState, RGBStates, SetPWMServoState
+from ros_robot_controller_msgs.msg import MotorSpeedControl, MotorsSpeedControl, PWMServoState, RGBState, RGBStates, SetPWMServoState
 
 try:
     from sdk.sonar import Sonar
@@ -120,6 +120,7 @@ class TurboPiController(Node):
             topic: self.create_publisher(Twist, topic, 10)
             for topic in self.cmd_vel_topics
         }
+        self.motors_pub = self.create_publisher(MotorsSpeedControl, "/ros_robot_controller/set_motor_speeds", 10)
         self.servo_pub = self.create_publisher(SetPWMServoState, self.pwm_servo_topic, 10)
         self.rgb_pub = self.create_publisher(RGBStates, self.rgb_topic, 10)
         self.sonar_rgb = None
@@ -180,28 +181,37 @@ class TurboPiController(Node):
                     )
                 elif skill["type"] == "base_move":
                     self.stop_event.clear()
-                    duration_ms = unit_duration_ms(defaults, "move")
-                    output.append(f"[INFO] duration_ms={duration_ms}")
-                    output.extend(
-                        self.publish_twist_burst(
-                            skill["twist"],
-                            duration_ms,
-                            int(defaults.get("stop_publish_times", 3)),
-                            defaults,
+                    if "motor_override" in skill:
+                        output.extend(self.publish_motor_override(skill["motor_override"]))
+                    else:
+                        duration_ms = unit_duration_ms(defaults, "move")
+                        output.append(f"[INFO] duration_ms={duration_ms}")
+                        output.extend(
+                            self.publish_twist_burst(
+                                skill["twist"],
+                                duration_ms,
+                                int(defaults.get("stop_publish_times", 3)),
+                                defaults,
+                            )
                         )
-                    )
                 elif skill["type"] == "base_turn":
                     self.stop_event.clear()
-                    duration_ms = unit_duration_ms(defaults, "turn")
-                    output.append(f"[INFO] duration_ms={duration_ms}")
-                    output.extend(
-                        self.publish_twist_burst(
-                            skill["twist"],
-                            duration_ms,
-                            int(defaults.get("stop_publish_times", 3)),
-                            defaults,
+                    if "motor_override" in skill:
+                        output.extend(self.publish_motor_override(skill["motor_override"]))
+                    else:
+                        duration_ms = unit_duration_ms(defaults, "turn")
+                        output.append(f"[INFO] duration_ms={duration_ms}")
+                        output.extend(
+                            self.publish_twist_burst(
+                                skill["twist"],
+                                duration_ms,
+                                int(defaults.get("stop_publish_times", 3)),
+                                defaults,
+                            )
                         )
-                    )
+                elif skill["type"] == "camera_snapshot":
+                    self.request_camera_capture(defaults)
+                    output.append("[INFO] camera_snapshot triggered")
                 else:
                     raise ValueError(f"unsupported skill type: {skill['type']}")
                 self.last_action = skill["id"]
@@ -276,6 +286,22 @@ class TurboPiController(Node):
             f"[INFO] move_ramp_ms={int(ramp_seconds * 1000)} move_start_scale={start_scale}",
             f"[INFO] velocity_scale={target_scale}",
         ]
+
+    def publish_motor_override(self, override: dict[str, Any]) -> list[str]:
+        speeds = override["speeds"]
+        duration_ms = int(override.get("duration_ms", 500))
+        msg = MotorsSpeedControl()
+        msg.data = [MotorSpeedControl(id=int(s["id"]), speed=float(s["speed"])) for s in speeds]
+        with self.publish_lock:
+            self.motors_pub.publish(msg)
+            rclpy.spin_once(self, timeout_sec=0.0)
+        time.sleep(duration_ms / 1000.0)
+        stop_msg = MotorsSpeedControl()
+        stop_msg.data = [MotorSpeedControl(id=i, speed=0.0) for i in [1, 2, 3, 4]]
+        with self.publish_lock:
+            self.motors_pub.publish(stop_msg)
+            rclpy.spin_once(self, timeout_sec=0.0)
+        return [f"[INFO] motor_override duration_ms={duration_ms} speeds={[s['speed'] for s in speeds]}"]
 
     def publish_stop(self, times: int = 3) -> None:
         stop = Twist()
@@ -477,6 +503,8 @@ def main() -> int:
 
     rclpy.init()
     Handler.controller = TurboPiController(args.catalog)
+    spin_thread = threading.Thread(target=lambda: rclpy.spin(Handler.controller), daemon=True, name="rclpy_spin")
+    spin_thread.start()
     server = ReusableThreadingHTTPServer((args.host, args.port), Handler)
     try:
         server.serve_forever()
