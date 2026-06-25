@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TurboPi 仿真器</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0d1117; --panel: #161b22; --border: #30363d;
+  --accent: #58a6ff; --green: #3fb950; --red: #f85149;
+  --yellow: #d29922; --text: #c9d1d9; --dim: #8b949e;
+}
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; }
+h2 { font-size: 13px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+.layout { display: grid; grid-template-columns: 1fr 380px; grid-template-rows: auto 1fr; gap: 10px; padding: 10px; height: 100vh; }
+.top-bar { grid-column: 1 / -1; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; display: flex; align-items: center; gap: 20px; }
+.top-bar h1 { font-size: 15px; font-weight: 700; color: var(--accent); letter-spacing: .04em; }
+.badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #238636; color: #fff; font-weight: 600; }
+.badge.offline { background: #6e7681; }
+.badge.warn { background: #9e6a03; }
+#fps { font-size: 11px; color: var(--dim); margin-left: auto; }
+.main-area { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.canvas-wrap { position: relative; width: 100%; }
+canvas { display: block; width: 100%; border-radius: 6px; image-rendering: pixelated; }
+.camera-wrap { position: relative; }
+#camImg { width: 100%; border-radius: 6px; display: block; border: 2px solid var(--border); }
+.cam-badge { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.7); color: var(--green); font-size: 10px; padding: 2px 6px; border-radius: 8px; font-weight: 600; }
+.right-col { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stat { background: #0d1117; border-radius: 6px; padding: 10px; }
+.stat-label { font-size: 11px; color: var(--dim); margin-bottom: 4px; }
+.stat-value { font-size: 18px; font-weight: 700; color: var(--text); font-family: monospace; }
+.stat-value.green { color: var(--green); }
+.stat-value.red { color: var(--red); }
+.stat-value.yellow { color: var(--yellow); }
+.rgb-swatch { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--border); display: inline-block; vertical-align: middle; margin-left: 8px; box-shadow: 0 0 12px rgba(0,0,0,.4); }
+.servo-bar { height: 6px; background: #0d1117; border-radius: 3px; overflow: hidden; margin-top: 4px; }
+.servo-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .2s; }
+.log-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#logList { flex: 1; overflow-y: auto; font-family: monospace; font-size: 11px; color: var(--text); background: #0d1117; border-radius: 6px; padding: 8px; }
+.log-entry { padding: 2px 0; border-bottom: 1px solid #21262d; display: flex; gap: 6px; }
+.log-t { color: var(--dim); flex-shrink: 0; }
+.log-skill { color: var(--accent); min-width: 110px; flex-shrink: 0; }
+.log-msg { color: var(--text); }
+.controls { display: flex; flex-wrap: wrap; gap: 6px; }
+button { background: #21262d; border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: background .15s, border-color .15s; }
+button:hover { background: #30363d; border-color: var(--accent); color: var(--accent); }
+button.danger { border-color: var(--red); color: var(--red); }
+button.danger:hover { background: rgba(248,81,73,.15); }
+.dist-bar-wrap { height: 10px; background: #0d1117; border-radius: 5px; overflow: hidden; margin-top: 6px; }
+.dist-bar { height: 100%; border-radius: 5px; transition: width .3s, background .3s; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <!-- 顶栏 -->
+  <div class="top-bar">
+    <h1>🤖 TurboPi 仿真器</h1>
+    <span class="badge" id="connBadge">CONNECTING</span>
+    <span style="color:var(--dim);font-size:11px;">端口 8766 &nbsp;·&nbsp; 全技能仿真</span>
+    <div id="fps" style="margin-left:auto;">-- fps</div>
+    <button onclick="resetSim()" class="danger">⟳ 重置</button>
+  </div>
+
+  <!-- 主视图 -->
+  <div class="main-area">
+    <!-- 俯视地图 -->
+    <div class="panel" style="flex:2;min-height:0;">
+      <h2>俯视地图（Arena 800×600）</h2>
+      <div class="canvas-wrap">
+        <canvas id="arenaCanvas" width="800" height="600"></canvas>
+      </div>
+    </div>
+    <!-- 摄像头视图 -->
+    <div class="panel" style="flex:1.2;min-height:0;">
+      <h2>摄像头视角（第一人称）</h2>
+      <div class="camera-wrap">
+        <img id="camImg" src="/api/latest.jpg" alt="camera">
+        <span class="cam-badge" id="camBadge">LIVE</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右侧面板 -->
+  <div class="right-col">
+    <!-- 状态面板 -->
+    <div class="panel">
+      <h2>机器人状态</h2>
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="stat-label">位置 (x, y)</div>
+          <div class="stat-value" id="stPos" style="font-size:14px">— , —</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">朝向 heading</div>
+          <div class="stat-value" id="stHeading">—°</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">前方距离</div>
+          <div class="stat-value" id="stDist" style="font-size:22px">— cm</div>
+          <div class="dist-bar-wrap"><div class="dist-bar" id="distBar"></div></div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">RGB 灯光</div>
+          <div class="stat-value" style="font-size:14px;" id="stRGB">OFF
+            <span class="rgb-swatch" id="rgbSwatch"></span>
+          </div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">云台 Pan</div>
+          <div class="stat-value" id="stPan">0°</div>
+          <div class="servo-bar"><div class="servo-fill" id="panBar" style="width:50%"></div></div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">云台 Tilt</div>
+          <div class="stat-value" id="stTilt">0°</div>
+          <div class="servo-bar"><div class="servo-fill" id="tiltBar" style="width:50%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 快捷控制 -->
+    <div class="panel">
+      <h2>快捷调试</h2>
+      <div class="controls">
+        <button onclick="sendAction('move_forward')">▲ 前进</button>
+        <button onclick="sendAction('move_backward')">▼ 后退</button>
+        <button onclick="sendAction('move_left')">◀ 左移</button>
+        <button onclick="sendAction('move_right')">▶ 右移</button>
+        <button onclick="sendAction('turn_left')">↺ 左转</button>
+        <button onclick="sendAction('turn_right')">↻ 右转</button>
+        <button onclick="sendAction('look_left')">👁 左看</button>
+        <button onclick="sendAction('look_right')">👁 右看</button>
+        <button onclick="sendAction('look_up')">👁 上仰</button>
+        <button onclick="sendAction('look_down')">👁 下俯</button>
+        <button onclick="sendAction('rgb_on',{rgb_red:0,rgb_green:255,rgb_blue:0})">💡 RGB开</button>
+        <button onclick="sendAction('rgb_off')">💡 RGB关</button>
+        <button onclick="sendAction('reset_pose')">⊙ 复位</button>
+        <button onclick="sendAction('front_distance')">📡 测距</button>
+        <button onclick="sendAction('emergency_stop')" class="danger">⛔ 急停</button>
+      </div>
+    </div>
+
+    <!-- 动作日志 -->
+    <div class="panel log-wrap">
+      <h2>动作日志</h2>
+      <div id="logList"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const WS_URL = `ws://${location.host}/ws`;
+const BASE = '';
+let ws, state = null, lastFrameId = -1;
+let fpsFrames = 0, fpsLast = Date.now();
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => setBadge('LIVE', true);
+  ws.onclose = () => { setBadge('OFFLINE', false); setTimeout(connect, 2000); };
+  ws.onerror = () => ws.close();
+  ws.onmessage = e => {
+    try { state = JSON.parse(e.data); } catch { return; }
+    render(state);
+    if (state.frame_id !== lastFrameId) {
+      lastFrameId = state.frame_id;
+      refreshCam();
+    }
+    fpsFrames++;
+    const now = Date.now();
+    if (now - fpsLast >= 1000) {
+      document.getElementById('fps').textContent = fpsFrames + ' fps';
+      fpsFrames = 0; fpsLast = now;
+    }
+  };
+}
+connect();
+// 兜底轮询
+setInterval(() => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  fetch('/api/state').then(r=>r.json()).then(s=>{ state=s; render(s); });
+}, 3000);
+
+// ── Arena Canvas ───────────────────────────────────────────────────────────
+const canvas = document.getElementById('arenaCanvas');
+const ctx = canvas.getContext('2d');
+const ARENA_W = 800, ARENA_H = 600;
+
+function render(s) {
+  ctx.clearRect(0, 0, ARENA_W, ARENA_H);
+  drawArena(s);
+  updateStats(s);
+  updateLog(s);
+}
+
+function drawArena(s) {
+  // 背景
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, ARENA_W, ARENA_H);
+
+  // 网格
+  ctx.strokeStyle = '#1c2128';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= ARENA_W; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ARENA_H); ctx.stroke();
+  }
+  for (let y = 0; y <= ARENA_H; y += 40) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(ARENA_W, y); ctx.stroke();
+  }
+
+  // 边界
+  ctx.strokeStyle = '#30363d';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, ARENA_W - 2, ARENA_H - 2);
+
+  // 轨迹
+  if (s.trail && s.trail.length > 1) {
+    ctx.beginPath();
+    ctx.moveTo(s.trail[0][0], s.trail[0][1]);
+    for (let i = 1; i < s.trail.length; i++) {
+      ctx.lineTo(s.trail[i][0], s.trail[i][1]);
+    }
+    ctx.strokeStyle = 'rgba(88,166,255,0.3)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // 轨迹点
+    ctx.fillStyle = 'rgba(88,166,255,0.15)';
+    for (const [tx, ty] of s.trail) {
+      ctx.beginPath(); ctx.arc(tx, ty, 2, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // 障碍物
+  for (const obs of (s.obstacles || [])) {
+    ctx.beginPath();
+    ctx.arc(obs.cx, obs.cy, obs.r, 0, Math.PI * 2);
+    ctx.fillStyle = '#3d2b1f';
+    ctx.fill();
+    ctx.strokeStyle = '#8b5e3c';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // 箱子图标
+    ctx.fillStyle = '#8b5e3c';
+    ctx.font = `${Math.max(10, obs.r * 0.8)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('📦', obs.cx, obs.cy);
+  }
+
+  const { x, y, heading_deg, pan_deg, front_distance_cm } = s;
+
+  // 测距射线
+  const dRad = (heading_deg * Math.PI) / 180;
+  const dist_px = Math.min(front_distance_cm * 4, 800);
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + Math.cos(dRad) * dist_px, y + Math.sin(dRad) * dist_px);
+  const distColor = front_distance_cm < 20 ? '#f85149' : front_distance_cm < 50 ? '#d29922' : '#3fb950';
+  ctx.strokeStyle = distColor + '99';
+  ctx.setLineDash([4, 4]);
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 摄像头视野扇形
+  const viewRad = ((heading_deg + pan_deg) * Math.PI) / 180;
+  const fovHalf = (50 * Math.PI) / 180;
+  const viewLen = 120;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.arc(x, y, viewLen, viewRad - fovHalf, viewRad + fovHalf);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(88,166,255,0.07)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(88,166,255,0.3)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // 机器人本体
+  const rgb = s.rgb;
+  const glowColor = rgb.on ? `rgba(${rgb.r},${rgb.g},${rgb.b},0.4)` : 'rgba(88,166,255,0.15)';
+  ctx.shadowColor = glowColor;
+  ctx.shadowBlur = rgb.on ? 20 : 8;
+  ctx.beginPath();
+  ctx.arc(x, y, 20, 0, Math.PI * 2);
+  ctx.fillStyle = '#161b22';
+  ctx.fill();
+  ctx.strokeStyle = rgb.on ? `rgb(${rgb.r},${rgb.g},${rgb.b})` : '#58a6ff';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // 机器人方向箭头
+  const arrowLen = 28;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + Math.cos(dRad) * arrowLen, y + Math.sin(dRad) * arrowLen);
+  ctx.strokeStyle = '#e6edf3';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // 箭头头部
+  const ax = x + Math.cos(dRad) * arrowLen;
+  const ay = y + Math.sin(dRad) * arrowLen;
+  for (const a of [dRad - 2.6, dRad + 2.6]) {
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax + Math.cos(a) * 8, ay + Math.sin(a) * 8);
+    ctx.stroke();
+  }
+
+  // RGB 灯光指示
+  if (rgb.on) {
+    ctx.beginPath();
+    ctx.arc(x + 14, y - 14, 5, 0, Math.PI * 2);
+    ctx.fillStyle = `rgb(${rgb.r},${rgb.g},${rgb.b})`;
+    ctx.fill();
+  }
+
+  // 位置标签
+  ctx.fillStyle = 'rgba(88,166,255,0.8)';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(`(${Math.round(x)}, ${Math.round(y)})`, x + 24, y - 8);
+
+  // 比例尺
+  ctx.fillStyle = '#8b949e';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('40px = 10cm', ARENA_W - 8, ARENA_H - 6);
+}
+
+function updateStats(s) {
+  document.getElementById('stPos').textContent = `${Math.round(s.x)}, ${Math.round(s.y)}`;
+  document.getElementById('stHeading').textContent = `${s.heading_deg.toFixed(1)}°`;
+
+  const dist = s.front_distance_cm;
+  const dEl = document.getElementById('stDist');
+  dEl.textContent = `${dist.toFixed(1)} cm`;
+  dEl.className = 'stat-value ' + (dist < 20 ? 'red' : dist < 50 ? 'yellow' : 'green');
+  const pct = Math.min(100, (dist / 300) * 100);
+  const bar = document.getElementById('distBar');
+  bar.style.width = pct + '%';
+  bar.style.background = dist < 20 ? '#f85149' : dist < 50 ? '#d29922' : '#3fb950';
+
+  const rgb = s.rgb;
+  const rgbEl = document.getElementById('stRGB');
+  rgbEl.childNodes[0].textContent = rgb.on ? 'ON ' : 'OFF ';
+  const swatch = document.getElementById('rgbSwatch');
+  swatch.style.background = rgb.on ? `rgb(${rgb.r},${rgb.g},${rgb.b})` : '#21262d';
+  swatch.style.boxShadow = rgb.on ? `0 0 16px rgb(${rgb.r},${rgb.g},${rgb.b})` : 'none';
+
+  document.getElementById('stPan').textContent = `${s.pan_deg.toFixed(0)}°`;
+  document.getElementById('stTilt').textContent = `${s.tilt_deg.toFixed(0)}°`;
+  const panPct = ((s.pan_deg + 45) / 90) * 100;
+  const tiltPct = ((s.tilt_deg + 30) / 60) * 100;
+  document.getElementById('panBar').style.width = panPct + '%';
+  document.getElementById('tiltBar').style.width = tiltPct + '%';
+}
+
+function updateLog(s) {
+  if (!s.log || !s.log.length) return;
+  const el = document.getElementById('logList');
+  el.innerHTML = [...s.log].reverse().slice(0, 50).map(e => `
+    <div class="log-entry">
+      <span class="log-t">${e.t}</span>
+      <span class="log-skill">${e.skill}</span>
+      <span class="log-msg">${e.msg}</span>
+    </div>`).join('');
+}
+
+// ── 摄像头刷新 ─────────────────────────────────────────────────────────────
+function refreshCam() {
+  const img = document.getElementById('camImg');
+  img.src = '/api/latest.jpg?t=' + Date.now();
+}
+// 兜底每 2s 刷新
+setInterval(refreshCam, 2000);
+
+// ── 动作发送 ───────────────────────────────────────────────────────────────
+async function sendAction(skill, settings = {}) {
+  try {
+    await fetch('/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: skill, settings })
+    });
+  } catch (e) { console.error(e); }
+}
+
+async function resetSim() {
+  await fetch('/api/reset', { method: 'POST' });
+}
+
+// ── 键盘控制 ───────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  const map = {
+    ArrowUp: 'move_forward', ArrowDown: 'move_backward',
+    ArrowLeft: 'move_left', ArrowRight: 'move_right',
+    w: 'move_forward', s: 'move_backward', a: 'move_left', d: 'move_right',
+    q: 'turn_left', e: 'turn_right',
+    i: 'look_up', k: 'look_down', j: 'look_left', l: 'look_right',
+    Escape: 'emergency_stop', r: 'reset_pose',
+  };
+  const skill = map[e.key];
+  if (skill) { e.preventDefault(); sendAction(skill); }
+});
+
+// ── Badge ──────────────────────────────────────────────────────────────────
+function setBadge(text, online) {
+  const b = document.getElementById('connBadge');
+  b.textContent = text;
+  b.className = 'badge' + (online ? '' : ' offline');
+}
+</script>
+</body>
+</html>
