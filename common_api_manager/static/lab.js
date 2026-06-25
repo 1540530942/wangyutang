@@ -80,7 +80,7 @@ function llmRoute() {
 
 function updateLlmEndpoint() {
   const models = (state.health && state.health.models) || {};
-  if ($('llmEndpoint').value === 'spark') $('llmModel').value = models.spark_llm || 'qwen3.6-35b-a3b-fp8';
+  if ($('llmEndpoint').value === 'spark') $('llmModel').value = models.spark_llm || 'qwen3.6-35b-a3b';
   if ($('llmEndpoint').value === 'lv') $('llmModel').value = models.llm || 'qwen3.5-9b';
   if ($('llmEndpoint').value === 'dashscope') $('llmModel').value = models.llm_tools || 'qwen3-32b';
   $('llmEndpointLabel').textContent = `POST ${llmRoute()}`;
@@ -143,6 +143,37 @@ async function runVision() {
   }
 }
 
+async function runSparkVision() {
+  const file = $('sparkImageFile').files[0];
+  if (!file) return toast('请先选择图片', true);
+  const question = $('sparkVisionQuestion').value.trim() || '请描述这张图片。';
+  const model = $('sparkVisionModel').value.trim();
+  setBusy($('runSparkVision'), true, '理解中...');
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+    const image_base64 = btoa(binary);
+    const payload = { image_base64, question };
+    if (model) payload.model = model;
+    const data = await requestJson('/api/vision/spark/analyze-json', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    $('sparkVisionResult').value = data.text || pretty(data);
+    $('sparkVisionRaw').textContent = pretty(data);
+    toast('Spark 视觉理解完成');
+  } catch (error) {
+    $('sparkVisionResult').value = '';
+    $('sparkVisionRaw').textContent = error.message;
+    toast(error.message, true);
+  } finally {
+    setBusy($('runSparkVision'), false);
+  }
+}
+
 async function runLlm() {
   const payload = {
     model: $('llmModel').value.trim(),
@@ -195,6 +226,15 @@ $('imageFile').addEventListener('change', () => {
   $('imagePreview').src = URL.createObjectURL(file);
   zone.classList.add('has-image');
 });
+$('sparkImageFile').addEventListener('change', () => {
+  const file = $('sparkImageFile').files[0];
+  $('sparkImageName').textContent = file ? `${file.name} · ${Math.round(file.size / 1024)} KB` : 'JPG / PNG / WebP';
+  const zone = document.querySelector('.panel-spark-vision .image-zone');
+  if (!file) return zone.classList.remove('has-image');
+  $('sparkImagePreview').src = URL.createObjectURL(file);
+  zone.classList.add('has-image');
+});
+$('runSparkVision').addEventListener('click', runSparkVision);
 $('asrModel').addEventListener('input', updateAsrPrompt);
 $('llmEndpoint').addEventListener('change', updateLlmEndpoint);
 $('llmModel').addEventListener('input', updateFullPrompt);
