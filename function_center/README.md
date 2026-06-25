@@ -38,3 +38,12 @@ print(robot.front_distance())
 ## Web UI
 
 浏览器打开 `http://<pi-ip>:8088`，可直接点按方向键控制底盘、调整舵机、读取传感器。Docker 容器与宿主机共享 host 网络，因此容器内也可访问 `127.0.0.1:8088`。
+
+## ROS2 原子指令
+
+容器内可直接用 `ros2 topic pub` 触发硬件动作，无需任何上层服务。详见 [ros2_command_examples.md](ros2_command_examples.md)，涵盖：
+
+- 如何 SSH 进入 turbopi 容器并初始化 ROS2 环境
+- 底盘运动（前/后/左平移/右平移/左右转）、电机直控、斜向平移
+- 摄像头舵机、RGB 灯、超声波测距
+- 紧急停止与常见问题
