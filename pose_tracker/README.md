@@ -1,75 +1,72 @@
 # pose_tracker
 
-轻量级机器人位姿估计服务。接收 IMU 四元数和 `/cmd_vel` 速度指令，融合推算当前位置（x/y/yaw），通过 WebSocket 实时推送到浏览器。
+Real-time 2D pose tracking for TurboPi. Fuses IMU orientation (yaw) from the robot controller board with `/cmd_vel` dead-reckoning to estimate position, and streams the result to a browser via WebSocket.
 
-## 架构
+## Architecture
 
 ```
-turbopi 容器
-  pi_imu_sender.py
-    ├─ subscribe /ros_robot_controller/imu_raw  →  POST /api/imu
-    └─ subscribe /cmd_vel                       →  POST /api/cmd_vel
-                                                        │
-                                                pose_tracker server (port 8300)
-                                                  PoseEstimator
-                                                    ├─ yaw  ← IMU 四元数（优先）
-                                                    └─ x/y  ← cmd_vel 积分（dead-reckoning）
-                                                        │
-                                                    WebSocket /ws  →  浏览器
+Raspberry Pi (turbopi container)
+  /ros_robot_controller/imu_raw  ─┐
+  /cmd_vel                        ├─ pi_imu_sender.py ──WebSocket /ws/pi──▶ server.py
+                                                                                 │
+                                                                          WebSocket /ws
+                                                                                 │
+                                                                            browser
+                                                                          (index.html)
 ```
 
-## 组件
+- Pi connects to `/ws/pi` and waits for a `start` command before sending any data.
+- Browser controls streaming via **开始采集 / 停止采集** buttons.
+- Server pushes incremental pose updates to browser at ≤ 20 Hz.
 
-| 文件 | 说明 |
-|---|---|
-| `server.py` | FastAPI 服务，端口 8300；接收 IMU/cmd_vel，广播位姿到所有 WebSocket 客户端 |
-| `pose_estimator.py` | 位姿估计核心：IMU 四元数 → yaw，cmd_vel 积分 → x/y，保留最近 2000 个轨迹点 |
-| `pi_imu_sender.py` | 容器内 ROS2 节点，订阅 IMU 和 /cmd_vel，异步 POST 到 pose_tracker server |
-| `static/index.html` | 浏览器实时可视化页面，WebSocket 接收位姿并绘制轨迹 |
+## Files
 
-## 启动
+| File | Role |
+|------|------|
+| `pose_estimator.py` | Fuses IMU quaternion (yaw) + cmd_vel integration → x/y/yaw |
+| `server.py` | FastAPI: Pi WebSocket channel, browser WebSocket feed, control API |
+| `pi_imu_sender.py` | Runs on Pi inside turbopi container; streams at 20 Hz on demand |
+| `static/index.html` | 2D top-down trajectory canvas + motion description panel |
 
-**服务端**（云端或本地机器）：
+## Run
+
+### Server side
 
 ```bash
-pip install fastapi uvicorn
-python pose_tracker/server.py         # 监听 0.0.0.0:8300
+cd pose_tracker
+pip install -r requirements.txt
+python3 -m uvicorn server:app --host 0.0.0.0 --port 8300
 ```
 
-**Pi 端发送器**（turbopi 容器内）：
+Open `http://<server-ip>:8300/`
+
+### Pi side (inside turbopi container)
 
 ```bash
-docker exec -it -u ubuntu turbopi bash
-source /opt/ros/humble/setup.bash && source /home/ubuntu/ros2_ws/install/setup.bash
-python3 /path/to/pi_imu_sender.py --server http://<server-ip>:8300
+docker exec turbopi bash -c "
+  source /opt/ros/humble/setup.bash &&
+  source /home/ubuntu/ros2_ws/install/setup.bash &&
+  pip install websocket-client &&
+  python3 /path/to/pi_imu_sender.py --server ws://<server-ip>:8300
+"
 ```
+
+Once the Pi is connected, click **开始采集** in the browser to start streaming.
 
 ## API
 
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| `POST` | `/api/imu` | 接收四元数 `{orientation: {x,y,z,w}}` |
-| `POST` | `/api/cmd_vel` | 接收速度 `{linear_x, linear_y, angular_z}` |
-| `POST` | `/api/reset` | 重置位姿到原点 |
-| `GET` | `/api/pose` | 返回当前位姿快照 |
-| `WS` | `/ws` | 实时推送位姿（每次 IMU 或 cmd_vel 更新触发） |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/start` | POST | Command Pi to start streaming |
+| `/api/stop` | POST | Command Pi to stop streaming |
+| `/api/reset` | POST | Reset pose to origin |
+| `/api/status` | GET | Pi connection + streaming state |
+| `/api/pose` | GET | Current pose snapshot |
+| `/ws` | WebSocket | Browser real-time feed |
+| `/ws/pi` | WebSocket | Pi data channel |
 
-位姿快照格式：
+## Pose estimation notes
 
-```json
-{
-  "x": 0.123,
-  "y": -0.045,
-  "yaw_deg": 47.2,
-  "dist_cm": 13.1,
-  "imu_active": true,
-  "trail": [{"x": 0.0, "y": 0.0, "yaw": 0.0}, ...],
-  "description": "距起点 13 cm，偏左前方（47°），数据源：IMU融合"
-}
-```
-
-## 位姿估计逻辑
-
-- **yaw**：IMU 有数据时从四元数直接提取（`atan2` 方法），比 cmd_vel 积分精确
-- **x/y**：对 cmd_vel 做时间积分，方向由当前 yaw 旋转（世界坐标系）
-- **dead-reckoning 误差**：无 IMU 时 yaw 也用 cmd_vel angular_z 积分，累积误差较大；长距离运动后建议 `POST /api/reset` 重置
+- **Yaw**: from IMU quaternion (reliable). Falls back to integrating `angular_z` from cmd_vel when IMU is inactive.
+- **x/y**: dead-reckoning from cmd_vel linear velocity × elapsed time. Accumulates drift over long runs; use `/api/reset` to reset origin as needed.
+- Trail is capped at 2000 points. Browser maintains its own copy and only receives incremental new points after the initial load.

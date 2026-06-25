@@ -1,2 +1,6 @@
+# server side
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
+
+# pi side (install inside turbopi container)
+websocket-client>=1.7.0

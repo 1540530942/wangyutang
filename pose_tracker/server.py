@@ -12,76 +12,151 @@ from pose_estimator import PoseEstimator
 
 app = FastAPI(title="pose_tracker")
 estimator = PoseEstimator()
-_clients: list[WebSocket] = []
+
+_browser_clients: list[WebSocket] = []
+_pi_ws: WebSocket | None = None
+_streaming = False
 
 _STATIC = Path(__file__).parent / "static"
 
 
-# ── data ingestion ────────────────────────────────────────────────────────────
+# ── Pi control (called by browser buttons) ────────────────────────────────────
 
-@app.post("/api/imu")
-async def receive_imu(data: dict[str, Any]) -> dict[str, Any]:
-    o = data.get("orientation", {})
-    estimator.update_imu(float(o["x"]), float(o["y"]), float(o["z"]), float(o["w"]))
-    await _broadcast()
+@app.post("/api/start")
+async def start_stream() -> dict[str, Any]:
+    global _streaming
+    _streaming = True
+    if _pi_ws:
+        await _pi_ws.send_text(json.dumps({"cmd": "start"}))
+    await _notify_status()
     return {"ok": True}
 
 
-@app.post("/api/cmd_vel")
-async def receive_cmd_vel(data: dict[str, Any]) -> dict[str, Any]:
-    estimator.update_cmd_vel(
-        float(data.get("linear_x", 0)),
-        float(data.get("linear_y", 0)),
-        float(data.get("angular_z", 0)),
-    )
-    await _broadcast()
+@app.post("/api/stop")
+async def stop_stream() -> dict[str, Any]:
+    global _streaming
+    _streaming = False
+    if _pi_ws:
+        await _pi_ws.send_text(json.dumps({"cmd": "stop"}))
+    await _notify_status()
     return {"ok": True}
 
 
 @app.post("/api/reset")
 async def reset_pose() -> dict[str, Any]:
     estimator.reset()
-    await _broadcast()
+    await _broadcast_full()
     return {"ok": True}
 
 
-# ── query ─────────────────────────────────────────────────────────────────────
-
-@app.get("/api/pose")
-async def get_pose() -> dict[str, Any]:
-    return estimator.snapshot()
+@app.get("/api/status")
+async def get_status() -> dict[str, Any]:
+    return {"pi_connected": _pi_ws is not None, "streaming": _streaming}
 
 
-# ── WebSocket (browser) ───────────────────────────────────────────────────────
+# ── Pi WebSocket ──────────────────────────────────────────────────────────────
+
+@app.websocket("/ws/pi")
+async def pi_ws_endpoint(ws: WebSocket) -> None:
+    global _pi_ws
+    await ws.accept()
+    _pi_ws = ws
+    await _notify_status()
+    print("[pose_tracker] Pi connected")
+    try:
+        while True:
+            raw = await ws.receive_text()
+            data = json.loads(raw)
+            t = data.get("type")
+            if t == "imu":
+                o = data["orientation"]
+                estimator.update_imu(float(o["x"]), float(o["y"]), float(o["z"]), float(o["w"]))
+                await _broadcast_update()
+            elif t == "cmd_vel":
+                estimator.update_cmd_vel(
+                    float(data["linear_x"]),
+                    float(data["linear_y"]),
+                    float(data["angular_z"]),
+                )
+                await _broadcast_update()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        _pi_ws = None
+        print("[pose_tracker] Pi disconnected")
+        await _notify_status()
+
+
+# ── Browser WebSocket ─────────────────────────────────────────────────────────
 
 @app.websocket("/ws")
-async def ws_endpoint(ws: WebSocket) -> None:
+async def browser_ws_endpoint(ws: WebSocket) -> None:
     await ws.accept()
-    _clients.append(ws)
-    await ws.send_text(json.dumps(estimator.snapshot()))
+    _browser_clients.append(ws)
+    await ws.send_text(json.dumps(_full_payload()))
     try:
         while True:
             await ws.receive_text()
     except WebSocketDisconnect:
         pass
     finally:
-        if ws in _clients:
-            _clients.remove(ws)
+        if ws in _browser_clients:
+            _browser_clients.remove(ws)
 
 
-async def _broadcast() -> None:
-    if not _clients:
+# ── payload helpers ───────────────────────────────────────────────────────────
+
+def _status() -> dict[str, Any]:
+    return {"pi_connected": _pi_ws is not None, "streaming": _streaming}
+
+
+def _full_payload() -> dict[str, Any]:
+    snap = estimator.snapshot()
+    snap["full_trail"] = snap.pop("trail")
+    snap["new_point"] = None
+    snap.update(_status())
+    return snap
+
+
+def _update_payload() -> dict[str, Any]:
+    snap = estimator.snapshot()
+    trail = snap.pop("trail")
+    snap["new_point"] = trail[-1] if trail else None
+    snap.update(_status())
+    return snap
+
+
+async def _broadcast_update() -> None:
+    if not _browser_clients:
         return
-    msg = json.dumps(estimator.snapshot())
+    msg = json.dumps(_update_payload())
+    await _send_all(msg)
+
+
+async def _broadcast_full() -> None:
+    if not _browser_clients:
+        return
+    msg = json.dumps(_full_payload())
+    await _send_all(msg)
+
+
+async def _notify_status() -> None:
+    if not _browser_clients:
+        return
+    msg = json.dumps({"status_update": True, **_status()})
+    await _send_all(msg)
+
+
+async def _send_all(msg: str) -> None:
     dead = []
-    for c in _clients:
+    for c in _browser_clients:
         try:
             await c.send_text(msg)
         except Exception:
             dead.append(c)
     for c in dead:
-        if c in _clients:
-            _clients.remove(c)
+        if c in _browser_clients:
+            _browser_clients.remove(c)
 
 
 # ── static ────────────────────────────────────────────────────────────────────
@@ -92,7 +167,6 @@ def index() -> FileResponse:
 
 
 app.mount("/static", StaticFiles(directory=_STATIC), name="static")
-
 
 if __name__ == "__main__":
     import uvicorn
