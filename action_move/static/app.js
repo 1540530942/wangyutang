@@ -36,6 +36,8 @@ let lastCameraFrameId = "";
 let lastCameraPulseAt = 0;
 let lastCameraObjectUrl = "";
 let lastSonarReportAt = 0;
+let lastSonarRenderAt = 0;
+let lastRenderedDistanceTaskId = "";
 let lastVoiceVolumePercent = 30;
 let settingsDirty = false;
 let lastTouchActionAt = 0;
@@ -57,6 +59,7 @@ const MOTION_ACTIONS = new Set([
   "turn_left",
   "turn_right",
 ]);
+const DISTANCE_ACTIONS = new Set(["front_distance"]);
 const ACTIVE_STATUSES = new Set(["pending", "claimed", "running"]);
 const CAMERA_HEARTBEAT_MS = 10000;
 const CAMERA_POLL_MS = 2000;
@@ -269,7 +272,18 @@ function setBusy(action, busy) {
   }
 }
 
-function renderSonar(data = {}) {
+function sonarEventTime(data = {}) {
+  return Number(data.reported_at || data.completed_at || data.sampled_at || 0);
+}
+
+function renderSonar(data = {}, options = {}) {
+  const eventTime = sonarEventTime(data);
+  if (!options.force && lastSonarRenderAt && (!eventTime || eventTime < lastSonarRenderAt)) {
+    return;
+  }
+  if (eventTime) {
+    lastSonarRenderAt = Math.max(lastSonarRenderAt, eventTime);
+  }
   const available = Boolean(data.available);
   const distance = data.front_distance_estimate_cm;
   const confidence = Number(data.confidence);
@@ -296,15 +310,17 @@ function renderSonar(data = {}) {
   if (sampledAt) detailParts.push(`采样 ${fmtSonarTimestamp(sampledAt)}`);
   if (Number.isFinite(confidence) && confidence > 0) detailParts.push(`置信度 ${(confidence * 100).toFixed(0)}%`);
   sonarMetaEl.textContent = detailParts.length ? detailParts.join(" · ") : "等待设备上报超声波结果";
-  sonarRawEl.textContent = raw ? `原始信息：${raw}` : "";
+  sonarRawEl.textContent = raw ? `raw: ${raw}` : "";
 }
 
 function renderSonarFromTask(task) {
+  if (task.id && task.id === lastRenderedDistanceTaskId) return;
   const output = String(task.output || "");
   const distanceMatch = output.match(/front_distance_estimate_cm=([0-9.]+)/);
   if (!distanceMatch) return;
   const rawMatch = output.match(/raw_mm_samples=([0-9,]+)/);
   const confidenceMatch = output.match(/confidence=([0-9.]+)/);
+  if (task.id) lastRenderedDistanceTaskId = task.id;
   renderSonar({
     available: true,
     front_distance_estimate_cm: Number(distanceMatch[1]),
@@ -313,7 +329,7 @@ function renderSonarFromTask(task) {
     device_id: task.device_id || "",
     reported_at: task.completed_at || task.updated_at || task.requested_at || 0,
     raw: rawMatch ? rawMatch[1] : "",
-  });
+  }, { force: true });
 }
 
 async function refreshSonar() {
@@ -323,21 +339,27 @@ async function refreshSonar() {
     renderSonar(sonar);
   } catch (error) {
     setSonarStatus("读取失败");
-    sonarMetaEl.textContent = `超声波数据读取失败：${error.message}`;
-    sonarRawEl.textContent = "";
-    sonarDistanceValueEl.textContent = "--";
-    sonarCard.classList.remove("sonar-available");
-    sonarCard.classList.add("sonar-unavailable");
+    if (!lastSonarRenderAt) {
+      sonarMetaEl.textContent = `超声波数据读取失败：${error.message}`;
+      sonarRawEl.textContent = "";
+      sonarDistanceValueEl.textContent = "--";
+      sonarCard.classList.remove("sonar-available");
+      sonarCard.classList.add("sonar-unavailable");
+    }
+  }
+}
+
+function setActionLocked(actionIds, locked) {
+  for (const button of buttons) {
+    const action = button.dataset.action;
+    if (actionIds.has(action)) {
+      button.disabled = locked;
+    }
   }
 }
 
 function setMotionLocked(locked) {
-  for (const button of buttons) {
-    const action = button.dataset.action;
-    if (MOTION_ACTIONS.has(action)) {
-      button.disabled = locked;
-    }
-  }
+  setActionLocked(MOTION_ACTIONS, locked);
 }
 
 function getFormSettings() {
@@ -441,11 +463,16 @@ async function refresh() {
   const data = await api("./api/tasks");
   tasksEl.innerHTML = "";
   const activeMotion = data.tasks.some((task) => MOTION_ACTIONS.has(task.skill_id) && ACTIVE_STATUSES.has(task.status));
+  const activeDistance = data.tasks.some((task) => DISTANCE_ACTIONS.has(task.skill_id) && ACTIVE_STATUSES.has(task.status));
   const activeTask = data.tasks.some((task) => ACTIVE_STATUSES.has(task.status));
   const latestDistanceTask = data.tasks.find(
     (task) => task.skill_id === "front_distance" && task.status === "complete" && task.output,
   );
-  if (latestDistanceTask && Number(latestDistanceTask.completed_at || 0) >= lastSonarReportAt) {
+  if (
+    latestDistanceTask
+    && latestDistanceTask.id !== lastRenderedDistanceTaskId
+    && Number(latestDistanceTask.completed_at || 0) >= lastSonarReportAt
+  ) {
     renderSonarFromTask(latestDistanceTask);
   }
   if (activeTask && refreshIntervalMs !== REFRESH_ACTIVE_MS) {
@@ -454,6 +481,7 @@ async function refresh() {
     scheduleFastRefresh(REFRESH_IDLE_MS);
   }
   setMotionLocked(activeMotion);
+  setActionLocked(DISTANCE_ACTIONS, activeDistance);
   for (const task of data.tasks.slice(0, 12)) {
     const row = document.createElement("div");
     row.className = `task task-${task.status}`;

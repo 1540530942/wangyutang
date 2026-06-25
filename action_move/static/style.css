@@ -152,6 +152,8 @@ p,
 .sonar-card {
   display: grid;
   gap: 10px;
+  grid-template-rows: auto minmax(42px, auto) minmax(26px, auto);
+  min-height: 154px;
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -172,12 +174,17 @@ p,
   display: flex;
   align-items: baseline;
   gap: 8px;
+  min-height: 42px;
 }
 
 .sonar-distance strong {
+  display: inline-block;
   font-size: 36px;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
   letter-spacing: 0;
+  min-width: 5ch;
+  text-align: right;
 }
 
 .sonar-distance span {
@@ -189,11 +196,17 @@ p,
 .sonar-raw {
   color: var(--muted);
   font-size: 14px;
+  font-variant-numeric: tabular-nums;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
 
+.sonar-meta {
+  min-height: 42px;
+}
+
 .sonar-raw {
+  min-height: 26px;
   padding-top: 4px;
   border-top: 1px dashed var(--line);
 }
