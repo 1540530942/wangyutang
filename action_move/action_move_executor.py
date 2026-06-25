@@ -217,7 +217,33 @@ def execute_camera_servo(skill: dict[str, Any], defaults: dict[str, Any], dry_ru
         save_servo_positions(positions)
 
 
+def execute_motor_direct(skill: dict[str, Any], defaults: dict[str, Any], dry_run: bool) -> None:
+    override = skill["motor_override"]
+    speeds = override["speeds"]
+    duration_ms = int(override.get("duration_ms", 500))
+    duration_s = duration_ms / 1000.0
+    data_items = ", ".join(f"{{id: {s['id']}, speed: {float(s['speed'])}}}" for s in speeds)
+    move_msg = f"{{data: [{data_items}]}}"
+    stop_msg = "{data: [{id: 1, speed: 0.0}, {id: 2, speed: 0.0}, {id: 3, speed: 0.0}, {id: 4, speed: 0.0}]}"
+    topic = "/ros_robot_controller/set_motor_speeds"
+    msg_type = "ros_robot_controller_msgs/msg/MotorsSpeedControl"
+    command = (
+        f"{ROS_SETUP} && "
+        f"ros2 topic pub --once {topic} {msg_type} '{move_msg}' && "
+        f"sleep {duration_s!r} && "
+        f"ros2 topic pub --once {topic} {msg_type} '{stop_msg}'"
+    )
+    run_in_container(str(defaults.get("ros_container", "turbopi")), command, dry_run)
+
+
+def execute_camera_snapshot(defaults: dict[str, Any], dry_run: bool) -> None:
+    request_camera_capture(defaults, dry_run)
+
+
 def execute_base_move(skill: dict[str, Any], defaults: dict[str, Any], dry_run: bool) -> None:
+    if "motor_override" in skill:
+        execute_motor_direct(skill, defaults, dry_run)
+        return
     twist = skill["twist"]
     duration_ms = unit_duration_ms(defaults, "move")
     scale = velocity_scale(defaults)
@@ -243,6 +269,9 @@ def execute_base_move(skill: dict[str, Any], defaults: dict[str, Any], dry_run: 
 
 
 def execute_base_turn(skill: dict[str, Any], defaults: dict[str, Any], dry_run: bool) -> None:
+    if "motor_override" in skill:
+        execute_motor_direct(skill, defaults, dry_run)
+        return
     twist = skill["twist"]
     duration_ms = unit_duration_ms(defaults, "turn")
     scale = velocity_scale(defaults)
@@ -377,6 +406,8 @@ def execute_skill(skill: dict[str, Any], catalog: dict[str, Any], dry_run: bool,
             request_camera_capture(defaults, dry_run)
     elif skill["type"] == "system_shutdown":
         execute_remote_shutdown(dry_run)
+    elif skill["type"] == "camera_snapshot":
+        execute_camera_snapshot(defaults, dry_run)
     else:
         raise ValueError(f"unsupported skill type: {skill['type']}")
 

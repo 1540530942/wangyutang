@@ -323,6 +323,95 @@
         "linear_y": 0.0,
         "angular_z": -5.0
       }
+    },
+    {
+      "id": "rotate_in_place",
+      "name_zh": "原地旋转",
+      "description": "麦轮底盘原地持续旋转一圈（360°），四轮同向同速使机器人绕中心自转。",
+      "type": "base_turn",
+      "aliases": [
+        "原地转",
+        "自转",
+        "旋转一圈",
+        "原地旋转360",
+        "spin",
+        "rotate"
+      ],
+      "twist": {
+        "linear_x": 0.0,
+        "linear_y": 0.0,
+        "angular_z": 5.0
+      },
+      "motor_override": {
+        "speeds": [
+          {"id": 1, "speed": 35},
+          {"id": 2, "speed": 35},
+          {"id": 3, "speed": 35},
+          {"id": 4, "speed": 35}
+        ],
+        "duration_ms": 2000,
+        "note": "四轮同向同速=原地旋转；CCW方向；id1/id2/id3/id4=+35对应逆时针旋转"
+      }
+    },
+    {
+      "id": "move_diagonal_forward_left",
+      "name_zh": "斜向左前方移动",
+      "description": "麦轮底盘斜向左前方平移约10cm。M1=0,M4=0使左侧辊子不施力，右侧推动形成左前合力。",
+      "type": "base_move",
+      "aliases": [
+        "左前斜移",
+        "斜向左前",
+        "左前方移动",
+        "diagonal left forward"
+      ],
+      "motor_override": {
+        "speeds": [
+          {"id": 1, "speed": 0},
+          {"id": 2, "speed": 50},
+          {"id": 3, "speed": -50},
+          {"id": 4, "speed": 0}
+        ],
+        "duration_ms": 300,
+        "note": "M2=+50,M3=-50,M1=M4=0：右前+左后轮驱动，产生左前方合力"
+      }
+    },
+    {
+      "id": "move_diagonal_forward_right",
+      "name_zh": "斜向右前方移动",
+      "description": "麦轮底盘斜向右前方平移约10cm。M2=0,M3=0使右侧辊子不施力，左侧推动形成右前合力。",
+      "type": "base_move",
+      "aliases": [
+        "右前斜移",
+        "斜向右前",
+        "右前方移动",
+        "diagonal right forward"
+      ],
+      "motor_override": {
+        "speeds": [
+          {"id": 1, "speed": -50},
+          {"id": 2, "speed": 0},
+          {"id": 3, "speed": 0},
+          {"id": 4, "speed": 50}
+        ],
+        "duration_ms": 300,
+        "note": "M1=-50,M4=+50,M2=M3=0：左前+右后轮驱动，产生右前方合力"
+      }
+    },
+    {
+      "id": "camera_snapshot",
+      "name_zh": "拍照",
+      "description": "捕获摄像头当前帧，返回图像用于场景分析。",
+      "type": "camera_snapshot",
+      "aliases": [
+        "拍照",
+        "截图",
+        "拍张照",
+        "看看",
+        "查看画面",
+        "snapshot",
+        "photo",
+        "capture"
+      ]
     }
   ]
 }
