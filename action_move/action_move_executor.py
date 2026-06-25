@@ -221,19 +221,26 @@ def execute_motor_direct(skill: dict[str, Any], defaults: dict[str, Any], dry_ru
     override = skill["motor_override"]
     speeds = override["speeds"]
     duration_ms = int(override.get("duration_ms", 500))
-    duration_s = duration_ms / 1000.0
-    data_items = ", ".join(f"{{id: {s['id']}, speed: {float(s['speed'])}}}" for s in speeds)
-    move_msg = f"{{data: [{data_items}]}}"
-    stop_msg = "{data: [{id: 1, speed: 0.0}, {id: 2, speed: 0.0}, {id: 3, speed: 0.0}, {id: 4, speed: 0.0}]}"
-    topic = "/ros_robot_controller/set_motor_speeds"
-    msg_type = "ros_robot_controller_msgs/msg/MotorsSpeedControl"
-    command = (
-        f"{ROS_SETUP} && "
-        f"ros2 topic pub --once {topic} {msg_type} '{move_msg}' && "
-        f"sleep {duration_s!r} && "
-        f"ros2 topic pub --once {topic} {msg_type} '{stop_msg}'"
+    fc_host = str(defaults.get("function_center_host", "http://127.0.0.1:8088"))
+    stop_speeds = [{"id": i, "speed": 0} for i in [1, 2, 3, 4]]
+    if dry_run:
+        print(f"POST {fc_host}/api/motors {speeds}")
+        print(f"sleep {duration_ms}ms")
+        print(f"POST {fc_host}/api/motors [stop]")
+        return
+    body = json.dumps({"speeds": speeds}).encode()
+    req = urllib.request.Request(
+        f"{fc_host}/api/motors", data=body,
+        headers={"Content-Type": "application/json"}, method="POST"
     )
-    run_in_container(str(defaults.get("ros_container", "turbopi")), command, dry_run)
+    urllib.request.urlopen(req, timeout=5).read()
+    time.sleep(duration_ms / 1000.0)
+    stop_body = json.dumps({"speeds": stop_speeds}).encode()
+    req2 = urllib.request.Request(
+        f"{fc_host}/api/motors", data=stop_body,
+        headers={"Content-Type": "application/json"}, method="POST"
+    )
+    urllib.request.urlopen(req2, timeout=5).read()
 
 
 def execute_camera_snapshot(defaults: dict[str, Any], dry_run: bool) -> None:

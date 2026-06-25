@@ -356,7 +356,7 @@
     {
       "id": "move_diagonal_forward_left",
       "name_zh": "斜向左前方移动",
-      "description": "麦轮底盘斜向左前方平移约10cm。M1=0,M4=0使左侧辊子不施力，右侧推动形成左前合力。",
+      "description": "麦轮底盘斜向左前方平移约10cm。麦轮运动学：linear_x=linear_y=0.25时M2/M3驱动产生左前45°合力。",
       "type": "base_move",
       "aliases": [
         "左前斜移",
@@ -364,6 +364,11 @@
         "左前方移动",
         "diagonal left forward"
       ],
+      "twist": {
+        "linear_x": 0.25,
+        "linear_y": 0.25,
+        "angular_z": 0.0
+      },
       "motor_override": {
         "speeds": [
           {"id": 1, "speed": 0},
@@ -378,7 +383,7 @@
     {
       "id": "move_diagonal_forward_right",
       "name_zh": "斜向右前方移动",
-      "description": "麦轮底盘斜向右前方平移约10cm。M2=0,M3=0使右侧辊子不施力，左侧推动形成右前合力。",
+      "description": "麦轮底盘斜向右前方平移约10cm。麦轮运动学：linear_x=0.25,linear_y=-0.25时M1/M4驱动产生右前45°合力。",
       "type": "base_move",
       "aliases": [
         "右前斜移",
@@ -386,6 +391,11 @@
         "右前方移动",
         "diagonal right forward"
       ],
+      "twist": {
+        "linear_x": 0.25,
+        "linear_y": -0.25,
+        "angular_z": 0.0
+      },
       "motor_override": {
         "speeds": [
           {"id": 1, "speed": -50},
