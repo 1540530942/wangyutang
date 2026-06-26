@@ -368,6 +368,24 @@ textarea {
   margin-top: 12px;
 }
 
+.vad-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.vad-actions span {
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f7faf9;
+  color: var(--muted);
+  font-size: 14px;
+}
+
 .vad-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -400,6 +418,35 @@ textarea {
   color: var(--muted);
   font-size: 14px;
   line-height: 1.55;
+}
+
+.vad-meter {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.vad-meter span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.vad-meter div {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eef3f1;
+}
+
+.vad-meter i {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.08s linear;
 }
 
 .field input {

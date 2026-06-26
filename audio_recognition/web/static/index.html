@@ -98,6 +98,11 @@
           </div>
 
           <div id="vadSection" class="hidden vad-section">
+            <div class="vad-actions">
+              <button id="startVadBtn" type="button">开始持续接收</button>
+              <button id="stopVadBtn" class="secondary" type="button" disabled>停止</button>
+              <span id="vadLiveState">未启动</span>
+            </div>
             <div class="vad-grid">
               <div>
                 <span>入口</span>
@@ -116,7 +121,11 @@
                 <strong>退下吧</strong>
               </div>
             </div>
-            <p class="mode-note">Pi 端运行 audio_interact/edge_streamer.py，Silero VAD 切出语音片段后上传到云端；云端 ASR 识别文本，唤醒后持续转发到本页面的识别历史和动作流水。</p>
+            <div class="vad-meter">
+              <span>VAD</span>
+              <div><i id="vadLevelBar"></i></div>
+            </div>
+            <p class="mode-note">点击开始后，浏览器会持续接收麦克风音频并用 VAD 切分语音片段，再上传到云端做 ASR、唤醒词判断和动作路由。Pi 端也可以继续运行 audio_interact/edge_streamer.py 使用同一条云端链路。</p>
           </div>
 
           <textarea id="asrResult" readonly placeholder="ASR 识别文本"></textarea>
@@ -162,6 +171,6 @@
         </section>
       </section>
     </main>
-    <script src="./static/app.js?v=20260627-vad-asr-mode"></script>
+    <script src="./static/app.js?v=20260627-vad-asr-live"></script>
   </body>
 </html>

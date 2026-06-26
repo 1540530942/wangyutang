@@ -41,12 +41,25 @@ const cameraMetaEl = $("#cameraMeta");
 const voiceVolumeInput = $("#voiceVolumeInput");
 const voiceVolumeText = $("#voiceVolumeText");
 const saveVoiceVolumeBtn = $("#saveVoiceVolumeBtn");
+const startVadBtn = $("#startVadBtn");
+const stopVadBtn = $("#stopVadBtn");
+const vadLiveStateEl = $("#vadLiveState");
+const vadLevelBar = $("#vadLevelBar");
 
 const REQUEST_TIMEOUT_MS = 90000;
+const VAD_WS_URL = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/interact/ws/audio`;
+const VAD_DEVICE_ID = "web-vad-asr";
+const VAD_TARGET_RATE = 16000;
+const VAD_THRESHOLD = 0.018;
+const VAD_START_FRAMES = 3;
+const VAD_END_FRAMES = 20;
+const VAD_PRE_FRAMES = 8;
+const VAD_MAX_SECONDS = 12;
 
 let manualTimerHandle = null;
 let currentInputMode = "wonderechopro";
 let recordingStartedAt = 0;
+let vadRuntime = null;
 let actionSettings = {
   unit_distance_cm: 5,
   turn_angle_deg: 5,
@@ -120,6 +133,17 @@ function drawMeter(level = 0) {
   meterContext.fillRect(0, 0, meter.width, meter.height);
   meterContext.fillStyle = "#1f7a68";
   meterContext.fillRect(0, meter.height - level * meter.height, meter.width, level * meter.height);
+}
+
+function setVadLevel(level = 0) {
+  if (!vadLevelBar) return;
+  vadLevelBar.style.width = `${Math.max(0, Math.min(1, level)) * 100}%`;
+}
+
+function setVadLiveState(text, active = false) {
+  if (vadLiveStateEl) vadLiveStateEl.textContent = text;
+  if (startVadBtn) startVadBtn.disabled = active;
+  if (stopVadBtn) stopVadBtn.disabled = !active;
 }
 
 function startManualTimer() {
@@ -242,6 +266,203 @@ async function sendTextCommand() {
   } else if (!data.skill) {
     statusEl.textContent = "未匹配到可执行动作，请换一种说法";
   }
+}
+
+function downsampleBuffer(samples, sourceRate, targetRate) {
+  if (sourceRate === targetRate) return samples;
+  const ratio = sourceRate / targetRate;
+  const outputLength = Math.max(1, Math.round(samples.length / ratio));
+  const output = new Float32Array(outputLength);
+  for (let index = 0; index < outputLength; index += 1) {
+    const sourceIndex = index * ratio;
+    const left = Math.floor(sourceIndex);
+    const right = Math.min(left + 1, samples.length - 1);
+    const fraction = sourceIndex - left;
+    output[index] = samples[left] * (1 - fraction) + samples[right] * fraction;
+  }
+  return output;
+}
+
+function encodeWav(samples, sampleRate) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const writeString = (offset, value) => {
+    for (let index = 0; index < value.length; index += 1) view.setUint8(offset + index, value.charCodeAt(index));
+  };
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+  let offset = 44;
+  for (const sample of samples) {
+    const value = Math.max(-1, Math.min(1, sample));
+    view.setInt16(offset, value < 0 ? value * 0x8000 : value * 0x7fff, true);
+    offset += 2;
+  }
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
+async function sendVadSegment(wavBlob) {
+  const sessionId = crypto.randomUUID ? crypto.randomUUID().slice(0, 12) : String(Date.now());
+  const socket = new WebSocket(VAD_WS_URL);
+  socket.binaryType = "arraybuffer";
+
+  await new Promise((resolve, reject) => {
+    socket.onopen = resolve;
+    socket.onerror = () => reject(new Error("VAD_ASR WebSocket 连接失败"));
+  });
+
+  socket.send(JSON.stringify({ type: "start", session_id: sessionId, device_id: VAD_DEVICE_ID }));
+  await new Promise((resolve, reject) => {
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "ready") resolve();
+        else reject(new Error(`VAD_ASR 握手失败: ${event.data}`));
+      } catch (error) {
+        reject(error);
+      }
+    };
+    socket.onerror = () => reject(new Error("VAD_ASR WebSocket 握手失败"));
+  });
+
+  const bytes = new Uint8Array(await wavBlob.arrayBuffer());
+  for (let offset = 0; offset < bytes.length; offset += 8192) socket.send(bytes.slice(offset, offset + 8192));
+  socket.send(JSON.stringify({ type: "end" }));
+
+  const result = await new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error("VAD_ASR 识别超时")), REQUEST_TIMEOUT_MS);
+    socket.onmessage = (event) => {
+      window.clearTimeout(timeout);
+      try {
+        resolve(JSON.parse(event.data));
+      } catch {
+        resolve({ raw: event.data });
+      }
+    };
+    socket.onerror = () => {
+      window.clearTimeout(timeout);
+      reject(new Error("VAD_ASR WebSocket 识别失败"));
+    };
+  });
+  socket.close();
+  return result;
+}
+
+async function handleVadSegment(frames, sampleRate) {
+  if (!frames.length) return;
+  const totalLength = frames.reduce((sum, frame) => sum + frame.length, 0);
+  const merged = new Float32Array(totalLength);
+  let offset = 0;
+  for (const frame of frames) {
+    merged.set(frame, offset);
+    offset += frame.length;
+  }
+  const downsampled = downsampleBuffer(merged, sampleRate, VAD_TARGET_RATE);
+  const wavBlob = encodeWav(downsampled, VAD_TARGET_RATE);
+  setVadLiveState("正在识别...", true);
+  const result = await sendVadSegment(wavBlob);
+  asrResultEl.value = result.route_text || result.text || "";
+  asrRawEl.textContent = JSON.stringify(result, null, 2);
+  statusEl.textContent = `VAD_ASR: ${result.status || "ok"}`;
+  await refresh();
+  if (vadRuntime) setVadLiveState("持续接收中", true);
+}
+
+async function startVadAsr() {
+  if (vadRuntime) return;
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error("当前浏览器不支持麦克风采集");
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+  });
+  const audioContext = new AudioContext();
+  await audioContext.resume();
+  const source = audioContext.createMediaStreamSource(stream);
+  const processor = audioContext.createScriptProcessor(2048, 1, 1);
+  const runtime = {
+    audioContext,
+    source,
+    processor,
+    stream,
+    preFrames: [],
+    speechFrames: [],
+    speechCount: 0,
+    silenceCount: 0,
+    speaking: false,
+    sending: false,
+    startedAt: 0,
+  };
+  vadRuntime = runtime;
+
+  processor.onaudioprocess = (event) => {
+    if (!vadRuntime) return;
+    const input = event.inputBuffer.getChannelData(0);
+    const frame = new Float32Array(input);
+    const rms = Math.sqrt(frame.reduce((sum, value) => sum + value * value, 0) / frame.length);
+    setVadLevel(Math.min(1, rms / (VAD_THRESHOLD * 3)));
+    const isSpeech = rms >= VAD_THRESHOLD;
+
+    if (!runtime.speaking) {
+      runtime.preFrames.push(frame);
+      if (runtime.preFrames.length > VAD_PRE_FRAMES) runtime.preFrames.shift();
+      runtime.speechCount = isSpeech ? runtime.speechCount + 1 : 0;
+      if (runtime.speechCount >= VAD_START_FRAMES) {
+        runtime.speaking = true;
+        runtime.startedAt = performance.now();
+        runtime.speechFrames = [...runtime.preFrames];
+        runtime.silenceCount = 0;
+        setVadLiveState("检测到语音", true);
+      }
+      return;
+    }
+
+    runtime.speechFrames.push(frame);
+    runtime.silenceCount = isSpeech ? 0 : runtime.silenceCount + 1;
+    const durationSeconds = (performance.now() - runtime.startedAt) / 1000;
+    const shouldEnd = runtime.silenceCount >= VAD_END_FRAMES || durationSeconds >= VAD_MAX_SECONDS;
+    if (shouldEnd && !runtime.sending) {
+      const frames = runtime.speechFrames;
+      runtime.speaking = false;
+      runtime.sending = true;
+      runtime.speechFrames = [];
+      runtime.preFrames = [];
+      runtime.speechCount = 0;
+      runtime.silenceCount = 0;
+      handleVadSegment(frames, audioContext.sampleRate)
+        .catch(showError)
+        .finally(() => {
+          runtime.sending = false;
+          if (vadRuntime) setVadLiveState("持续接收中", true);
+        });
+    }
+  };
+
+  source.connect(processor);
+  processor.connect(audioContext.destination);
+  setVadLiveState("持续接收中", true);
+  statusEl.textContent = "VAD_ASR 持续接收中";
+}
+
+function stopVadAsr() {
+  if (!vadRuntime) return;
+  const runtime = vadRuntime;
+  vadRuntime = null;
+  runtime.processor.disconnect();
+  runtime.source.disconnect();
+  runtime.stream.getTracks().forEach((track) => track.stop());
+  runtime.audioContext.close().catch(() => {});
+  setVadLevel(0);
+  setVadLiveState("已停止", false);
+  statusEl.textContent = "VAD_ASR 已停止";
 }
 
 function itemRow(primary, secondary, code, className = "item") {
@@ -404,6 +625,7 @@ function showError(error) {
 $("#refreshBtn").addEventListener("click", () => refresh().catch(showError));
 
 modeWebBtn?.addEventListener("click", () => {
+  stopVadAsr();
   modeWebBtn.disabled = true;
   postJson("./api/settings", {
     input_mode: "web_input",
@@ -417,6 +639,7 @@ modeWebBtn?.addEventListener("click", () => {
 });
 
 modeWonderBtn?.addEventListener("click", () => {
+  stopVadAsr();
   modeWonderBtn.disabled = true;
   postJson("./api/settings", {
     input_mode: "wonderechopro",
@@ -440,6 +663,14 @@ modeVadBtn?.addEventListener("click", () => {
     .finally(() => {
       modeVadBtn.disabled = false;
     });
+});
+
+startVadBtn?.addEventListener("click", () => {
+  startVadAsr().catch(showError);
+});
+
+stopVadBtn?.addEventListener("click", () => {
+  stopVadAsr();
 });
 
 clearTasksBtn.addEventListener("click", () => {
