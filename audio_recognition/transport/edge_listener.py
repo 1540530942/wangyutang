@@ -3,6 +3,10 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
+import shutil
+import subprocess
+import tempfile
 import threading
 import time
 import urllib.error
@@ -13,6 +17,68 @@ from typing import Any
 from audio_recognition.harness.react_loop import transcribe_audio_path
 from audio_recognition.transport.model_provider import build_provider
 from audio_recognition.transport.recorder import record_wav
+
+
+_FINAL_RESPONSE_STATUS_WORDS = {"completed", "done", "emergency_stop", "dry_run", ""}
+
+
+def _fetch_tts_audio(text: str, tts_config: dict[str, Any]) -> bytes:
+    url = str(tts_config.get("url") or os.getenv("ACTION_TTS_URL", "https://www.wangyutang.cn/common/api/tts/speech"))
+    payload = {
+        "model": str(tts_config.get("model") or "qwen3-tts-12hz-1.7b-customvoice"),
+        "input": text,
+        "voice": str(tts_config.get("voice") or "vivian"),
+        "language": str(tts_config.get("language") or "chinese"),
+        "instructions": "用自然、清晰的语气说",
+        "response_format": "wav",
+    }
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=float(tts_config.get("timeout_seconds") or 30)) as response:
+        audio = response.read()
+    if not audio.startswith(b"RIFF") and not audio.startswith(b"ID3"):
+        raise RuntimeError("TTS response is not an audio payload")
+    return audio
+
+
+def _play_tts_audio(audio: bytes, device: str = "") -> None:
+    player = shutil.which("aplay") or shutil.which("paplay") or ""
+    if not player:
+        print("[WARN] tts_play: no audio player found (aplay/paplay)", flush=True)
+        return
+    selected_device = device or os.getenv("ACTION_VOICE_DEVICE", "").strip()
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+        handle.write(audio)
+        temp_path = Path(handle.name)
+    try:
+        cmd = [player, "-q"]
+        if selected_device and Path(player).name == "aplay":
+            cmd.extend(["-D", selected_device])
+        cmd.append(str(temp_path))
+        subprocess.run(cmd, capture_output=True, timeout=10)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def speak_final_response(text: str, config: dict[str, Any]) -> None:
+    if not text or text.strip().lower() in _FINAL_RESPONSE_STATUS_WORDS:
+        return
+    tts_config = dict(config.get("tts") or {})
+    device = str(tts_config.get("device") or os.getenv("ACTION_VOICE_DEVICE", ""))
+
+    def worker() -> None:
+        try:
+            audio = _fetch_tts_audio(text, tts_config)
+            _play_tts_audio(audio, device)
+            print(f"[INFO] tts_played text={text!r}", flush=True)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[WARN] tts_failed: {exc}", flush=True)
+
+    threading.Thread(target=worker, daemon=True).start()
 
 
 PACKAGE_DIR = Path(__file__).resolve().parents[1]
@@ -40,9 +106,9 @@ def get_cloud_settings(server: str, token: str) -> dict[str, Any]:
     return settings if isinstance(settings, dict) else {"manual_recording_enabled": False}
 
 
-def post_audio_result(server: str, token: str, payload: dict[str, Any]) -> None:
+def post_audio_result(server: str, token: str, payload: dict[str, Any]) -> dict[str, Any]:
     if not server:
-        return
+        return {}
     headers = {"Content-Type": "application/json"}
     if token:
         headers["X-Audio-Token"] = token
@@ -53,10 +119,11 @@ def post_audio_result(server: str, token: str, payload: dict[str, Any]) -> None:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=12) as response:
-            response.read()
-    except (urllib.error.HTTPError, urllib.error.URLError, OSError) as exc:
+        with urllib.request.urlopen(request, timeout=45) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
         print(f"[WARN] audio result upload failed: {exc}", flush=True)
+        return {}
 
 
 def post_pipeline_event(
@@ -173,7 +240,9 @@ def process_wav(config: dict[str, Any], wav_path: str | Path) -> dict[str, Any]:
         },
         "reported_at": time.time(),
     }
-    post_audio_result(audio_server, audio_token, payload)
+    result = post_audio_result(audio_server, audio_token, payload)
+    final_response = str(result.get("final_response") or "")
+    speak_final_response(final_response, config)
     post_pipeline_event(
         audio_server,
         audio_token,
@@ -181,7 +250,7 @@ def process_wav(config: dict[str, Any], wav_path: str | Path) -> dict[str, Any]:
         "text_display",
         "ok",
         "recognized text uploaded",
-        {"text": text, "skill_id": payload["skill_id"], "plan": plan},
+        {"text": text, "skill_id": payload["skill_id"], "plan": plan, "final_response": final_response},
     )
     return payload
 

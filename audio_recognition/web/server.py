@@ -742,6 +742,7 @@ def add_result(payload: AudioResult, x_audio_token: Annotated[str | None, Header
         "face_task": routed.get("face_task"),
         "face_error": routed.get("face_error", ""),
         "plan": plan,
+        "final_response": routed.get("envelope", {}).get("final_response", ""),
     }
 
 
