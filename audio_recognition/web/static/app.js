@@ -497,6 +497,8 @@ function renderDashboard(data) {
   const cameraLatest = camera.latest || {};
   const cameraTask = camera.control?.task;
   const inputMode = settings.input_mode || "wonderechopro";
+  const latestMatchesInputMode = inputMode !== "vad_asr" || latest?.device_id === VAD_DEVICE_ID;
+  const displayLatest = latest && latestMatchesInputMode;
   const manualRecording = Boolean(settings.manual_recording_enabled);
   const actionSettingsFromHealth = action.health?.settings || {};
   if (Number.isFinite(Number(actionSettingsFromHealth.voice_volume_percent))) {
@@ -505,8 +507,8 @@ function renderDashboard(data) {
   }
 
   renderInputMode(inputMode);
-  statusEl.textContent = latest ? `更新 ${fmtAge(data.age_seconds)}` : "等待语音";
-  statusEl.classList.toggle("online", Boolean(latest));
+  statusEl.textContent = displayLatest ? `更新 ${fmtAge(data.age_seconds)}` : "等待语音";
+  statusEl.classList.toggle("online", Boolean(displayLatest));
 
   if (inputMode === "web_input") {
     audioStateEl.textContent = "网页输入";
@@ -530,7 +532,7 @@ function renderDashboard(data) {
   deviceStateEl.textContent = device.online ? (device.status || "在线") : "离线";
   cameraStateEl.textContent = camera.online && camera.health?.device?.online ? "在线" : camera.online ? "待画面" : "离线";
 
-  if (latest) {
+  if (displayLatest) {
     latestTextEl.textContent = latest.text || "无文本";
     latestSkillEl.textContent = latest.skill_id || "未匹配";
     latestMetaEl.textContent = `${latest.device_id || ""} | ${fmtTime(latest.reported_at)} | ${latest.wav_path || ""}`;
