@@ -51,7 +51,7 @@ def fetch_tts_audio(text: str, url: str, model: str, voice: str, language: str, 
         "input": text,
         "voice": voice,
         "language": language,
-        "instructions": "用自然、清晰的语气说",
+        "instructions": "用清新自然、甜美温柔的语气说，声音明亮亲切，语调轻快柔和",
         "response_format": "wav",
     }
     request = urllib.request.Request(

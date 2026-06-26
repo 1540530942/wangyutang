@@ -29,7 +29,7 @@ def _fetch_tts_audio(text: str, tts_config: dict[str, Any]) -> bytes:
         "input": text,
         "voice": str(tts_config.get("voice") or "vivian"),
         "language": str(tts_config.get("language") or "chinese"),
-        "instructions": "用自然、清晰的语气说",
+        "instructions": "用清新自然、甜美温柔的语气说，声音明亮亲切，语调轻快柔和",
         "response_format": "wav",
     }
     request = urllib.request.Request(

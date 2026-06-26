@@ -34,7 +34,7 @@ class LvQwenTtsClient:
             "input": payload.get("input") or "",
             "voice": payload.get("voice") or settings.lv_tts_voice,
             "language": payload.get("language") or settings.lv_tts_language,
-            "instructions": payload.get("instructions") or "用自然、清晰的语气说",
+            "instructions": payload.get("instructions") or settings.lv_tts_instructions,
             "response_format": payload.get("response_format") or "wav",
         }
         if not str(request_payload["input"]).strip():
