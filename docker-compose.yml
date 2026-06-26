@@ -84,6 +84,29 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  audio-interact:
+    image: ${AUDIO_INTERACT_IMAGE:-audio-interact:local}
+    build:
+      context: ./audio_interact
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.12-slim}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+    container_name: audio-interact
+    env_file:
+      - .env
+    environment:
+      AUDIO_RECOGNITION_URL: http://audio-recognition:8095
+      COMMON_ASR_URL: https://www.wangyutang.cn/common/api/asr/transcribe
+    ports:
+      - "8097:8097"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8097/api/health', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
   pi5-robot:
     image: ${PI5_ROBOT_IMAGE:-pi5-robot:local}
     build:

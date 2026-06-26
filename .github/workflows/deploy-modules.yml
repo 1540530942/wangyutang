@@ -1,6 +1,24 @@
 name: Deploy robot platform
 
 on:
+  push:
+    branches:
+      - main
+      - master
+      - "feature/**"
+      - "codex/**"
+    paths:
+      - ".env.example"
+      - ".github/workflows/deploy-modules.yml"
+      - "docker-compose.yml"
+      - "robot_gateway/**"
+      - "camera_snapshot/**"
+      - "action_move/**"
+      - "audio_recognition/**"
+      - "audio_interact/**"
+      - "pi5_robot/**"
+      - "smile_face/**"
+      - "scripts/tencent_apply_release.sh"
   workflow_dispatch:
     inputs:
       scope:
@@ -15,6 +33,7 @@ on:
           - camera_snapshot
           - action_move
           - audio_recognition
+          - audio_interact
           - pi5_robot
           - smile_face
 
@@ -55,6 +74,7 @@ jobs:
             [camera_snapshot]="camera-snapshot"
             [action_move]="action-move"
             [audio_recognition]="audio-recognition"
+            [audio_interact]="audio-interact"
             [pi5_robot]="pi5-robot"
             [smile_face]="smile-face"
           )
@@ -63,11 +83,12 @@ jobs:
             [camera_snapshot]="camera-snapshot"
             [action_move]="action-move"
             [audio_recognition]="audio-recognition"
+            [audio_interact]="audio-interact"
             [pi5_robot]="pi5-robot"
             [smile_face]="smile-face"
           )
 
-          all_modules=(robot_gateway camera_snapshot action_move audio_recognition pi5_robot smile_face)
+          all_modules=(robot_gateway camera_snapshot action_move audio_recognition audio_interact pi5_robot smile_face)
           selected=()
 
           add_module() {
@@ -101,6 +122,7 @@ jobs:
             else
               echo "$changed" | grep -Eq '^robot_gateway/' && add_module robot_gateway || true
               echo "$changed" | grep -Eq '^audio_recognition/' && add_module audio_recognition || true
+              echo "$changed" | grep -Eq '^audio_interact/' && add_module audio_interact || true
               echo "$changed" | grep -Eq '^pi5_robot/' && add_module pi5_robot || true
               echo "$changed" | grep -Eq '^smile_face/' && add_module smile_face || true
             fi
@@ -138,7 +160,7 @@ jobs:
           set -euo pipefail
           cp .env.example .env
           docker compose --env-file .env -f docker-compose.yml config --quiet
-          python -m compileall -q camera_snapshot action_move audio_recognition pi5_robot smile_face
+          python -m compileall -q camera_snapshot action_move audio_recognition audio_interact pi5_robot smile_face
 
       - name: Create source release archive
         if: steps.scope.outputs.up_services != ''
@@ -159,6 +181,7 @@ jobs:
             camera_snapshot \
             action_move \
             audio_recognition \
+            audio_interact \
             pi5_robot \
             smile_face
           echo "RELEASE_ARCHIVE=robot-platform-${GITHUB_SHA}.tgz" >> "$GITHUB_ENV"
@@ -270,6 +293,7 @@ jobs:
               camera-snapshot) check_url camera-snapshot http://127.0.0.1:8099/api/health ;;
               action-move) check_url action-move http://127.0.0.1:8094/api/health ;;
               audio-recognition) check_url audio-recognition http://127.0.0.1:8095/api/health ;;
+              audio-interact) check_url audio-interact http://127.0.0.1:8097/api/health ;;
               pi5-robot) check_url pi5-robot http://127.0.0.1:8093/api/health ;;
               smile-face) check_url smile-face http://127.0.0.1:8096/api/health ;;
             esac
@@ -287,6 +311,7 @@ jobs:
 
           checks = {
               "gateway": "https://www.wangyutang.cn/api/health",
+              "interact": "https://www.wangyutang.cn/interact/api/health",
               "face": "https://www.wangyutang.cn/face/api/state",
           }
           for name, url in checks.items():

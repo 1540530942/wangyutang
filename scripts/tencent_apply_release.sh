@@ -71,6 +71,7 @@ for name in \
   camera-snapshot \
   action-move \
   audio-recognition \
+  audio-interact \
   pi5-robot \
   smile-face
 do
@@ -86,6 +87,7 @@ curl -fsS http://127.0.0.1/api/health >/dev/null
 curl -fsS http://127.0.0.1:8099/api/health >/dev/null
 curl -fsS http://127.0.0.1:8094/api/health >/dev/null
 curl -fsS http://127.0.0.1:8095/api/health >/dev/null
+curl -fsS http://127.0.0.1:8097/api/health >/dev/null
 curl -fsS http://127.0.0.1:8093/api/health >/dev/null
 curl -fsS http://127.0.0.1:8096/api/health >/dev/null
 

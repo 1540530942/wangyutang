@@ -1,43 +1,56 @@
 # audio_interact
 
-Pi 端语音交互服务，负责采集麦克风音频、VAD 检测、上传 ASR、再将识别结果路由到 audio_recognition。
+Pi-side audio interaction service for TurboPi.
 
-## 组件
+## Flow
 
-| 文件 | 运行位置 | 职责 |
+```text
+Pi microphone
+  -> edge_streamer.py
+  -> Silero VAD speech segment
+  -> 16 kHz WAV
+  -> WebSocket /interact/ws/audio
+  -> common ASR
+  -> wake-state gate
+  -> audio_recognition /api/recognize-text
+```
+
+## Wake State
+
+The cloud service keeps wake state per `device_id`.
+
+- Sleeping by default.
+- Wake word: `你好瓦力`, including common homophones such as `你好瓦利`, `你好哇力`, `你好挖力`, and `你好 walle`.
+- After wake, every recognized utterance is routed continuously.
+- `退下吧` or close variants put the device back to sleep.
+- If the wake phrase includes a command, for example `你好瓦力 前进`, only the command part is routed.
+
+## Files
+
+| File | Where | Purpose |
 |---|---|---|
-| `server.py` | 腾讯云容器 (:8095 或内部端口) | FastAPI + WebSocket 服务端，接收音频流、调用 ASR、把结果转发到 audio_recognition 路由 |
-| `edge_streamer.py` | Pi 宿主机 | PyAudio 48kHz 采集 → 能量 VAD → 降采样 16kHz → WAV → WebSocket 上传 |
+| `edge_streamer.py` | Pi host | PyAudio capture, Silero VAD, WAV upload over WebSocket |
+| `server.py` | Tencent Cloud container | WebSocket receiver, ASR call, wake-state gate, route forwarding |
+| `wake_state.py` | Tencent Cloud container | Pure text wake/dismiss state machine |
 
-## 数据流
-
-```
-Pi 麦克风 (USB PnP, 48kHz)
-  → edge_streamer.py VAD 分段
-  → WebSocket /ws/audio
-  → server.py (cloud)
-  → POST COMMON_ASR_URL /api/asr/transcribe
-  → POST AUDIO_RECOGNITION_URL 路由
-  → 返回技能指令
-```
-
-## 配置
-
-`config.example.json` 中的关键字段：
-
-| 字段 | 说明 |
-|---|---|
-| `ws_url` | cloud server WebSocket 地址 |
-| `vad_energy_threshold` | 能量 VAD 阈值（默认 500） |
-| `vad_silence_frames` | 静音帧数触发切割 |
-| `sample_rate` | 采集采样率，必须与设备匹配（48000） |
-
-## 启动
+## Pi Setup
 
 ```bash
-# Pi 端（采集上传）
+python3 -m pip install -r requirements-edge.txt
 python3 edge_streamer.py --config config.json --loop
+```
 
-# cloud 端（Docker）
-docker compose up audio-interact
+Silero loads through `torch.hub` from `snakers4/silero-vad` on first run. To use the old energy fallback for emergency testing:
+
+```bash
+python3 edge_streamer.py --vad-mode energy --energy-threshold 5000
+```
+
+## Cloud Setup
+
+The cloud service is deployed as the `audio-interact` Compose service and exposed by the gateway at:
+
+```text
+wss://www.wangyutang.cn/interact/ws/audio
+https://www.wangyutang.cn/interact/api/health
 ```

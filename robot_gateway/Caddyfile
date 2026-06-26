@@ -23,6 +23,10 @@
 		reverse_proxy {$AUDIO_UPSTREAM:audio-recognition:8095}
 	}
 
+	handle_path /interact/* {
+		reverse_proxy {$AUDIO_INTERACT_UPSTREAM:audio-interact:8097}
+	}
+
 	handle_path /common/* {
 		reverse_proxy {$COMMON_UPSTREAM:host.docker.internal:8101}
 	}

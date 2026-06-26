@@ -52,6 +52,7 @@ $Images = @(
   @{ Name = "camera-snapshot:local"; File = "camera-snapshot_local.tar" },
   @{ Name = "action-move:local"; File = "action-move_local.tar" },
   @{ Name = "audio-recognition:local"; File = "audio-recognition_local.tar" },
+  @{ Name = "audio-interact:local"; File = "audio-interact_local.tar" },
   @{ Name = "pi5-robot:local"; File = "pi5-robot_local.tar" }
 )
 
@@ -65,7 +66,7 @@ if ($GitStatus -and -not $AllowDirty) {
 }
 
 Write-Step "Running local checks"
-Invoke-Checked "python" @("-m", "compileall", "-q", "camera_snapshot", "action_move", "audio_recognition", "pi5_robot")
+Invoke-Checked "python" @("-m", "compileall", "-q", "camera_snapshot", "action_move", "audio_recognition", "audio_interact", "pi5_robot")
 Invoke-Checked "docker" @("compose", "config", "--quiet")
 
 if (-not $SkipBuild) {
@@ -145,6 +146,7 @@ if (-not $SkipVerify) {
     "http://110.40.154.41:8099/api/health",
     "http://110.40.154.41:8094/api/health",
     "http://110.40.154.41:8095/api/health",
+    "http://110.40.154.41:8097/api/health",
     "http://110.40.154.41:8093/api/health",
     "http://110.40.154.41:8096/api/health"
   )
