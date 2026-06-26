@@ -10,9 +10,9 @@
     <main class="app-shell">
       <header class="hero">
         <div>
-          <p class="eyebrow">TurboPi / WonderEchoPro</p>
+          <p class="eyebrow">TurboPi / WonderEchoPro / VAD_ASR</p>
           <h1>语音控制监控</h1>
-          <p class="subtitle">网页输入和 WonderEchoPro 统一进入 common_api ASR，动作完成后通过 common_api TTS 播报。</p>
+          <p class="subtitle">网页输入、WonderEchoPro 和 VAD_ASR 统一进入语音控制链路，动作完成后通过 common_api TTS 播报。</p>
         </div>
         <div class="pill" id="status">连接中</div>
       </header>
@@ -20,6 +20,7 @@
       <section class="mode-strip">
         <button id="modeWebBtn" class="tab active" type="button">网页输入</button>
         <button id="modeWonderBtn" class="tab" type="button">WonderEchoPro</button>
+        <button id="modeVadBtn" class="tab" type="button">VAD_ASR</button>
       </section>
 
       <section class="control-strip">
@@ -68,7 +69,7 @@
             </div>
             <code id="latestSkill">未匹配</code>
           </div>
-          <p id="latestMeta">网页输入模式可直接输入文本或上传音频；WonderEchoPro 模式统一由“开始采集”触发树莓派录音。</p>
+          <p id="latestMeta">网页输入模式可直接输入文本或上传音频；WonderEchoPro 模式由“开始采集”触发录音；VAD_ASR 模式展示 Silero VAD + ASR + 唤醒词链路。</p>
 
           <div id="webInputSection">
             <label class="field">
@@ -94,6 +95,28 @@
               <canvas id="meter" width="640" height="64"></canvas>
             </div>
             <audio id="preview" controls></audio>
+          </div>
+
+          <div id="vadSection" class="hidden vad-section">
+            <div class="vad-grid">
+              <div>
+                <span>入口</span>
+                <strong>wss://www.wangyutang.cn/interact/ws/audio</strong>
+              </div>
+              <div>
+                <span>健康检查</span>
+                <strong>https://www.wangyutang.cn/interact/api/health</strong>
+              </div>
+              <div>
+                <span>唤醒词</span>
+                <strong>你好瓦力 / 同音字</strong>
+              </div>
+              <div>
+                <span>退出</span>
+                <strong>退下吧</strong>
+              </div>
+            </div>
+            <p class="mode-note">Pi 端运行 audio_interact/edge_streamer.py，Silero VAD 切出语音片段后上传到云端；云端 ASR 识别文本，唤醒后持续转发到本页面的识别历史和动作流水。</p>
           </div>
 
           <textarea id="asrResult" readonly placeholder="ASR 识别文本"></textarea>
@@ -139,6 +162,6 @@
         </section>
       </section>
     </main>
-    <script src="./static/app.js?v=20260613-command-status-fix"></script>
+    <script src="./static/app.js?v=20260627-vad-asr-mode"></script>
   </body>
 </html>

@@ -96,7 +96,7 @@ class SimulationCommand(BaseModel):
 
 
 class AudioSettings(BaseModel):
-    input_mode: str = Field("wonderechopro", pattern="^(web_input|wonderechopro)$")
+    input_mode: str = Field("wonderechopro", pattern="^(web_input|wonderechopro|vad_asr)$")
     manual_recording_enabled: bool = False
 
 

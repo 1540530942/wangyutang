@@ -4,8 +4,10 @@ const statusEl = $("#status");
 const modeTextEl = $("#modeText");
 const modeWebBtn = $("#modeWebBtn");
 const modeWonderBtn = $("#modeWonderBtn");
+const modeVadBtn = $("#modeVadBtn");
 const webInputSection = $("#webInputSection");
 const wonderSection = $("#wonderSection");
+const vadSection = $("#vadSection");
 const audioStateEl = $("#audioState");
 const actionStateEl = $("#actionState");
 const deviceStateEl = $("#deviceState");
@@ -252,11 +254,15 @@ function itemRow(primary, secondary, code, className = "item") {
 function renderInputMode(mode) {
   currentInputMode = mode || "wonderechopro";
   const isWeb = currentInputMode === "web_input";
+  const isWonder = currentInputMode === "wonderechopro";
+  const isVad = currentInputMode === "vad_asr";
   webInputSection?.classList.toggle("hidden", !isWeb);
-  wonderSection?.classList.toggle("hidden", isWeb);
-  modeTextEl.textContent = isWeb ? "网页输入" : "WonderEchoPro";
+  wonderSection?.classList.toggle("hidden", !isWonder);
+  vadSection?.classList.toggle("hidden", !isVad);
+  modeTextEl.textContent = isWeb ? "网页输入" : isVad ? "VAD_ASR" : "WonderEchoPro";
   modeWebBtn?.classList.toggle("active", isWeb);
-  modeWonderBtn?.classList.toggle("active", !isWeb);
+  modeWonderBtn?.classList.toggle("active", isWonder);
+  modeVadBtn?.classList.toggle("active", isVad);
 }
 
 function renderDashboard(data) {
@@ -283,6 +289,8 @@ function renderDashboard(data) {
 
   if (inputMode === "web_input") {
     audioStateEl.textContent = "网页输入";
+  } else if (inputMode === "vad_asr") {
+    audioStateEl.textContent = "VAD_ASR";
   } else {
     audioStateEl.textContent = manualRecording ? "采集中" : "待采集";
   }
@@ -320,6 +328,11 @@ function renderDashboard(data) {
     latestTextEl.textContent = "暂无识别内容";
     latestSkillEl.textContent = "未匹配";
     latestMetaEl.textContent = "当前是网页输入模式，可以直接发送文本或上传音频。";
+    setPreviewSource("");
+  } else if (inputMode === "vad_asr") {
+    latestTextEl.textContent = "等待 VAD_ASR 唤醒";
+    latestSkillEl.textContent = "你好瓦力";
+    latestMetaEl.textContent = "Pi 端 Silero VAD 分段上传到 /interact/ws/audio；唤醒后识别结果会展示在这里。";
     setPreviewSource("");
   } else {
     latestTextEl.textContent = "暂无识别内容";
@@ -413,6 +426,19 @@ modeWonderBtn?.addEventListener("click", () => {
     .catch(showError)
     .finally(() => {
       modeWonderBtn.disabled = false;
+    });
+});
+
+modeVadBtn?.addEventListener("click", () => {
+  modeVadBtn.disabled = true;
+  postJson("./api/settings", {
+    input_mode: "vad_asr",
+    manual_recording_enabled: false,
+  })
+    .then(refresh)
+    .catch(showError)
+    .finally(() => {
+      modeVadBtn.disabled = false;
     });
 });
 
