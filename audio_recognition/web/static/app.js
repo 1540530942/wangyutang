@@ -322,6 +322,18 @@ function encodeWav(samples, sampleRate) {
   return new Blob([buffer], { type: "audio/wav" });
 }
 
+function encodePcm16(samples) {
+  const buffer = new ArrayBuffer(samples.length * 2);
+  const view = new DataView(buffer);
+  let offset = 0;
+  for (const sample of samples) {
+    const value = Math.max(-1, Math.min(1, sample));
+    view.setInt16(offset, value < 0 ? value * 0x8000 : value * 0x7fff, true);
+    offset += 2;
+  }
+  return buffer;
+}
+
 async function sendVadSegment(wavBlob) {
   const sessionId = crypto.randomUUID ? crypto.randomUUID().slice(0, 12) : String(Date.now());
   const socket = new WebSocket(VAD_WS_URL);
@@ -393,7 +405,8 @@ async function startVadAsr() {
   if (vadRuntime) return;
   vadRealtimeResult = null;
   renderVadRealtimeResult();
-  if (!navigator.mediaDevices?.getUserMedia) throw new Error("当前浏览器不支持麦克风采集");
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error("Microphone capture is not supported by this browser");
+
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
   });
@@ -401,74 +414,79 @@ async function startVadAsr() {
   await audioContext.resume();
   const source = audioContext.createMediaStreamSource(stream);
   const processor = audioContext.createScriptProcessor(2048, 1, 1);
-  const runtime = {
-    audioContext,
-    source,
-    processor,
-    stream,
-    preFrames: [],
-    speechFrames: [],
-    speechCount: 0,
-    silenceCount: 0,
-    speaking: false,
-    sending: false,
-    startedAt: 0,
-  };
+  const socket = new WebSocket(VAD_WS_URL);
+  socket.binaryType = "arraybuffer";
+
+  const runtime = { audioContext, source, processor, stream, socket, ready: false };
   vadRuntime = runtime;
 
+  socket.onmessage = (event) => {
+    let message = null;
+    try {
+      message = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+
+    if (message.type === "stream_ready") {
+      runtime.ready = true;
+      setVadLiveState("Streaming", true);
+      statusEl.textContent = "VAD_ASR streaming";
+    } else if (message.type === "vad") {
+      setVadLevel(Number(message.probability || 0));
+    } else if (message.type === "speech_start") {
+      setVadLiveState("Speech detected", true);
+    } else if (message.type === "speech_end") {
+      setVadLiveState("Recognizing...", true);
+    } else if (message.type === "asr_started") {
+      setVadLiveState("Recognizing...", true);
+    } else if (message.type === "result" || message.type === "error") {
+      vadRealtimeResult = message;
+      renderVadRealtimeResult();
+      statusEl.textContent = `VAD_ASR: ${message.status || message.stage || "ok"}`;
+      setVadLiveState(vadRuntime ? "Streaming" : "Stopped", Boolean(vadRuntime));
+      refresh().catch(console.error);
+    } else if (message.type === "stream_stopped") {
+      setVadLiveState("Stopped", false);
+    }
+  };
+
+  await new Promise((resolve, reject) => {
+    socket.onopen = resolve;
+    socket.onerror = () => reject(new Error("VAD_ASR WebSocket connection failed"));
+  });
+
+  socket.send(JSON.stringify({
+    type: "start_stream",
+    session_id: crypto.randomUUID ? crypto.randomUUID().slice(0, 12) : String(Date.now()),
+    device_id: VAD_DEVICE_ID,
+    sample_rate: VAD_TARGET_RATE,
+  }));
+
   processor.onaudioprocess = (event) => {
-    if (!vadRuntime) return;
+    if (!vadRuntime || socket.readyState !== WebSocket.OPEN || !runtime.ready) return;
     const input = event.inputBuffer.getChannelData(0);
     const frame = new Float32Array(input);
     const rms = Math.sqrt(frame.reduce((sum, value) => sum + value * value, 0) / frame.length);
     setVadLevel(Math.min(1, rms / (VAD_THRESHOLD * 3)));
-    const isSpeech = rms >= VAD_THRESHOLD;
-
-    if (!runtime.speaking) {
-      runtime.preFrames.push(frame);
-      if (runtime.preFrames.length > VAD_PRE_FRAMES) runtime.preFrames.shift();
-      runtime.speechCount = isSpeech ? runtime.speechCount + 1 : 0;
-      if (runtime.speechCount >= VAD_START_FRAMES) {
-        runtime.speaking = true;
-        runtime.startedAt = performance.now();
-        runtime.speechFrames = [...runtime.preFrames];
-        runtime.silenceCount = 0;
-        setVadLiveState("检测到语音", true);
-      }
-      return;
-    }
-
-    runtime.speechFrames.push(frame);
-    runtime.silenceCount = isSpeech ? 0 : runtime.silenceCount + 1;
-    const durationSeconds = (performance.now() - runtime.startedAt) / 1000;
-    const shouldEnd = runtime.silenceCount >= VAD_END_FRAMES || durationSeconds >= VAD_MAX_SECONDS;
-    if (shouldEnd && !runtime.sending) {
-      const frames = runtime.speechFrames;
-      runtime.speaking = false;
-      runtime.sending = true;
-      runtime.speechFrames = [];
-      runtime.preFrames = [];
-      runtime.speechCount = 0;
-      runtime.silenceCount = 0;
-      handleVadSegment(frames, audioContext.sampleRate)
-        .catch(showError)
-        .finally(() => {
-          runtime.sending = false;
-          if (vadRuntime) setVadLiveState("持续接收中", true);
-        });
-    }
+    const downsampled = downsampleBuffer(frame, audioContext.sampleRate, VAD_TARGET_RATE);
+    socket.send(encodePcm16(downsampled));
   };
 
   source.connect(processor);
   processor.connect(audioContext.destination);
-  setVadLiveState("持续接收中", true);
-  statusEl.textContent = "VAD_ASR 持续接收中";
+  setVadLiveState("Connecting cloud VAD...", true);
+  statusEl.textContent = "VAD_ASR connecting cloud VAD";
 }
 
 function stopVadAsr() {
   if (!vadRuntime) return;
   const runtime = vadRuntime;
   vadRuntime = null;
+  if (runtime.socket?.readyState === WebSocket.OPEN) {
+    runtime.socket.send(JSON.stringify({ type: "stop_stream" }));
+    window.setTimeout(() => runtime.socket.close(), 200);
+  }
   runtime.processor.disconnect();
   runtime.source.disconnect();
   runtime.stream.getTracks().forEach((track) => track.stop());

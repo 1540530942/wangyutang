@@ -69,7 +69,7 @@
             </div>
             <code id="latestSkill">未匹配</code>
           </div>
-          <p id="latestMeta">网页输入模式可直接输入文本或上传音频；WonderEchoPro 模式由“开始采集”触发录音；VAD_ASR 模式展示 Silero VAD + ASR + 唤醒词链路。</p>
+          <p id="latestMeta">网页输入模式可直接输入文本或上传音频；WonderEchoPro 模式由“开始采集”触发录音；VAD_ASR 模式使用云端流式 Silero VAD + final ASR + 唤醒词链路。</p>
 
           <div id="webInputSection">
             <label class="field">
@@ -125,7 +125,7 @@
               <span>VAD</span>
               <div><i id="vadLevelBar"></i></div>
             </div>
-            <p class="mode-note">点击开始后，浏览器会持续接收麦克风音频并用 VAD 切分语音片段，再上传到云端做 ASR、唤醒词判断和动作路由。Pi 端也可以继续运行 audio_interact/edge_streamer.py 使用同一条云端链路。</p>
+            <p class="mode-note">点击开始后，浏览器会持续发送 16k PCM 音频到云端；audio_interact 使用 Silero VAD 流式切分语音片段，片段结束后调用 ASR，final text 才进入唤醒词判断和动作路由。</p>
           </div>
 
           <textarea id="asrResult" readonly placeholder="ASR 识别文本"></textarea>
@@ -171,6 +171,6 @@
         </section>
       </section>
     </main>
-    <script src="./static/app.js?v=20260627-vad-asr-session-only"></script>
+    <script src="./static/app.js?v=20260627-cloud-silero-vad"></script>
   </body>
 </html>

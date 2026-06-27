@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import collections
+import io
 import json
 import os
+import struct
 import time
 import uuid
+import wave
+from dataclasses import dataclass, field
 from typing import Any
 
 import requests
@@ -17,14 +22,30 @@ AUDIO_RECOGNITION_URL = os.getenv("AUDIO_RECOGNITION_URL", "http://audio-recogni
 COMMON_ASR_URL = os.getenv("COMMON_ASR_URL", "https://www.wangyutang.cn/common/api/asr/transcribe")
 ASR_TIMEOUT = int(os.getenv("ASR_TIMEOUT", "60"))
 ROUTE_TIMEOUT = int(os.getenv("ROUTE_TIMEOUT", "90"))
+STREAM_SAMPLE_RATE = int(os.getenv("STREAM_SAMPLE_RATE", "16000"))
+SILERO_REPO = os.getenv("SILERO_REPO", "snakers4/silero-vad")
+SILERO_MODEL = os.getenv("SILERO_MODEL", "silero_vad")
+SILERO_THRESHOLD = float(os.getenv("SILERO_THRESHOLD", "0.55"))
+SILERO_START_FRAMES = int(os.getenv("SILERO_START_FRAMES", "3"))
+SILERO_END_FRAMES = int(os.getenv("SILERO_END_FRAMES", "20"))
+SILERO_PRE_FRAMES = int(os.getenv("SILERO_PRE_FRAMES", "8"))
+SILERO_MAX_SECONDS = float(os.getenv("SILERO_MAX_SECONDS", "12"))
 
 app = FastAPI(title="Audio Interact Service", version="0.2.0")
 WAKE_STATES = WakeStateStore()
+SILERO_VAD_MODEL: Any | None = None
+SILERO_TORCH: Any | None = None
 
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", "service": "audio-interact", "ts": time.time()}
+    return {
+        "status": "ok",
+        "service": "audio-interact",
+        "vad": "silero_streaming",
+        "sample_rate": STREAM_SAMPLE_RATE,
+        "ts": time.time(),
+    }
 
 
 @app.websocket("/ws/audio")
@@ -33,6 +54,7 @@ async def audio_ws(websocket: WebSocket) -> None:
     session_id = str(uuid.uuid4())[:12]
     device_id = "turbopi-01"
     audio_buf = bytearray()
+    stream_vad: StreamingSileroVad | None = None
 
     try:
         while True:
@@ -42,7 +64,26 @@ async def audio_ws(websocket: WebSocket) -> None:
                 break
 
             if msg.get("bytes"):
-                audio_buf.extend(msg["bytes"])
+                if stream_vad is not None:
+                    events = stream_vad.feed(msg["bytes"])
+                    for event in events:
+                        if event.get("type") == "speech_end" and event.get("wav_bytes"):
+                            wav_bytes = event.pop("wav_bytes")
+                            await websocket.send_text(json.dumps(event, ensure_ascii=False))
+                            await websocket.send_text(
+                                json.dumps(
+                                    {"type": "asr_started", "session_id": session_id, "device_id": device_id},
+                                    ensure_ascii=False,
+                                )
+                            )
+                            loop = asyncio.get_event_loop()
+                            result = await loop.run_in_executor(None, _process, wav_bytes, device_id, session_id)
+                            result["streaming_vad"] = "silero"
+                            await websocket.send_text(json.dumps(result, ensure_ascii=False))
+                        else:
+                            await websocket.send_text(json.dumps(event, ensure_ascii=False))
+                else:
+                    audio_buf.extend(msg["bytes"])
 
             elif msg.get("text"):
                 frame = json.loads(msg["text"])
@@ -51,8 +92,55 @@ async def audio_ws(websocket: WebSocket) -> None:
                 if frame_type == "start":
                     session_id = str(frame.get("session_id") or session_id)
                     device_id = str(frame.get("device_id") or device_id)
+                    stream_vad = None
                     audio_buf.clear()
                     await websocket.send_text(json.dumps({"type": "ready", "session_id": session_id}))
+
+                elif frame_type == "start_stream":
+                    session_id = str(frame.get("session_id") or session_id)
+                    device_id = str(frame.get("device_id") or device_id)
+                    sample_rate = int(frame.get("sample_rate") or STREAM_SAMPLE_RATE)
+                    if sample_rate != STREAM_SAMPLE_RATE:
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "type": "error",
+                                    "stage": "vad",
+                                    "message": f"stream sample_rate must be {STREAM_SAMPLE_RATE}",
+                                    "session_id": session_id,
+                                },
+                                ensure_ascii=False,
+                            )
+                        )
+                        continue
+                    try:
+                        stream_vad = StreamingSileroVad(session_id=session_id, device_id=device_id)
+                    except Exception as exc:
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "type": "error",
+                                    "stage": "vad",
+                                    "message": str(exc),
+                                    "session_id": session_id,
+                                },
+                                ensure_ascii=False,
+                            )
+                        )
+                        continue
+                    audio_buf.clear()
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "stream_ready",
+                                "session_id": session_id,
+                                "device_id": device_id,
+                                "vad": "silero",
+                                "sample_rate": STREAM_SAMPLE_RATE,
+                            },
+                            ensure_ascii=False,
+                        )
+                    )
 
                 elif frame_type == "end":
                     if not audio_buf:
@@ -73,8 +161,161 @@ async def audio_ws(websocket: WebSocket) -> None:
                     result = await loop.run_in_executor(None, _process, wav_bytes, device_id, session_id)
                     await websocket.send_text(json.dumps(result, ensure_ascii=False))
 
+                elif frame_type in {"stop_stream", "end_stream"}:
+                    if stream_vad is not None:
+                        final_wav = stream_vad.finish()
+                        stream_vad = None
+                        if final_wav:
+                            await websocket.send_text(
+                                json.dumps(
+                                    {"type": "asr_started", "session_id": session_id, "device_id": device_id},
+                                    ensure_ascii=False,
+                                )
+                            )
+                            loop = asyncio.get_event_loop()
+                            result = await loop.run_in_executor(None, _process, final_wav, device_id, session_id)
+                            result["streaming_vad"] = "silero"
+                            await websocket.send_text(json.dumps(result, ensure_ascii=False))
+                    await websocket.send_text(json.dumps({"type": "stream_stopped", "session_id": session_id}))
+
     except WebSocketDisconnect:
         pass
+
+
+def load_silero_vad() -> tuple[Any, Any]:
+    global SILERO_TORCH, SILERO_VAD_MODEL
+    if SILERO_TORCH is not None and SILERO_VAD_MODEL is not None:
+        return SILERO_TORCH, SILERO_VAD_MODEL
+    try:
+        import torch
+    except ImportError as exc:
+        raise RuntimeError("Silero VAD requires torch in the audio-interact container.") from exc
+    try:
+        from silero_vad import load_silero_vad
+
+        model = load_silero_vad()
+    except Exception:
+        try:
+            model, _utils = torch.hub.load(repo_or_dir=SILERO_REPO, model=SILERO_MODEL, trust_repo=True)
+        except TypeError:
+            model, _utils = torch.hub.load(repo_or_dir=SILERO_REPO, model=SILERO_MODEL)
+    model.eval()
+    SILERO_TORCH = torch
+    SILERO_VAD_MODEL = model
+    return torch, model
+
+
+@dataclass
+class StreamingSileroVad:
+    session_id: str
+    device_id: str
+    sample_rate: int = STREAM_SAMPLE_RATE
+    frame_samples: int = 512
+    pending: bytearray = field(default_factory=bytearray)
+    pre_frames: collections.deque[bytes] = field(default_factory=lambda: collections.deque(maxlen=SILERO_PRE_FRAMES))
+    speech_frames: list[bytes] = field(default_factory=list)
+    speech_count: int = 0
+    silence_count: int = 0
+    speaking: bool = False
+    started_at: float = 0.0
+
+    def __post_init__(self) -> None:
+        self.torch, self.model = load_silero_vad()
+        reset_states = getattr(self.model, "reset_states", None)
+        if callable(reset_states):
+            reset_states()
+
+    def feed(self, pcm16: bytes) -> list[dict[str, Any]]:
+        self.pending.extend(pcm16)
+        events: list[dict[str, Any]] = []
+        frame_bytes = self.frame_samples * 2
+        while len(self.pending) >= frame_bytes:
+            frame = bytes(self.pending[:frame_bytes])
+            del self.pending[:frame_bytes]
+            events.extend(self._consume_frame(frame))
+        return events
+
+    def finish(self) -> bytes | None:
+        if not self.speaking or not self.speech_frames:
+            return None
+        frames = self.speech_frames
+        self._reset_segment()
+        return pcm16_to_wav(b"".join(frames), self.sample_rate)
+
+    def _consume_frame(self, frame: bytes) -> list[dict[str, Any]]:
+        probability = self._speech_probability(frame)
+        is_speech = probability >= SILERO_THRESHOLD
+        events: list[dict[str, Any]] = [
+            {
+                "type": "vad",
+                "session_id": self.session_id,
+                "device_id": self.device_id,
+                "probability": round(probability, 4),
+                "speaking": self.speaking,
+            }
+        ]
+
+        if not self.speaking:
+            self.pre_frames.append(frame)
+            self.speech_count = self.speech_count + 1 if is_speech else 0
+            if self.speech_count >= SILERO_START_FRAMES:
+                self.speaking = True
+                self.started_at = time.time()
+                self.speech_frames = list(self.pre_frames)
+                self.silence_count = 0
+                events.append(
+                    {
+                        "type": "speech_start",
+                        "session_id": self.session_id,
+                        "device_id": self.device_id,
+                        "probability": round(probability, 4),
+                    }
+                )
+            return events
+
+        self.speech_frames.append(frame)
+        self.silence_count = 0 if is_speech else self.silence_count + 1
+        duration_seconds = len(self.speech_frames) * self.frame_samples / self.sample_rate
+        should_end = self.silence_count >= SILERO_END_FRAMES or duration_seconds >= SILERO_MAX_SECONDS
+        if should_end:
+            wav_bytes = pcm16_to_wav(b"".join(self.speech_frames), self.sample_rate)
+            reason = "silence" if self.silence_count >= SILERO_END_FRAMES else "max_duration"
+            events.append(
+                {
+                    "type": "speech_end",
+                    "session_id": self.session_id,
+                    "device_id": self.device_id,
+                    "reason": reason,
+                    "duration_seconds": round(duration_seconds, 3),
+                    "wav_bytes": wav_bytes,
+                }
+            )
+            self._reset_segment()
+        return events
+
+    def _speech_probability(self, frame: bytes) -> float:
+        samples = struct.unpack("<512h", frame)
+        tensor = self.torch.tensor([sample / 32768.0 for sample in samples], dtype=self.torch.float32)
+        with self.torch.no_grad():
+            return float(self.model(tensor, self.sample_rate).item())
+
+    def _reset_segment(self) -> None:
+        self.pre_frames.clear()
+        self.speech_frames = []
+        self.speech_count = 0
+        self.silence_count = 0
+        self.speaking = False
+        self.started_at = 0.0
+
+
+def pcm16_to_wav(pcm16: bytes, sample_rate: int) -> bytes:
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(pcm16)
+    return buf.getvalue()
 
 
 def _process(wav_bytes: bytes, device_id: str, session_id: str) -> dict[str, Any]:
