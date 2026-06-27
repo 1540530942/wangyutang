@@ -60,6 +60,7 @@ let manualTimerHandle = null;
 let currentInputMode = "wonderechopro";
 let recordingStartedAt = 0;
 let vadRuntime = null;
+let vadRealtimeResult = null;
 let actionSettings = {
   unit_distance_cm: 5,
   turn_angle_deg: 5,
@@ -144,6 +145,16 @@ function setVadLiveState(text, active = false) {
   if (vadLiveStateEl) vadLiveStateEl.textContent = text;
   if (startVadBtn) startVadBtn.disabled = active;
   if (stopVadBtn) stopVadBtn.disabled = !active;
+}
+
+function renderVadRealtimeResult() {
+  if (!vadRealtimeResult) {
+    asrResultEl.value = "";
+    asrRawEl.textContent = "{}";
+    return;
+  }
+  asrResultEl.value = vadRealtimeResult.route_text || vadRealtimeResult.text || "";
+  asrRawEl.textContent = JSON.stringify(vadRealtimeResult, null, 2);
 }
 
 function startManualTimer() {
@@ -371,8 +382,8 @@ async function handleVadSegment(frames, sampleRate) {
   const wavBlob = encodeWav(downsampled, VAD_TARGET_RATE);
   setVadLiveState("正在识别...", true);
   const result = await sendVadSegment(wavBlob);
-  asrResultEl.value = result.route_text || result.text || "";
-  asrRawEl.textContent = JSON.stringify(result, null, 2);
+  vadRealtimeResult = result;
+  renderVadRealtimeResult();
   statusEl.textContent = `VAD_ASR: ${result.status || "ok"}`;
   await refresh();
   if (vadRuntime) setVadLiveState("持续接收中", true);
@@ -380,6 +391,8 @@ async function handleVadSegment(frames, sampleRate) {
 
 async function startVadAsr() {
   if (vadRuntime) return;
+  vadRealtimeResult = null;
+  renderVadRealtimeResult();
   if (!navigator.mediaDevices?.getUserMedia) throw new Error("当前浏览器不支持麦克风采集");
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
@@ -497,7 +510,7 @@ function renderDashboard(data) {
   const cameraLatest = camera.latest || {};
   const cameraTask = camera.control?.task;
   const inputMode = settings.input_mode || "wonderechopro";
-  const latestMatchesInputMode = inputMode !== "vad_asr" || latest?.device_id === VAD_DEVICE_ID;
+  const latestMatchesInputMode = inputMode !== "vad_asr";
   const displayLatest = latest && latestMatchesInputMode;
   const manualRecording = Boolean(settings.manual_recording_enabled);
   const actionSettingsFromHealth = action.health?.settings || {};
@@ -507,8 +520,16 @@ function renderDashboard(data) {
   }
 
   renderInputMode(inputMode);
-  statusEl.textContent = displayLatest ? `更新 ${fmtAge(data.age_seconds)}` : "等待语音";
-  statusEl.classList.toggle("online", Boolean(displayLatest));
+  statusEl.textContent = inputMode === "vad_asr"
+    ? vadRuntime
+      ? "VAD_ASR 持续接收中"
+      : vadRealtimeResult
+        ? "VAD_ASR 已识别"
+        : "等待 VAD_ASR"
+    : displayLatest
+      ? `更新 ${fmtAge(data.age_seconds)}`
+      : "等待语音";
+  statusEl.classList.toggle("online", Boolean(displayLatest || (inputMode === "vad_asr" && (vadRuntime || vadRealtimeResult))));
 
   if (inputMode === "web_input") {
     audioStateEl.textContent = "网页输入";
@@ -557,6 +578,7 @@ function renderDashboard(data) {
     latestSkillEl.textContent = "你好瓦力";
     latestMetaEl.textContent = "Pi 端 Silero VAD 分段上传到 /interact/ws/audio；唤醒后识别结果会展示在这里。";
     setPreviewSource("");
+    renderVadRealtimeResult();
   } else {
     latestTextEl.textContent = "暂无识别内容";
     latestSkillEl.textContent = "未匹配";
@@ -655,6 +677,8 @@ modeWonderBtn?.addEventListener("click", () => {
 });
 
 modeVadBtn?.addEventListener("click", () => {
+  vadRealtimeResult = null;
+  renderVadRealtimeResult();
   modeVadBtn.disabled = true;
   postJson("./api/settings", {
     input_mode: "vad_asr",
