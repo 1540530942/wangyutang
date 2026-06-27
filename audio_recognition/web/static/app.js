@@ -65,7 +65,7 @@ let actionSettings = {
   unit_distance_cm: 5,
   turn_angle_deg: 5,
   sensitivity: 1,
-  voice_volume_percent: 90,
+  voice_volume_percent: 0,
 };
 
 async function api(path) {

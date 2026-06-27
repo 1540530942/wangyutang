@@ -353,7 +353,7 @@ jobs:
               with urllib.request.urlopen(request, timeout=20) as response:
                   return json.loads(response.read().decode("utf-8"))
 
-          post_json("/api/settings", {"unit_distance_cm": 5, "turn_angle_deg": 5, "sensitivity": 1, "voice_volume_percent": 90, "rgb_red": 12, "rgb_green": 80, "rgb_blue": 24})
+          post_json("/api/settings", {"unit_distance_cm": 5, "turn_angle_deg": 5, "sensitivity": 1, "voice_volume_percent": 0, "rgb_red": 12, "rgb_green": 80, "rgb_blue": 24})
 
           completed = []
           for action in ("front_distance", "rgb_on", "rgb_off"):
@@ -379,6 +379,6 @@ jobs:
               else:
                   raise SystemExit(f"{action} did not complete: {json.dumps(latest, ensure_ascii=False)}")
 
-          post_json("/api/settings", {"unit_distance_cm": 5, "turn_angle_deg": 5, "sensitivity": 1, "voice_volume_percent": 90, "rgb_red": 0, "rgb_green": 0, "rgb_blue": 0})
+          post_json("/api/settings", {"unit_distance_cm": 5, "turn_angle_deg": 5, "sensitivity": 1, "voice_volume_percent": 0, "rgb_red": 0, "rgb_green": 0, "rgb_blue": 0})
           print("ACTION_PI_RGB_VERIFY_OK", json.dumps(completed, ensure_ascii=False))
           PY
