@@ -43,14 +43,41 @@ jobs:
       PI_USER: ${{ secrets.PI_USER }}
       PI_SSH_PRIVATE_KEY: ${{ secrets.PI_SSH_PRIVATE_KEY }}
       PI_PORT: ${{ secrets.PI_PORT || '10022' }}
-      DEPLOY_PI: ${{ github.event_name == 'push' && 'false' || inputs.deploy_pi }}
-      VERIFY_LIVE_RGB: ${{ github.event_name == 'push' && 'false' || inputs.verify_live_rgb }}
+      VERIFY_LIVE_RGB: ${{ github.event_name == 'workflow_dispatch' && inputs.verify_live_rgb || 'false' }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
+
+      - name: Determine deployment scope
+        id: scope
+        run: |
+          deploy_pi=false
+          edge_changed=false
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            deploy_pi="${{ inputs.deploy_pi }}"
+          else
+            before="${{ github.event.before }}"
+            after="${{ github.sha }}"
+            if [ -n "$before" ] && [ "$before" != "0000000000000000000000000000000000000000" ]; then
+              changed="$(git diff --name-only "$before" "$after" 2>/dev/null || git diff --name-only HEAD^ HEAD || true)"
+            else
+              changed="$(git diff --name-only HEAD^ HEAD || true)"
+            fi
+            echo "$changed" | sed 's/^/changed: /'
+
+            if echo "$changed" | grep -Eq '^(action_move/(edge_action_poller\.py|edge_ros_controller\.py|action_move_executor\.py|skill_catalog\.json|voice_prompts/|systemd/)|scripts/github_deploy_action_move\.sh)$'; then
+              edge_changed=true
+              deploy_pi=true
+            fi
+          fi
+
+          echo "deploy_pi=$deploy_pi" >> "$GITHUB_OUTPUT"
+          echo "edge_changed=$edge_changed" >> "$GITHUB_OUTPUT"
+          echo "DEPLOY_SCOPE deploy_pi=$deploy_pi edge_changed=$edge_changed verify_live_rgb=$VERIFY_LIVE_RGB"
 
       - name: Validate action_move module
         uses: actions/setup-python@v5
@@ -99,7 +126,7 @@ jobs:
             echo "::error::Tencent Cloud secrets are required for action_move deployment."
             exit 1
           fi
-          if [ "$DEPLOY_PI" = "true" ] && [ "$pi_ready" != "true" ]; then
+          if [ "${{ steps.scope.outputs.deploy_pi }}" = "true" ] && [ "$pi_ready" != "true" ]; then
             echo "::error::Raspberry Pi secrets are required when deploy_pi=true."
             exit 1
           fi
@@ -117,7 +144,7 @@ jobs:
             echo "  IdentityFile ~/.ssh/tencent_key"
             echo "  StrictHostKeyChecking accept-new"
           } > ~/.ssh/config
-          if [ "$DEPLOY_PI" = "true" ]; then
+          if [ "${{ steps.scope.outputs.deploy_pi }}" = "true" ]; then
             printf '%s\n' "$PI_SSH_PRIVATE_KEY" > ~/.ssh/pi_key
             chmod 600 ~/.ssh/pi_key
             {
@@ -207,7 +234,7 @@ jobs:
           exit 1
 
       - name: Update Raspberry Pi action edge
-        if: env.DEPLOY_PI == 'true'
+        if: steps.scope.outputs.deploy_pi == 'true'
         run: |
           retry_pi() {
             local attempt
@@ -331,7 +358,7 @@ jobs:
           PY
 
       - name: Verify live RGB task through Pi
-        if: env.DEPLOY_PI == 'true' && env.VERIFY_LIVE_RGB == 'true'
+        if: steps.scope.outputs.deploy_pi == 'true' && env.VERIFY_LIVE_RGB == 'true'
         run: |
           python - <<'PY'
           import json
