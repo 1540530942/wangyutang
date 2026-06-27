@@ -16,7 +16,7 @@ class SpeechRequest(BaseModel):
     input: str = Field(..., min_length=1)
     voice: str = Field(default=settings.lv_tts_voice)
     language: str = Field(default=settings.lv_tts_language)
-    instructions: str = Field(default="用自然、清晰的语气说")
+    instructions: str = Field(default=settings.lv_tts_instructions)
     response_format: str = Field(default="wav")
 
 
