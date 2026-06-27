@@ -9,6 +9,7 @@ User=pi
 WorkingDirectory=/home/pi/action_move
 Environment=PYTHONUNBUFFERED=1
 Environment=ACTION_MOVE_TOKEN=
+Environment=ACTION_DISABLED_ACTIONS=
 ExecStart=/usr/bin/python3 /home/pi/action_move/edge_action_poller.py --server https://www.wangyutang.cn/action --device-id turbopi-01 --token ${ACTION_MOVE_TOKEN} --interval 0.10 --long-poll-seconds 10
 Restart=always
 RestartSec=3
