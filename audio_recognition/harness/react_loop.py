@@ -14,6 +14,91 @@ from audio_recognition.tools.tool_call_adapter import build_tool_result_message
 from audio_recognition.tools.tool_validator import validate_tool_call, validate_tool_calls
 
 
+_TTS_SKIP = {"completed", "done", "dry_run", "emergency_stop", ""}
+
+_SKILL_TTS: dict[str, str] = {
+    "move_forward": "好的，往前走",
+    "move_backward": "好的，往后退",
+    "move_left": "好的，向左移",
+    "move_right": "好的，向右移",
+    "turn_left": "好的，向左转",
+    "turn_right": "好的，向右转",
+    "look_left": "好的，向左看",
+    "look_right": "好的，向右看",
+    "look_up": "好的，抬头看",
+    "look_down": "好的，低头看",
+    "reset_pose": "好的，回到初始姿态",
+    "rgb_on": "好的，打开灯光",
+    "rgb_off": "好的，关闭灯光",
+    "emergency_stop": "好的，紧急停止",
+    "camera_snapshot": "好的，已拍照",
+    "front_distance": "好的，已测距",
+    "inspect_scene": "好的，已查看场景",
+}
+
+_REJECT_TTS: dict[str, str] = {
+    "front_distance_too_close": "前方太近，无法前进",
+    "front_distance_unavailable": "距离传感器不可用",
+    "front_distance_stale": "传感器数据过旧，我先停下",
+    "front_distance_low_confidence": "传感器置信度低，我先停下",
+    "front_distance_observation_missing": "缺少前方距离数据",
+    "recent_front_distance_required": "需要先测距才能执行",
+    "recent_camera_snapshot_required": "需要先拍照才能执行",
+    "negative_instruction_detected": "好的，我不会这样做",
+    "low_confidence_confirmation_required": "我不太确定指令，先暂停",
+    "too_many_movement_tasks": "动作太多了，只能执行三个",
+    "total_duration_exceeded": "总时长超限，已调整",
+    "unsupported_action_skill": "抱歉，我不认识这个动作",
+    "unsupported_face_skill": "抱歉，我不支持这个表情",
+}
+
+
+def _build_tts_text(envelope: DecisionEnvelope) -> str:
+    if envelope.dispatch_mode == "dry_run":
+        return ""
+
+    # LLM path: finish.message is natural language from the LLM
+    if envelope.final_response and envelope.final_response not in _TTS_SKIP:
+        return envelope.final_response
+
+    # emergency_stop is in _TTS_SKIP so check tasks directly
+    completed_task = next((t for t in envelope.tasks if t.status in {"completed", "accepted"}), None)
+    rejected_task = next((t for t in envelope.tasks if t.status == "rejected"), None)
+
+    if completed_task:
+        return _SKILL_TTS.get(completed_task.skill_id, "好的，已执行")
+
+    if rejected_task:
+        return _REJECT_TTS.get(rejected_task.error, "抱歉，无法执行这个动作")
+
+    # Observation-only result (inspect_scene, front_distance, etc.)
+    if envelope.observations:
+        obs = next(
+            (o for o in reversed(envelope.observations) if o.get("status") == "completed"),
+            envelope.observations[-1],
+        )
+        tool = str(obs.get("tool") or "")
+        data = obs.get("data") or {}
+        if tool == "inspect_scene":
+            answer = str(data.get("answer") or "")
+            if answer:
+                return answer[:100]
+        if tool == "front_distance":
+            sonar = data.get("sonar") if isinstance(data.get("sonar"), dict) else data
+            dist = sonar.get("front_distance_estimate_cm")
+            if dist is not None:
+                try:
+                    return f"前方距离约{int(float(dist))}厘米"
+                except (TypeError, ValueError):
+                    pass
+        return _SKILL_TTS.get(tool, "好的，观测完成")
+
+    if not envelope.tasks and not envelope.observations:
+        return "抱歉，我没有理解这条指令"
+
+    return ""
+
+
 EXACT_ACTION_ALIASES = {
     "forward": "move_forward",
     "\u524d\u8fdb": "move_forward",
@@ -200,6 +285,7 @@ def route_transcript(
         "observation": first_observation,
         "action_error": action_error,
         "face_error": face_error,
+        "tts_text": _build_tts_text(envelope),
         "envelope": envelope.model_dump(),
     }
 

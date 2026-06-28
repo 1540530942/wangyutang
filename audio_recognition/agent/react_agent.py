@@ -9,9 +9,9 @@ from typing import Any
 import requests
 
 from audio_recognition.core.envelope import DecisionEnvelope, ToolCall, build_call_id
-from audio_recognition.skills.registry import load_skill_registry, resolve_catalog_path, resolve_registry_path
+from audio_recognition.skills.registry import resolve_catalog_path, resolve_registry_path
 from audio_recognition.tools.tool_call_adapter import normalize_legacy_json_to_react_turn, normalize_tool_calls_to_react_turn
-from audio_recognition.tools.tool_schema import build_react_tools_schema, tool_skill_groups
+from audio_recognition.tools.tool_schema import build_react_tools_schema
 
 
 DEFAULT_LLM_ENDPOINT = "https://www.wangyutang.cn/common/api/llm/qwen3-32b/chat/completions"
@@ -56,53 +56,7 @@ class LlmReactAgent:
         )
 
     def _system_prompt(self) -> str:
-        groups = tool_skill_groups(self.registry_path, self.catalog_path)
-        registry = load_skill_registry(self.registry_path, self.catalog_path)
-        alias_hints = {
-            skill_id: list(registry.skills[skill_id].aliases)
-            for skill_id in groups["action"] + groups["face"]
-            if skill_id in registry.skills and registry.skills[skill_id].aliases
-        }
-        allowed = {
-            "dispatch_action": groups["action"],
-            "dispatch_face": groups["face"],
-            "camera_snapshot": ["camera_snapshot"],
-            "front_distance": ["front_distance"],
-            "get_robot_state": ["get_robot_state"],
-            "ask_confirmation": ["ask_confirmation"],
-            "emergency_stop": ["emergency_stop"],
-            "finish": ["finish"],
-        }
-        schema = {
-            "protocol_version": "react_v1_single_tool",
-            "reasoning_summary": "short Chinese summary, no hidden chain-of-thought",
-            "tool_call": {
-                "tool": "dispatch_action | dispatch_face | emergency_stop | finish",
-                "args": {
-                    "skill_id": "one allowed skill id, omitted for finish",
-                    "duration_ms": 800,
-                    "wait_until": "completed",
-                    "confidence": 0.9,
-                    "text": "exact minimal source fragment for this one step",
-                },
-            },
-            "final": "only for finish",
-        }
-        return (
-            f"{self._persona_prompt()}\n\n"
-            "Runtime protocol:\n"
-            "- Prefer native OpenAI-style tool_calls. If native tool calling is unavailable, output only compact JSON.\n"
-            "- protocol_version=react_v1_single_tool. No Thinking Process. One ReAct turn equals one tool_call.\n"
-            "- After a completed/dry_run tool result, choose the next unfinished positive command; output finish when done.\n"
-            "- Negated fragments such as \u4e0d\u8981/\u522b/\u4e0d\u8bb8/\u4e0d\u7528 do not create that action and do not cancel previous completed actions.\n"
-            "- \u505c\u6b62/\u6025\u505c/\u522b\u52a8/\u4e0d\u8981\u52a8 -> emergency_stop.\n"
-            "- \u5f80\u524d\u8d70=move_forward; \u5f80\u540e\u8d70=move_backward; \u62ac\u5934\u770b=look_up; \u4f4e\u5934\u770b=look_down.\n"
-            "- tool_call.args.text must be the minimal source fragment for only this step.\n"
-            "- Use front_distance before forward motion when front clearance matters; use camera_snapshot when visual scene evidence is required.\n"
-            f"Allowed: {json.dumps(allowed, ensure_ascii=False)}.\n"
-            f"Skill aliases: {json.dumps(alias_hints, ensure_ascii=False)}.\n"
-            f"Schema: {json.dumps(schema, ensure_ascii=False)}."
-        )
+        return self._persona_prompt()
 
     def _tools_schema(self) -> list[dict[str, Any]]:
         return build_react_tools_schema(self.registry_path, self.catalog_path)
@@ -192,6 +146,24 @@ class LlmReactAgent:
         )
         if data.get("type") == "error":
             error = data.get("error") if isinstance(data.get("error"), dict) else {}
+            # When schema validation fails the LLM produced content without a valid tool_call.
+            # Rescue the content and treat it as a finish response so it flows to TTS.
+            if error.get("code") == "SCHEMA_VALIDATION_FAILED":
+                raw_msg = data.get("raw_assistant_message") or {}
+                raw_content = str(raw_msg.get("content") or "")
+                rescued = ""
+                if raw_content:
+                    try:
+                        parsed = json.loads(raw_content)
+                        for key in ("response", "answer", "content", "message", "text", "final", "reply"):
+                            if isinstance(parsed.get(key), str) and parsed[key].strip():
+                                rescued = parsed[key].strip()
+                                break
+                    except Exception:
+                        rescued = raw_content
+                if rescued:
+                    envelope.add_error("react_agent_content_rescue", str(error.get("message") or ""), {"rescued": rescued})
+                    return ToolCall(tool="finish", args={"message": rescued, "final": rescued, "order": turn, "wait_until": "completed", "confidence": 1.0})
             raise ValueError(str(error.get("message") or "LLM output is invalid"))
         if data.get("type") == "finish":
             message = str(data.get("message") or data.get("final") or "done")
@@ -200,6 +172,10 @@ class LlmReactAgent:
         if data.get("type") == "tool_call" and isinstance(item, dict):
             item = {"tool": item.get("tool") or item.get("name"), "args": item.get("args") or item.get("arguments") or {}}
         if not isinstance(item, dict):
+            raw_msg = data.get("raw_assistant_message") or {}
+            content = str(raw_msg.get("content") or "")
+            if content:
+                return ToolCall(tool="finish", args={"message": content, "final": content, "order": turn, "wait_until": "completed", "confidence": 1.0})
             raise ValueError("LLM response missing tool_call")
         args = dict(item.get("args") or {})
         args.setdefault("order", turn)

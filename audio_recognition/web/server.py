@@ -1013,4 +1013,5 @@ def recognize_text(payload: TextCommand, x_audio_token: Annotated[str | None, He
         "face_task": routed.get("face_task"),
         "face_error": routed.get("face_error", ""),
         "plan": plan,
+        "tts_text": str(routed.get("tts_text") or ""),
     }

@@ -421,6 +421,16 @@ async function startVadAsr() {
   vadRuntime = runtime;
 
   socket.onmessage = (event) => {
+    // Binary frame = TTS audio WAV from server; play it directly.
+    if (event.data instanceof ArrayBuffer && event.data.byteLength > 0) {
+      const blob = new Blob([event.data], { type: "audio/wav" });
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => URL.revokeObjectURL(url);
+      audio.play().catch(console.error);
+      return;
+    }
+
     let message = null;
     try {
       message = JSON.parse(event.data);

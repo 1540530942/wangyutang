@@ -21,8 +21,11 @@ import collections
 import io
 import json
 import math
+import shutil
 import struct
+import subprocess
 import sys
+import tempfile
 import time
 import uuid
 import wave
@@ -163,6 +166,28 @@ def resample_and_build_wav(frames: list[bytes], capture_rate: int, asr_rate: int
     return buf.getvalue()
 
 
+def _play_wav_bytes(audio: bytes, cfg: dict[str, Any]) -> None:
+    player = shutil.which("aplay") or shutil.which("paplay") or ""
+    if not player:
+        print("[WARN] tts_play: no audio player found (aplay/paplay)", flush=True)
+        return
+    device = str(cfg.get("tts_device") or cfg.get("voice_device") or "")
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+        handle.write(audio)
+        temp_path = Path(handle.name)
+    try:
+        cmd = [player, "-q"]
+        if device and Path(player).name == "aplay":
+            cmd.extend(["-D", device])
+        cmd.append(str(temp_path))
+        subprocess.run(cmd, capture_output=True, timeout=30)
+        print(f"[INFO] tts_played bytes={len(audio)}", flush=True)
+    except Exception as exc:
+        print(f"[WARN] tts_play failed: {exc}", flush=True)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
 def send_and_receive(wav_bytes: bytes, cfg: dict[str, Any]) -> dict[str, Any]:
     session_id = str(uuid.uuid4())[:12]
     ws = websocket.WebSocket()
@@ -186,7 +211,19 @@ def send_and_receive(wav_bytes: bytes, cfg: dict[str, Any]) -> dict[str, Any]:
 
         ws.send(json.dumps({"type": "end"}))
         ws.settimeout(cfg["result_timeout"])
-        return json.loads(ws.recv())
+        result = json.loads(ws.recv())
+
+        # Wait for TTS audio binary sent by the server after the result
+        tts_timeout = float(cfg.get("tts_timeout", 15))
+        ws.settimeout(tts_timeout)
+        try:
+            msg = ws.recv()
+            if isinstance(msg, bytes) and msg:
+                _play_wav_bytes(msg, cfg)
+        except Exception:
+            pass
+
+        return result
     finally:
         ws.close()
 

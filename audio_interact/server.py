@@ -20,6 +20,11 @@ from wake_state import WakeDecision, WakeStateStore
 
 AUDIO_RECOGNITION_URL = os.getenv("AUDIO_RECOGNITION_URL", "http://audio-recognition:8095")
 COMMON_ASR_URL = os.getenv("COMMON_ASR_URL", "https://www.wangyutang.cn/common/api/asr/transcribe")
+TTS_URL = os.getenv("AUDIO_TTS_URL", "https://www.wangyutang.cn/common/api/tts/speech")
+TTS_MODEL = os.getenv("AUDIO_TTS_MODEL", "qwen3-tts-12hz-1.7b-customvoice")
+TTS_VOICE = os.getenv("AUDIO_TTS_VOICE", "vivian")
+TTS_INSTRUCTIONS = os.getenv("AUDIO_TTS_INSTRUCTIONS", "用清新自然、甜美温柔的语气说，声音明亮亲切，语调轻快柔和")
+TTS_TIMEOUT = int(os.getenv("AUDIO_TTS_TIMEOUT", "30"))
 ASR_TIMEOUT = int(os.getenv("ASR_TIMEOUT", "60"))
 ROUTE_TIMEOUT = int(os.getenv("ROUTE_TIMEOUT", "90"))
 STREAM_SAMPLE_RATE = int(os.getenv("STREAM_SAMPLE_RATE", "16000"))
@@ -80,6 +85,9 @@ async def audio_ws(websocket: WebSocket) -> None:
                             result = await loop.run_in_executor(None, _process, wav_bytes, device_id, session_id)
                             result["streaming_vad"] = "silero"
                             await websocket.send_text(json.dumps(result, ensure_ascii=False))
+                            tts_text = result.get("tts_text", "")
+                            if tts_text and TTS_URL:
+                                asyncio.create_task(_push_tts(websocket, tts_text))
                         else:
                             await websocket.send_text(json.dumps(event, ensure_ascii=False))
                 else:
@@ -160,6 +168,9 @@ async def audio_ws(websocket: WebSocket) -> None:
                     loop = asyncio.get_event_loop()
                     result = await loop.run_in_executor(None, _process, wav_bytes, device_id, session_id)
                     await websocket.send_text(json.dumps(result, ensure_ascii=False))
+                    tts_text = result.get("tts_text", "")
+                    if tts_text and TTS_URL:
+                        asyncio.create_task(_push_tts(websocket, tts_text))
 
                 elif frame_type in {"stop_stream", "end_stream"}:
                     if stream_vad is not None:
@@ -176,6 +187,9 @@ async def audio_ws(websocket: WebSocket) -> None:
                             result = await loop.run_in_executor(None, _process, final_wav, device_id, session_id)
                             result["streaming_vad"] = "silero"
                             await websocket.send_text(json.dumps(result, ensure_ascii=False))
+                            tts_text = result.get("tts_text", "")
+                            if tts_text and TTS_URL:
+                                asyncio.create_task(_push_tts(websocket, tts_text))
                     await websocket.send_text(json.dumps({"type": "stream_stopped", "session_id": session_id}))
 
     except WebSocketDisconnect:
@@ -318,6 +332,32 @@ def pcm16_to_wav(pcm16: bytes, sample_rate: int) -> bytes:
     return buf.getvalue()
 
 
+def _fetch_tts_audio(text: str) -> bytes:
+    payload = {
+        "model": TTS_MODEL,
+        "input": text,
+        "voice": TTS_VOICE,
+        "language": "chinese",
+        "instructions": TTS_INSTRUCTIONS,
+        "response_format": "wav",
+    }
+    resp = requests.post(TTS_URL, json=payload, timeout=TTS_TIMEOUT)
+    resp.raise_for_status()
+    audio = resp.content
+    if not audio.startswith(b"RIFF") and not audio.startswith(b"ID3"):
+        raise RuntimeError("TTS response is not audio")
+    return audio
+
+
+async def _push_tts(ws: WebSocket, text: str) -> None:
+    try:
+        loop = asyncio.get_event_loop()
+        audio = await loop.run_in_executor(None, _fetch_tts_audio, text)
+        await ws.send_bytes(audio)
+    except Exception as exc:
+        print(f"[WARN] tts_failed: {exc}", flush=True)
+
+
 def _process(wav_bytes: bytes, device_id: str, session_id: str) -> dict[str, Any]:
     started = time.time()
 
@@ -398,6 +438,7 @@ def _process(wav_bytes: bytes, device_id: str, session_id: str) -> dict[str, Any
         "action_task": route.get("action_task"),
         "face_task": route.get("face_task"),
         "plan": route.get("plan"),
+        "tts_text": str(route.get("tts_text") or ""),
         "status": "ok",
         "elapsed_ms": elapsed_ms(started),
     }
