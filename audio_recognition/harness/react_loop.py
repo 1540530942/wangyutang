@@ -14,7 +14,7 @@ from audio_recognition.tools.tool_call_adapter import build_tool_result_message
 from audio_recognition.tools.tool_validator import validate_tool_call, validate_tool_calls
 
 
-_TTS_SKIP = {"completed", "done", "dry_run", "emergency_stop", ""}
+_TTS_SKIP = {"completed", "done", "dry_run", "emergency_stop", "rejected", ""}
 
 _SKILL_TTS: dict[str, str] = {
     "move_forward": "好的，往前走",
