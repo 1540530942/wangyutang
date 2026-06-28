@@ -63,6 +63,19 @@ def _validate_duration(skill_id: str, args: dict[str, Any], registry: SkillRegis
     return value, ""
 
 
+def _normalize_skill_id_as_tool(call: ToolCall, registry: SkillRegistry) -> ToolCall:
+    """If LLM calls a skill_id directly (e.g. move_forward), reroute to its registered tool."""
+    spec = registry.get(call.tool)
+    if spec is None or spec.tool in OBSERVATION_TOOLS | SYSTEM_TOOLS:
+        return call
+    new_args = dict(call.args)
+    new_args.setdefault("skill_id", call.tool)
+    normalized = call.copy(deep=True)
+    normalized.tool = spec.tool
+    normalized.args = new_args
+    return normalized
+
+
 def validate_tool_call(
     envelope: DecisionEnvelope,
     call: ToolCall,
@@ -70,6 +83,7 @@ def validate_tool_call(
     catalog_path: str | Path | None = None,
 ) -> TaskStep | None:
     registry = _registry(registry_path, catalog_path)
+    call = _normalize_skill_id_as_tool(call, registry)
     envelope.t_validate = time.time()
     allowed_tools = {spec.tool for spec in registry.skills.values() if spec.enabled} | OBSERVATION_TOOLS | SYSTEM_TOOLS
     if call.tool not in allowed_tools:
