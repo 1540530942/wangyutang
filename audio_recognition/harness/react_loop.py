@@ -301,7 +301,7 @@ def decide_transcript(
     device_id: str = "turbopi-01",
     raw: dict[str, Any] | None = None,
 ) -> DecisionEnvelope:
-    envelope = DecisionEnvelope(device_id=device_id, source=source, transcript=str(text or "").strip(), raw=raw or {})
+    envelope = DecisionEnvelope(device_id=device_id, source=source, transcript=str(text or "").strip(), raw=raw or {}, dispatch_mode=dispatch_mode)
     envelope.source_chain.append({"node": source, "stage": "received", "ts": envelope.t_created})
     catalog_path = resolve_catalog_path(base_dir, router_config)
     registry_path = resolve_registry_path(base_dir, router_config)
