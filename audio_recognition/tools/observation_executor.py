@@ -132,10 +132,22 @@ def execute_observation_tool(envelope: DecisionEnvelope, call: ToolCall, cloud_c
             task = capture_payload.get("task") if isinstance(capture_payload.get("task"), dict) else {}
             observation["data"] = _wait_for_latest_frame(camera_server, task, dict(call.args or {})) if task.get("id") else capture_payload
         elif call.tool == "front_distance":
-            sensor_server = str(cloud_config.get("sensor_server") or cloud_config.get("camera_server") or "").rstrip("/")
-            if not sensor_server:
-                raise RuntimeError("sensor_server or camera_server is required")
-            observation["data"] = _get_json(f"{sensor_server}/api/sonar")
+            action_server = str(cloud_config.get("action_server") or "").rstrip("/")
+            if not action_server:
+                raise RuntimeError("action_server is required for front_distance")
+            raw = _get_json(f"{action_server}/api/sonar", timeout=8)
+            now = time.time()
+            dist = float(raw.get("distance_cm") or -1)
+            available = bool(raw.get("ok")) and dist > 0
+            observation["data"] = {
+                "available": available,
+                "front_distance_estimate_cm": dist if available else None,
+                "confidence": 0.9 if available else 0.0,
+                "source": "function-center-on-demand",
+                "sampled_at": now,
+                "reported_at": now,
+                "age_seconds": 0.0,
+            }
         elif call.tool == "ask_confirmation":
             observation["status"] = "pending"
             timeout_ms = int(call.args.get("timeout_ms") or int(call.args.get("timeout_s") or 10) * 1000)
