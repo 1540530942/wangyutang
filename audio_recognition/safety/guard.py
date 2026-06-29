@@ -70,7 +70,10 @@ def _latest_front_distance_observation(envelope: DecisionEnvelope) -> tuple[dict
     observation = _latest_completed_observation(envelope, "front_distance")
     if observation is not None:
         return observation, "front_distance"
-    return _latest_completed_observation(envelope, "camera_snapshot"), "camera_snapshot"
+    obs = _latest_completed_observation(envelope, "camera_snapshot")
+    if obs is not None:
+        return obs, "camera_snapshot"
+    return _latest_completed_observation(envelope, "inspect_scene"), "inspect_scene"
 
 
 def _front_distance_estimate(observation: dict[str, Any] | None) -> float | None:
@@ -175,7 +178,7 @@ def _check_skill_preconditions(
     for condition in spec.pre_conditions:
         if condition == "recent_camera_snapshot":
             front_observation, front_observation_tool = _latest_front_distance_observation(envelope)
-            ttl = front_ttl if front_observation_tool == "front_distance" else camera_ttl
+            ttl = front_ttl if front_observation_tool in ("front_distance", "inspect_scene") else camera_ttl
             if not _is_recent_observation(front_observation, ttl, now):
                 return _reject_with_safety_result(
                     envelope,
@@ -209,6 +212,10 @@ def _check_skill_preconditions(
                     spec=spec,
                     detail={"required_observation": "front_distance_or_camera_snapshot"},
                 )
+            if front_observation_tool == "inspect_scene":
+                # VLM already analyzed the scene; LLM decided to proceed — skip numeric distance check
+                result["checks"].append("inspect_scene_used_as_distance_fallback")
+                continue
             front_data = _front_distance_data(front_observation)
             if front_observation_tool == "front_distance" or any(key in front_data for key in ("available", "confidence", "age_seconds", "reported_at")):
                 freshness_error = _front_distance_freshness_error(front_data, front_ttl, now)
