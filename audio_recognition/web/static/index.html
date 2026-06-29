@@ -129,7 +129,10 @@
           </div>
 
           <textarea id="asrResult" readonly placeholder="ASR 识别文本"></textarea>
-          <pre id="asrRaw">{}</pre>
+          <div class="pre-wrap">
+            <button id="copyRawBtn" class="copy-btn" type="button" title="复制">复制</button>
+            <pre id="asrRaw">{}</pre>
+          </div>
         </section>
 
         <section class="panel camera-panel">

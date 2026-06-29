@@ -471,6 +471,39 @@ pre {
   font-size: 12px;
 }
 
+.pre-wrap {
+  position: relative;
+}
+
+.pre-wrap pre {
+  padding-top: 32px;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  padding: 3px 10px;
+  font-size: 11px;
+  border-radius: 6px;
+  background: var(--line);
+  color: var(--muted);
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.copy-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.copy-btn.copied {
+  background: #1f7a68;
+  color: #fff;
+}
+
 .camera-frame {
   display: grid;
   min-height: 250px;

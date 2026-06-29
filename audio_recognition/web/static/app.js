@@ -956,6 +956,24 @@ showEventsBtn.addEventListener("click", () => {
   resultsEl.classList.add("hidden");
 });
 
+$("#copyRawBtn")?.addEventListener("click", () => {
+  const text = asrRawEl?.textContent || "";
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = $("#copyRawBtn");
+    btn.textContent = "已复制 ✓";
+    btn.classList.add("copied");
+    window.setTimeout(() => {
+      btn.textContent = "复制";
+      btn.classList.remove("copied");
+    }, 1500);
+  }).catch(() => {
+    const range = document.createRange();
+    range.selectNode(asrRawEl);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+  });
+});
+
 drawMeter();
 loadActionSettings().catch(console.error);
 refresh().catch(showError);
