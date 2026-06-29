@@ -202,7 +202,8 @@ def _check_skill_preconditions(
                 )
         elif condition == "front_distance_clear":
             front_observation, front_observation_tool = _latest_front_distance_observation(envelope)
-            ttl = front_ttl if front_observation_tool == "front_distance" else camera_ttl
+            inspect_scene_ttl = _int_default(registry, "observation_ttl_ms", "inspect_scene", 30000)
+            ttl = front_ttl if front_observation_tool == "front_distance" else (inspect_scene_ttl if front_observation_tool == "inspect_scene" else camera_ttl)
             if not _is_recent_observation(front_observation, ttl, now):
                 return _reject_with_safety_result(
                     envelope,
