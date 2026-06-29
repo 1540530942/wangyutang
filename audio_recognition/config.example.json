@@ -41,7 +41,7 @@
     "min_confidence": 0.65,
     "react_agent": {
       "mode": "llm",
-      "max_steps": 8,
+      "max_steps": 12,
       "prompt_path": "agent/prompts/walle_system_prompt.md",
       "llm": {
         "endpoint": "https://www.wangyutang.cn/common/api/llm/qwen3-32b/chat/completions",

@@ -364,7 +364,7 @@ def decide_transcript(
         envelope.add_error("react_agent", str(exc), {"mode_required": "llm"})
         envelope.reasoning_summary = "LLM ReAct agent unavailable; no rule fallback is allowed."
         return envelope
-    max_steps = int(((router_config or {}).get("react_agent") or {}).get("max_steps") or 8)
+    max_steps = int(((router_config or {}).get("react_agent") or {}).get("max_steps") or 12)
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": agent._system_prompt()},
         {"role": "user", "content": f"/no_think\n用户原始指令: {envelope.transcript}"},
