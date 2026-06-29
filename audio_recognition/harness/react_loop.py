@@ -436,7 +436,9 @@ def decide_transcript(
         messages.append(build_tool_result_message(call.call_id, call.tool, result))
         envelope.react_turns[-1]["tool_result"] = result
         envelope.react_messages = list(messages)
-        if result.get("status") not in {"completed", "dry_run"} or task.skill_id == "emergency_stop":
+        if task.skill_id == "emergency_stop":
+            break
+        if result.get("status") not in {"completed", "dry_run"} and task.route != "face":
             break
     else:
         envelope.add_error("react_agent", "max_steps_exceeded", {"max_steps": max_steps})

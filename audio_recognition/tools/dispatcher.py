@@ -189,7 +189,9 @@ def dispatch_envelope(
             continue
         result = dispatch_task(envelope, task, cloud_config=cloud_config, source=source, dispatch_mode=envelope.dispatch_mode)
         results.append(result)
-        if task.status != "completed" or task.skill_id == "emergency_stop":
+        if task.skill_id == "emergency_stop":
+            break
+        if task.status != "completed" and task.route != "face":
             break
     envelope.dispatch_results = results
     envelope.t_dispatch_end = time.time()
