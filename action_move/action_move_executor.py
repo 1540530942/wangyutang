@@ -304,14 +304,9 @@ def execute_base_turn(skill: dict[str, Any], defaults: dict[str, Any], dry_run: 
 
 
 def execute_rgb_light(skill: dict[str, Any], defaults: dict[str, Any], dry_run: bool) -> None:
-    rgb_cfg = skill.get("rgb", {})
-    mode = str(rgb_cfg.get("mode", "settings"))
+    mode = str(skill.get("rgb", {}).get("mode", "settings"))
     if mode == "off":
         red = green = blue = 0
-    elif mode == "fixed":
-        red = int(round(clamp(float(rgb_cfg.get("red", 0)), 0.0, 255.0)))
-        green = int(round(clamp(float(rgb_cfg.get("green", 0)), 0.0, 255.0)))
-        blue = int(round(clamp(float(rgb_cfg.get("blue", 0)), 0.0, 255.0)))
     else:
         red = int(defaults.get("rgb_red", 0))
         green = int(defaults.get("rgb_green", 0))
