@@ -147,14 +147,144 @@ function setVadLiveState(text, active = false) {
   if (stopVadBtn) stopVadBtn.disabled = !active;
 }
 
+function buildContextDisplay(wsResult, routeData) {
+  const envelope = routeData?.envelope || {};
+  const ctx = {};
+
+  // 识别信息
+  const text = wsResult?.route_text || wsResult?.text || envelope.transcript || "";
+  if (text) ctx["识别文本"] = text;
+  if (wsResult?.wake_status) ctx["唤醒状态"] = wsResult.wake_status === "awake" ? "已唤醒" : wsResult.wake_status;
+  if (wsResult?.status) ctx["识别状态"] = wsResult.status;
+  if (wsResult?.elapsed_ms) ctx["识别耗时"] = `${wsResult.elapsed_ms}ms`;
+
+  // 执行计划
+  const plan = routeData?.plan || (envelope.raw || {}).plan;
+  const skillId = plan?.skill_id || wsResult?.skill_id || routeData?.skill_id;
+  if (skillId || plan) {
+    ctx["执行计划"] = {
+      动作: skillId || "(无)",
+      路由: plan?.route || null,
+      置信度: plan?.confidence ?? null,
+      规划器: plan?.planner || null,
+    };
+  }
+
+  // 安全检查
+  const safety = envelope.safety_result;
+  if (safety && (safety.allowed !== undefined || (safety.checks || []).length)) {
+    ctx["安全检查"] = {
+      通过: safety.allowed,
+      原因: safety.reason || null,
+      检查项: safety.checks || [],
+    };
+    if (!safety.allowed && safety.risk) ctx["安全检查"]["风险等级"] = safety.risk;
+  }
+
+  // 执行任务
+  const tasks = envelope.tasks || [];
+  if (tasks.length) {
+    ctx["执行任务"] = tasks.map((t) => {
+      const item = { 动作: t.skill_id, 状态: t.status };
+      if (t.error) item["错误"] = t.error;
+      if (t.duration_ms) item["耗时ms"] = t.duration_ms;
+      return item;
+    });
+  }
+
+  // 观测记录
+  const obs = envelope.observations || [];
+  if (obs.length) {
+    ctx["观测记录"] = obs.map((o) => {
+      const d = o.data || {};
+      const item = { 工具: o.tool, 状态: o.status };
+      if (o.tool === "front_distance") {
+        if (d.available) {
+          item["距离cm"] = d.front_distance_estimate_cm;
+          item["置信度"] = d.confidence;
+        } else {
+          item["摘要"] = "传感器不可用";
+          if (o.error) item["错误"] = o.error;
+        }
+      } else if (o.tool === "inspect_scene") {
+        const answer = d.answer || "";
+        item["场景描述"] = answer.length > 120 ? `${answer.slice(0, 120)}…` : answer || "(空)";
+        if (d.vision_model) item["视觉模型"] = d.vision_model;
+      } else if (o.tool === "camera_snapshot") {
+        item["摘要"] = "已拍照";
+      }
+      if (o.error && o.tool !== "front_distance") item["错误"] = o.error;
+      return item;
+    });
+  }
+
+  // LLM推理过程
+  const reactTurns = envelope.react_turns || [];
+  if (reactTurns.length) {
+    ctx["LLM推理过程"] = {
+      总轮次: reactTurns.length,
+      步骤: reactTurns.map((t) => {
+        const tc = t.assistant_tool_call || {};
+        const r = t.tool_result || {};
+        const st = r.status || (r.ok === false ? "failed" : r.ok === true ? "ok" : "?");
+        return `[${t.turn}] ${tc.tool} → ${st}`;
+      }),
+    };
+  }
+
+  // 机器人回复
+  const finalResp = envelope.final_response;
+  if (finalResp && !["done", "completed", "dry_run", "emergency_stop", "rejected", ""].includes(finalResp)) {
+    ctx["机器人回复"] = finalResp;
+  }
+
+  // TTS 播报
+  if (routeData?.tts_text) ctx["TTS播报"] = routeData.tts_text;
+
+  // 动作派发
+  if (routeData?.action_task) ctx["动作队列任务"] = routeData.action_task;
+  if (routeData?.action_error) ctx["动作错误"] = routeData.action_error;
+  if (routeData?.face_task) ctx["表情任务"] = routeData.face_task;
+
+  // 耗时统计
+  const timing = {};
+  if (envelope.t_agent_start && envelope.t_agent_end) {
+    timing["LLM推理"] = `${((envelope.t_agent_end - envelope.t_agent_start) * 1000).toFixed(0)}ms`;
+  }
+  if (wsResult?.elapsed_ms) timing["识别链路"] = `${wsResult.elapsed_ms}ms`;
+  if (Object.keys(timing).length) ctx["耗时统计"] = timing;
+
+  // 错误记录
+  if ((envelope.errors || []).length) ctx["错误记录"] = envelope.errors;
+
+  // 原始消息
+  ctx["_原始消息"] = wsResult;
+
+  return ctx;
+}
+
+async function fetchAndRenderEnrichedContext(wsResult) {
+  asrResultEl.value = wsResult?.route_text || wsResult?.text || "";
+  asrRawEl.textContent = JSON.stringify(wsResult, null, 2);
+  // Wake-only events without routing don't have an envelope
+  if (wsResult?.status === "wake_word" && !wsResult?.skill_id && !wsResult?.route_text) return;
+  try {
+    const envelopeData = await api("./api/envelopes/latest");
+    if (!envelopeData?.envelope) return;
+    const ctx = buildContextDisplay(wsResult, { envelope: envelopeData.envelope });
+    asrRawEl.textContent = JSON.stringify(ctx, null, 2);
+  } catch (_) {
+    // Keep the basic display on failure
+  }
+}
+
 function renderVadRealtimeResult() {
   if (!vadRealtimeResult) {
     asrResultEl.value = "";
     asrRawEl.textContent = "{}";
     return;
   }
-  asrResultEl.value = vadRealtimeResult.route_text || vadRealtimeResult.text || "";
-  asrRawEl.textContent = JSON.stringify(vadRealtimeResult, null, 2);
+  fetchAndRenderEnrichedContext(vadRealtimeResult).catch(console.error);
 }
 
 function startManualTimer() {
@@ -245,7 +375,8 @@ async function routeTranscript(asrData, wavPath = "") {
     raw: { asr: asrData },
   });
   asrResultEl.value = data.result?.text || asrData.text || "";
-  asrRawEl.textContent = JSON.stringify(data, null, 2);
+  const ctx = buildContextDisplay({ text: asrData.text, status: "web_recording" }, data);
+  asrRawEl.textContent = JSON.stringify(ctx, null, 2);
   await refresh();
 }
 
@@ -268,7 +399,8 @@ async function sendTextCommand() {
     raw: { input_mode: "web_input" },
   });
   asrResultEl.value = data.result?.text || text;
-  asrRawEl.textContent = JSON.stringify(data, null, 2);
+  const ctx = buildContextDisplay({ text, status: "web_text_input" }, data);
+  asrRawEl.textContent = JSON.stringify(ctx, null, 2);
   await refresh();
   if (data.action_error || data.face_error) {
     statusEl.textContent = `指令派发失败：${data.action_error || data.face_error}`;

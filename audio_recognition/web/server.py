@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from audio_recognition.core.envelope import DecisionEnvelope
 from audio_recognition.harness.react_loop import route_transcript
 from audio_recognition.storage.case_store import append_case, build_case_id, copy_audio_file, find_case, load_cases, write_audio_bytes
-from audio_recognition.storage.envelope_store import list_envelopes, load_envelope, save_envelope
+from audio_recognition.storage.envelope_store import envelope_paths, list_envelopes, load_envelope, save_envelope
 from audio_recognition.storage.replay import replay_envelope
 
 
@@ -616,6 +616,15 @@ def get_intermediate_case(case_id: str) -> dict[str, Any]:
 def api_list_envelopes(limit: int = 50) -> dict[str, Any]:
     safe_limit = max(1, min(limit, 500))
     return {"envelopes": list(reversed(list_envelopes(DATA_DIR, limit=safe_limit)))}
+
+
+@app.get("/api/envelopes/latest")
+def api_get_latest_envelope() -> dict[str, Any]:
+    latest_path = envelope_paths(DATA_DIR)["latest"]
+    if not latest_path.exists():
+        raise HTTPException(status_code=404, detail="no envelopes yet")
+    data = json.loads(latest_path.read_text(encoding="utf-8-sig"))
+    return {"envelope": data}
 
 
 @app.get("/api/envelopes/{envelope_id}")
