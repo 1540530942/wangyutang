@@ -12,6 +12,7 @@ def execute_planned_task(
     text: str,
     cloud_config: dict[str, Any] | None,
     source: str,
+    settings_override: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     cloud_config = cloud_config or {}
     action_task: dict[str, Any] | None = None
@@ -48,6 +49,7 @@ def execute_planned_task(
                     str(cloud_config.get("action_server") or ""),
                     plan.skill_id,
                     source=source,
+                    settings_override=settings_override or dict(plan.metadata.get("settings_override") or {}),
                 )
             except Exception as exc:  # noqa: BLE001
                 action_error = str(exc)

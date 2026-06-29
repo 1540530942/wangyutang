@@ -32,10 +32,18 @@ def resolve_skill(text: str, catalog_path: str | Path) -> dict[str, Any] | None:
     return None
 
 
-def create_action_task(action_server: str, skill_id: str, source: str = "audio_recognition") -> dict[str, Any]:
+def create_action_task(
+    action_server: str,
+    skill_id: str,
+    source: str = "audio_recognition",
+    settings_override: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     if not action_server:
         raise RuntimeError("action_server is required")
-    body = json.dumps({"action": skill_id, "source": source, "ttl_seconds": 120}).encode("utf-8")
+    payload: dict[str, Any] = {"action": skill_id, "source": source, "ttl_seconds": 120}
+    if settings_override:
+        payload["settings_override"] = settings_override
+    body = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
         f"{action_server.rstrip('/')}/api/tasks",
         data=body,

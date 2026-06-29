@@ -12,7 +12,7 @@ from audio_recognition.tools.executors import execute_planned_task
 
 
 def _planned_from_task(task: TaskStep) -> PlannedTask:
-    return PlannedTask(skill_id=task.skill_id, route="face" if task.route == "face" else "action", transcript="", metadata={"task_id": task.task_id})
+    return PlannedTask(skill_id=task.skill_id, route="face" if task.route == "face" else "action", transcript="", metadata={"task_id": task.task_id, "settings_override": task.settings_override})
 
 
 def _post_json(url: str, payload: dict[str, Any], timeout: float = 12) -> dict[str, Any]:

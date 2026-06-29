@@ -40,6 +40,7 @@ class TaskStep(BaseModel):
     status: TaskStatus = "pending"
     result: dict[str, Any] = Field(default_factory=dict)
     error: str = ""
+    settings_override: dict[str, Any] = Field(default_factory=dict)
 
 
 class DecisionEnvelope(BaseModel):

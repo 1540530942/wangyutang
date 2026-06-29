@@ -63,6 +63,7 @@ class ActionRequest(BaseModel):
     note: str = Field("", max_length=200)
     ttl_seconds: int = Field(30, ge=5, le=300)
     verification_code: str = Field("", max_length=20)
+    settings_override: dict[str, int] = Field(default_factory=dict)
 
 
 class ActionSettings(BaseModel):
@@ -296,6 +297,9 @@ def create_task(payload: ActionRequest) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail="a motion task is already active")
     now = time.time()
     settings = load_settings()
+    for key in ("rgb_red", "rgb_green", "rgb_blue"):
+        if key in payload.settings_override:
+            settings[key] = max(0, min(255, int(payload.settings_override[key])))
     task = {
         "id": f"{int(now * 1000)}-{secrets.token_hex(3)}",
         "action": payload.action,

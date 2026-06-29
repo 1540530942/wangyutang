@@ -85,6 +85,34 @@ def validate_tool_call(
     registry = _registry(registry_path, catalog_path)
     call = _normalize_skill_id_as_tool(call, registry)
     envelope.t_validate = time.time()
+
+    if call.tool == "set_rgb_color":
+        args = _normalize_args(call.tool, dict(call.args))
+        wait_until = str(args.get("wait_until") or "completed")
+        if wait_until not in {"accepted", "completed"}:
+            _append_validator_error(envelope, _reject(call, "invalid_wait_until"))
+            return None
+        def _clamp_rgb(v: Any) -> int:
+            return max(0, min(255, int(round(float(v)))))
+        settings_override = {
+            "rgb_red": _clamp_rgb(args.get("red", 0)),
+            "rgb_green": _clamp_rgb(args.get("green", 0)),
+            "rgb_blue": _clamp_rgb(args.get("blue", 0)),
+        }
+        accepted = call.model_copy(deep=True)
+        accepted.args = {**args, "skill_id": "rgb_on"}
+        accepted.status = "validated"
+        envelope.validated_tool_calls.append(accepted)
+        task = TaskStep(
+            skill_id="rgb_on",
+            route="action",
+            order=int(args.get("order") or len(envelope.tasks) + 1),
+            wait_until=wait_until,
+            settings_override=settings_override,
+        )
+        envelope.tasks.append(task)
+        return task
+
     allowed_tools = {spec.tool for spec in registry.skills.values() if spec.enabled} | OBSERVATION_TOOLS | SYSTEM_TOOLS
     if call.tool not in allowed_tools:
         _append_validator_error(envelope, _reject(call, "unsupported_tool"))

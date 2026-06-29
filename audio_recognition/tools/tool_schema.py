@@ -148,6 +148,24 @@ def build_react_tools_schema(registry_path: str | Path | None = None, catalog_pa
         {
             "type": "function",
             "function": {
+                "name": "set_rgb_color",
+                "description": "Set the robot's RGB lights to a specific color by providing red, green, and blue values. Use this when the user asks to change the light color (e.g., 变成红色, 蓝色灯光, 调成绿色). You must know the color's RGB values — e.g., red=(255,0,0), green=(0,255,0), blue=(0,0,255), yellow=(255,200,0), purple=(180,0,255), white=(255,255,255), orange=(255,100,0), pink=(255,80,160), cyan=(0,255,255).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "red": {"type": "integer", "minimum": 0, "maximum": 255, "description": "Red channel (0-255)"},
+                        "green": {"type": "integer", "minimum": 0, "maximum": 255, "description": "Green channel (0-255)"},
+                        "blue": {"type": "integer", "minimum": 0, "maximum": 255, "description": "Blue channel (0-255)"},
+                        **common,
+                    },
+                    "required": ["red", "green", "blue"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "finish",
                 "description": "Finish the ReAct loop when all requested positive commands are handled.",
                 "parameters": {"type": "object", "properties": {"message": {"type": "string"}, "final": {"type": "string"}}, "additionalProperties": False},
