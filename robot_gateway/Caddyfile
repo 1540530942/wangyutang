@@ -11,6 +11,8 @@
 		respond `{"status":"ok","service":"robot-gateway"}` 200
 	}
 
+	redir /slam /slam/ 308
+
 	handle_path /camera/* {
 		reverse_proxy {$CAMERA_UPSTREAM:camera-snapshot:8099}
 	}
@@ -33,10 +35,6 @@
 
 	handle_path /robot/* {
 		reverse_proxy {$ROBOT_UPSTREAM:pi5-robot:8093}
-	}
-
-	handle /slam {
-		redir /slam/ 308
 	}
 
 	handle_path /slam/* {
