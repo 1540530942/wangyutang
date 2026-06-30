@@ -18,6 +18,7 @@ from typing import Any
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_SERVER = "https://www.wangyutang.cn/action"
+# Cloud action_move reports completed motion to slam_mapping; the Pi poller keeps executing the same task protocol.
 IDLE_HEARTBEAT_SECONDS = 5.0
 ACTION_TIMEOUT_SECONDS = 20
 DIAGNOSTIC_HEARTBEAT_SECONDS = 30.0
