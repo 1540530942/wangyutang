@@ -102,3 +102,21 @@
 - Local validation:
   - Passed static checks that homepage contains `href="/slam/"`, no longer says old SLAM is retired, and Caddyfile contains the `/slam` redirect.
 - Public validation: pending deployment.
+
+## Gateway Homepage Public Fix
+
+- Date: 2026-07-01
+- Purpose: Fix user-visible access from `https://www.wangyutang.cn/` and slashless `/slam`.
+- Changed files:
+  - `robot_gateway/site/index.html`
+  - `robot_gateway/site/styles.css`
+  - `robot_gateway/Caddyfile`
+- Public validation:
+  - Passed: `GET https://www.wangyutang.cn/` returns homepage containing `href="/slam/"` and `实时构图`.
+  - Passed: `GET https://www.wangyutang.cn/slam` redirects/opens `https://www.wangyutang.cn/slam/` and returns page containing `mapCanvas`.
+  - Passed: `GET https://www.wangyutang.cn/slam/` returns visualization page.
+  - Passed: `GET https://www.wangyutang.cn/slam/api/state?include_map=true` returns pose with `yaw_deg` and `trail`.
+- Real-time validation:
+  - Posted an odometry probe with source `realtime-ui-probe-*`.
+  - Confirmed public API changed immediately from `yaw_deg=90.0` to `yaw_deg=90.57`, `source` changed to the probe value, `updated_at` increased, and `trail_len` increased from `4` to `5`.
+  - Restored public visualization state to pose `x_m=0.2`, `y_m=0.2`, `yaw_deg=90.0`, `distance_travelled_cm=40.0`, `trail_len=4`, occupied cells with value `100`: `1`.
