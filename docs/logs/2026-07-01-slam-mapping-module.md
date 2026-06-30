@@ -79,4 +79,10 @@
   - Passed: `python3 -m compileall -q slam_mapping`
   - Passed: `PYTHONPATH=slam_mapping python3 -m unittest discover -s slam_mapping/tests -v`
   - Passed local HTTP smoke on port `18301`: `/`, `/static/style.css`, `/static/app.js`, `/api/state?include_map=true` returned 200.
-- Public validation: pending deployment.
+- Public validation:
+  - Passed: `GET https://www.wangyutang.cn/slam/` returned HTML containing `mapCanvas`.
+  - Passed: `GET https://www.wangyutang.cn/slam/static/style.css` returned 200.
+  - Passed: `GET https://www.wangyutang.cn/slam/static/app.js` returned 200.
+  - Passed: `GET https://www.wangyutang.cn/slam/api/state?include_map=true` returned live state with `trail`.
+  - Seeded visual verification state through public API: pose `x_m=0.2`, `y_m=0.2`, `yaw_deg=90.0`, `distance_travelled_cm=40.0`, `trail_len=4`, `map_available=true`, occupied cells with value `100`: `1`.
+  - Browser screenshot was not captured in the local environment because Playwright/Chromium are not installed; HTTP-level checks prove the public route, assets, and live data contract are available.
