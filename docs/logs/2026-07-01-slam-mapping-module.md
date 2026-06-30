@@ -39,7 +39,19 @@
   - Passed: `PYTHONPATH=slam_mapping python3 -m unittest discover -s slam_mapping/tests -v`
   - Passed: `PYTHONPATH=action_move python3 -m unittest discover -s action_move/tests -v`
   - Not run: `docker compose config --quiet` because Docker CLI is not installed in the current environment.
-- Server validation: not deployed yet.
+- Server validation:
+  - Deployed by GitHub push workflows to `feature/llm-manager`.
+  - Public health passed: `https://www.wangyutang.cn/slam/api/health`.
+  - Public action health passed after packaging fix: `https://www.wangyutang.cn/action/api/health`.
+  - Fixed deployment issue: `action_move/Dockerfile` originally did not copy `slam_reporting.py`, causing `action-move` startup failure.
+  - Fixed runtime issue: `slam_mapping` odometry `source` limit was too short for real action task ids, causing HTTP 422.
+- Real-car validation:
+  - Passed: `python3 slam_mapping/real_car_verify.py --action-url https://www.wangyutang.cn/action --slam-url https://www.wangyutang.cn/slam`.
+  - Forward 20 cm task `1782841130082-041329`: `status=complete`, `device_id=turbopi-01`, `slam_update.ok=true`, pose `x_m=0.2`, `y_m=0.0`, `distance_travelled_cm=20.0`.
+  - Turn-left 90 degree task `1782841135979-a22ee5`: `status=complete`, `device_id=turbopi-01`, `slam_update.ok=true`, pose `yaw_deg=90.0`.
+  - Forward-after-turn task `1782841139196-d6fb4e`: `status=complete`, `device_id=turbopi-01`, `slam_update.ok=true`, pose `x_m=0.2`, `y_m=0.2`, `distance_travelled_cm=40.0`.
+  - Front 80 cm scan check: `map_available=true`, occupied-grid cells with value `100`: `1`.
+  - Restored action settings after verification: `unit_distance_cm=5.0`, `turn_angle_deg=5.0`, `sensitivity=0.5`, RGB `20/100/25`.
 - Known issues:
   - The occupancy grid is intentionally simple and should be treated as a pluggable API placeholder, not a production-grade SLAM backend.
   - `action_move` has not yet been wired to query this service before/after each motion.
