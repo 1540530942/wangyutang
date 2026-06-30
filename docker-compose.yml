@@ -48,6 +48,8 @@ services:
     container_name: action-move
     env_file:
       - .env
+    environment:
+      ACTION_SLAM_MAPPING_URL: http://slam-mapping:8301
     ports:
       - "8094:8094"
     volumes:
@@ -123,6 +125,26 @@ services:
       - pi5_robot_episodes:/app/episodes
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8093/api/health', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  slam-mapping:
+    image: ${SLAM_MAPPING_IMAGE:-slam-mapping:local}
+    build:
+      context: ./slam_mapping
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.12-slim}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+    container_name: slam-mapping
+    env_file:
+      - .env
+    ports:
+      - "8301:8301"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8301/api/health', timeout=3).read()"]
       interval: 30s
       timeout: 5s
       retries: 3

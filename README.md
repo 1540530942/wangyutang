@@ -11,6 +11,7 @@ This directory gathers the projects deployed behind `110.40.154.41` and the `wan
 | `action_move/` | Robot motion API and TurboPi chassis/servo control wrapper | direct service port |
 | `audio_recognition/` | Voice recognition and robot interaction service | direct service port |
 | `pi5_robot/` | Raspberry Pi 5 patrol robot MVP console, simulation robotd/visiond/harnessd, and hardware integration scaffold | direct service port |
+| `slam_mapping/` | Optional pose and occupancy-grid module for SLAM-style motion feedback | direct service port |
 | `smile_face/` | Synchronized Wall-E-like robot expression screen for web and Raspberry Pi LCD kiosk display | direct service port |
 
 The repository is now focused on robot-platform services. Retired portal, web-manager, remote-control, remote-sensing, paper-learning, and SLAM experiment modules have been removed from the active runtime. `robot_gateway/` keeps `https://www.wangyutang.cn/` as a lightweight robot-only entrypoint.
@@ -47,6 +48,7 @@ http://127.0.0.1:8099/              camera snapshot service
 http://127.0.0.1:8094/              action move service
 http://127.0.0.1:8095/              audio recognition service
 http://127.0.0.1:8093/              Pi5 robot console
+http://127.0.0.1:8301/              SLAM mapping service
 http://127.0.0.1:8096/              Smile Face robot expression screen
 ```
 

@@ -101,6 +101,35 @@ cloud task
         └─ reset_pose     → 零速度 + servo 1/2 → 1500
 ```
 
+## SLAM Pose Reporting
+
+When `ACTION_SLAM_MAPPING_URL` is set, the cloud service reports completed base motion tasks to the optional `slam_mapping` service:
+
+```text
+action_move /api/tasks/result complete
+  → POST $ACTION_SLAM_MAPPING_URL/api/odom
+  → slam_mapping updates pose and travelled distance
+```
+
+Default in Docker Compose:
+
+```text
+ACTION_SLAM_MAPPING_URL=http://slam-mapping:8301
+```
+
+Current odometry mapping:
+
+| Skill | SLAM update |
+|---|---|
+| `move_forward` | `dx_m = unit_distance_cm / 100` |
+| `move_backward` | `dx_m = -unit_distance_cm / 100` |
+| `move_left` | `dy_m = unit_distance_cm / 100` |
+| `move_right` | `dy_m = -unit_distance_cm / 100` |
+| `turn_left` | `dyaw_rad = +turn_angle_deg` |
+| `turn_right` | `dyaw_rad = -turn_angle_deg` |
+
+If SLAM is unavailable, motion completion still succeeds and the task stores `slam_update.ok=false` for diagnostics.
+
 `edge_action_poller.py` falls back to `action_move_executor.py` if the controller is unavailable.
 
 ### motor_override 路径

@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import secrets
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -12,6 +15,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from slam_reporting import slam_odometry_payload
+
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -19,6 +24,8 @@ DATA_DIR = BASE_DIR / "data"
 CATALOG_PATH = BASE_DIR / "skill_catalog.json"
 TOKEN_FILE = DATA_DIR / ".action_token"
 SETTINGS_FILE = DATA_DIR / "settings.json"
+SLAM_MAPPING_URL = os.getenv("ACTION_SLAM_MAPPING_URL", "http://slam-mapping:8301").rstrip("/")
+SLAM_TIMEOUT_SECONDS = float(os.getenv("ACTION_SLAM_TIMEOUT_SECONDS", "2.0") or 2.0)
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -189,6 +196,23 @@ def public_task(task: dict[str, Any]) -> dict[str, Any]:
     result["claim_latency_seconds"] = round(claimed_at - requested_at, 3) if requested_at and claimed_at else None
     result["completion_latency_seconds"] = round(completed_at - requested_at, 3) if requested_at and completed_at else None
     return result
+
+
+def report_slam_motion(task: dict[str, Any]) -> dict[str, Any] | None:
+    if not SLAM_MAPPING_URL:
+        return None
+    payload = slam_odometry_payload(task)
+    if payload is None:
+        return None
+    request = urllib.request.Request(
+        f"{SLAM_MAPPING_URL}/api/odom",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=SLAM_TIMEOUT_SECONDS) as response:
+        result = json.loads(response.read().decode("utf-8"))
+    return {"ok": True, "request": payload, "response": result}
 
 
 def has_active_motion_task() -> bool:
@@ -379,6 +403,17 @@ def complete_task(payload: TaskResult, x_action_token: Annotated[str | None, Hea
             task["updated_at"] = now
             if payload.status in {"complete", "failed", "rejected"}:
                 task["completed_at"] = now
+            if payload.status == "complete":
+                try:
+                    slam_update = report_slam_motion(task)
+                    if slam_update is not None:
+                        task["slam_update"] = slam_update
+                except (OSError, urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError) as exc:
+                    task["slam_update"] = {
+                        "ok": False,
+                        "error": str(exc),
+                        "url": SLAM_MAPPING_URL,
+                    }
             device_state.update(
                 {
                     "device_id": payload.device_id,

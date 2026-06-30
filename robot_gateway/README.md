@@ -18,6 +18,7 @@
 | `/audio/*` | `audio-recognition:8095` | 语音识别路由 |
 | `/common/*` | `host.docker.internal:8101` | 通用 API（ASR、TTS、视觉等） |
 | `/robot/*` | `pi5-robot:8093` | Pi5 机器人直连服务 |
+| `/slam/*` | `slam-mapping:8301` | 可选 SLAM/位姿/占用栅格服务 |
 | `/face/*` | `smile-face:8096` | 表情控制 |
 | `/api/health` | 内联响应 | 网关健康检查 |
 

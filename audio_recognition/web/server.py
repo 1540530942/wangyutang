@@ -923,8 +923,9 @@ def recognize_text(payload: TextCommand, x_audio_token: Annotated[str | None, He
         source="audio_recognition",
         device_id=payload.device_id,
     )
-    skill_id = str(routed.get("skill_id") or "")
     plan = routed.get("plan")
+    plan_skill_id = str(plan.get("skill_id") or "") if isinstance(plan, dict) else ""
+    skill_id = str(routed.get("skill_id") or plan_skill_id)
     if not skill_id:
         append_event(
             {
@@ -1016,6 +1017,7 @@ def recognize_text(payload: TextCommand, x_audio_token: Annotated[str | None, He
         "ok": True,
         "result": result,
         "case_id": case.get("case_id", ""),
+        "skill_id": skill_id,
         "skill": {"id": skill_id} if skill_id else None,
         "action_task": routed.get("action_task"),
         "action_error": routed.get("action_error", ""),

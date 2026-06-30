@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -202,7 +203,10 @@ def _run_exact_action_sequence(
             task.error = checked_task.error
             result = _append_rejected_result(envelope, task)
         else:
+            if envelope.t_dispatch_start is None:
+                envelope.t_dispatch_start = time.time()
             result = dispatch_task(envelope, task, cloud_config=cloud_config or {}, source=source, dispatch_mode=dispatch_mode)
+            envelope.t_dispatch_end = time.time()
         envelope.react_turns[-1]["tool_result"] = result
         if result.get("status") not in {"completed", "dry_run"}:
             break
@@ -303,6 +307,9 @@ def decide_transcript(
 ) -> DecisionEnvelope:
     envelope = DecisionEnvelope(device_id=device_id, source=source, transcript=str(text or "").strip(), raw=raw or {}, dispatch_mode=dispatch_mode)
     envelope.source_chain.append({"node": source, "stage": "received", "ts": envelope.t_created})
+    asr_done_at = (raw or {}).get("asr_done_at")
+    if asr_done_at:
+        envelope.t_transcribe = float(asr_done_at)
     catalog_path = resolve_catalog_path(base_dir, router_config)
     registry_path = resolve_registry_path(base_dir, router_config)
     envelope.raw.setdefault("skill_registry", {"path": str(registry_path), "catalog_fallback": str(catalog_path)})
@@ -326,7 +333,10 @@ def decide_transcript(
                 result = {"task_id": task.task_id, "skill_id": task.skill_id, "status": "rejected", "error": task.error}
                 envelope.dispatch_results.append(result)
             else:
+                if envelope.t_dispatch_start is None:
+                    envelope.t_dispatch_start = time.time()
                 result = dispatch_task(envelope, task, cloud_config=cloud_config or {}, source=source, dispatch_mode=dispatch_mode)
+                envelope.t_dispatch_end = time.time()
             envelope.react_turns[-1]["tool_result"] = result
         envelope.final_response = "emergency_stop"
         envelope.t_agent_end = __import__("time").time()
@@ -432,7 +442,10 @@ def decide_transcript(
             messages.append(build_tool_result_message(call.call_id, call.tool, result))
             envelope.react_turns[-1]["tool_result"] = result
             continue
+        if envelope.t_dispatch_start is None:
+            envelope.t_dispatch_start = time.time()
         result = dispatch_task(envelope, task, cloud_config=cloud_config or {}, source=source, dispatch_mode=dispatch_mode)
+        envelope.t_dispatch_end = time.time()
         messages.append(build_tool_result_message(call.call_id, call.tool, result))
         envelope.react_turns[-1]["tool_result"] = result
         envelope.react_messages = list(messages)

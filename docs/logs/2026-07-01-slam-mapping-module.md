@@ -1,0 +1,47 @@
+# SLAM Mapping Module
+
+- Date: 2026-07-01
+- Module: `slam_mapping`
+- Purpose: Add an optional SLAM-style pose and occupancy-grid service so motion control can query travelled distance when available, while still running without map data.
+- Changed files:
+  - `action_move/README.md`
+  - `action_move/server.py`
+  - `action_move/slam_reporting.py`
+  - `action_move/tests/test_slam_reporting.py`
+  - `slam_mapping/README.md`
+  - `slam_mapping/server.py`
+  - `slam_mapping/slam_core.py`
+  - `slam_mapping/Dockerfile`
+  - `slam_mapping/requirements.txt`
+  - `slam_mapping/tests/test_slam_core.py`
+  - `docker-compose.yml`
+  - `robot_gateway/Caddyfile`
+  - `README.md`
+  - `robot_gateway/README.md`
+  - `scripts/check-local.ps1`
+  - `scripts/tencent_apply_release.sh`
+  - `scripts/deploy_tencent.ps1`
+- Interfaces:
+  - `GET /api/health`
+  - `GET /api/state?include_map=false`
+  - `POST /api/config`
+  - `POST /api/reset`
+  - `POST /api/odom`
+  - `POST /api/scan`
+- Port: `8301`
+- Gateway route: `/slam/*`
+- Data directories/volumes: none in this first version; pose and map state are in-memory.
+- Local validation:
+  - Passed: `python3 -m compileall -q slam_mapping`
+  - Passed: `PYTHONPATH=slam_mapping python3 -m unittest discover -s slam_mapping/tests`
+  - Passed: `python3 -m compileall -q slam_mapping action_move audio_interact audio_recognition`
+  - Passed: `PYTHONPATH=slam_mapping python3 -m unittest discover -s slam_mapping/tests -v`
+  - Passed: `PYTHONPATH=action_move python3 -m unittest discover -s action_move/tests -v`
+  - Not run: `docker compose config --quiet` because Docker CLI is not installed in the current environment.
+- Server validation: not deployed yet.
+- Known issues:
+  - The occupancy grid is intentionally simple and should be treated as a pluggable API placeholder, not a production-grade SLAM backend.
+  - `action_move` has not yet been wired to query this service before/after each motion.
+- Next steps:
+  - Add a Pi-side bridge from `/cmd_vel`, wheel odometry, IMU, and range sensors into `/api/odom` and `/api/scan`.
+  - Improve from open-loop action completion odometry to wheel/IMU corrected odometry when hardware readings are available.

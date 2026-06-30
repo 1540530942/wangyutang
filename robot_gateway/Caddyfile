@@ -35,6 +35,10 @@
 		reverse_proxy {$ROBOT_UPSTREAM:pi5-robot:8093}
 	}
 
+	handle_path /slam/* {
+		reverse_proxy {$SLAM_UPSTREAM:slam-mapping:8301}
+	}
+
 	handle_path /face/* {
 		reverse_proxy {$FACE_UPSTREAM:smile-face:8096}
 	}

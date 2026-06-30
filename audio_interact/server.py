@@ -370,6 +370,7 @@ def _process(wav_bytes: bytes, device_id: str, session_id: str) -> dict[str, Any
         )
         resp.raise_for_status()
         asr_payload = resp.json()
+        asr_done_at = time.time()
         text = str(asr_payload.get("text") or "").strip()
     except Exception as exc:
         return {
@@ -409,6 +410,8 @@ def _process(wav_bytes: bytes, device_id: str, session_id: str) -> dict[str, Any
                     "asr_text": text,
                     "wake_status": wake.status,
                     "wake_message": wake.message,
+                    "asr_done_at": asr_done_at,
+                    "asr_elapsed_ms": int((asr_done_at - started) * 1000),
                 },
             },
             timeout=ROUTE_TIMEOUT,

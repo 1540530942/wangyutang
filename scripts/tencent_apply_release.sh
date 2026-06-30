@@ -73,6 +73,7 @@ for name in \
   audio-recognition \
   audio-interact \
   pi5-robot \
+  slam-mapping \
   smile-face
 do
   if docker ps -a --format '{{.Names}}' | grep -qx "$name"; then
@@ -89,6 +90,7 @@ curl -fsS http://127.0.0.1:8094/api/health >/dev/null
 curl -fsS http://127.0.0.1:8095/api/health >/dev/null
 curl -fsS http://127.0.0.1:8097/api/health >/dev/null
 curl -fsS http://127.0.0.1:8093/api/health >/dev/null
+curl -fsS http://127.0.0.1:8301/api/health >/dev/null
 curl -fsS http://127.0.0.1:8096/api/health >/dev/null
 
 echo "==> Service status"
