@@ -17,6 +17,8 @@ class SlamMapperTest(unittest.TestCase):
         self.assertEqual(snap["pose"]["x_m"], 0.2)
         self.assertEqual(snap["pose"]["y_m"], 0.0)
         self.assertEqual(snap["pose"]["source"], "move_forward_20cm")
+        self.assertGreaterEqual(len(snap["trail"]), 2)
+        self.assertEqual(snap["trail"][-1]["x_m"], 0.2)
 
     def test_turn_left_90deg_then_forward_changes_coordinate_axis(self) -> None:
         mapper = SlamMapper()

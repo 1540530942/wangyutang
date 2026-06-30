@@ -58,3 +58,25 @@
 - Next steps:
   - Add a Pi-side bridge from `/cmd_vel`, wheel odometry, IMU, and range sensors into `/api/odom` and `/api/scan`.
   - Improve from open-loop action completion odometry to wheel/IMU corrected odometry when hardware readings are available.
+
+## Visualization Update
+
+- Date: 2026-07-01
+- Purpose: Add a live browser UI at `/slam/` for pose, heading, trail, and occupancy-grid visualization.
+- Changed files:
+  - `slam_mapping/server.py`
+  - `slam_mapping/slam_core.py`
+  - `slam_mapping/static/index.html`
+  - `slam_mapping/static/style.css`
+  - `slam_mapping/static/app.js`
+  - `slam_mapping/tests/test_slam_core.py`
+  - `slam_mapping/README.md`
+- Interfaces:
+  - `GET /` now returns the visualization page.
+  - `GET /static/style.css` and `GET /static/app.js` serve UI assets.
+  - `GET /api/state?include_map=true` now includes `trail` for path drawing.
+- Local validation:
+  - Passed: `python3 -m compileall -q slam_mapping`
+  - Passed: `PYTHONPATH=slam_mapping python3 -m unittest discover -s slam_mapping/tests -v`
+  - Passed local HTTP smoke on port `18301`: `/`, `/static/style.css`, `/static/app.js`, `/api/state?include_map=true` returned 200.
+- Public validation: pending deployment.

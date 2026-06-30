@@ -2,13 +2,20 @@ from __future__ import annotations
 
 from typing import Any
 
+from pathlib import Path
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from slam_core import SlamMapper
 
 
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
+
 app = FastAPI(title="SLAM Mapping", version="0.1.0")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 mapper = SlamMapper()
 
 
@@ -72,10 +79,5 @@ def scan(update: ScanUpdate) -> dict[str, Any]:
 
 
 @app.get("/")
-def root() -> dict[str, Any]:
-    return {
-        "service": "SLAM Mapping",
-        "description": "Optional pose and occupancy-grid module for robot motion feedback.",
-        "health": "/api/health",
-        "state": "/api/state",
-    }
+def root() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")

@@ -21,6 +21,14 @@ Gateway route:
 /slam/
 ```
 
+Browser UI:
+
+```text
+https://www.wangyutang.cn/slam/
+```
+
+The page renders the occupancy grid, robot pose, heading arrow, travelled distance, data source, update time, and trail from live `/api/state?include_map=true` data.
+
 ## Run
 
 ```bash

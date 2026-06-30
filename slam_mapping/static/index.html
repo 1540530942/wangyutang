@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SLAM Mapping</title>
+    <link rel="stylesheet" href="static/style.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="map-area" aria-label="SLAM occupancy grid">
+        <canvas id="mapCanvas" width="900" height="900"></canvas>
+      </section>
+      <aside class="panel" aria-label="SLAM telemetry">
+        <header>
+          <h1>SLAM Mapping</h1>
+          <span id="statusBadge" class="badge">connecting</span>
+        </header>
+        <dl class="metrics">
+          <div><dt>X</dt><dd id="metricX">--</dd></div>
+          <div><dt>Y</dt><dd id="metricY">--</dd></div>
+          <div><dt>朝向</dt><dd id="metricYaw">--</dd></div>
+          <div><dt>累计</dt><dd id="metricDistance">--</dd></div>
+          <div><dt>地图</dt><dd id="metricMap">--</dd></div>
+          <div><dt>障碍格</dt><dd id="metricOccupied">--</dd></div>
+        </dl>
+        <div class="source">
+          <span>数据源</span>
+          <strong id="metricSource">--</strong>
+        </div>
+        <div class="source">
+          <span>更新时间</span>
+          <strong id="metricUpdated">--</strong>
+        </div>
+        <div class="legend">
+          <span><i class="robot"></i>机器人</span>
+          <span><i class="obstacle"></i>障碍</span>
+          <span><i class="unknown"></i>未知</span>
+          <span><i class="trail"></i>轨迹</span>
+        </div>
+      </aside>
+    </main>
+    <script src="static/app.js"></script>
+  </body>
+</html>

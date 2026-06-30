@@ -29,6 +29,8 @@ class SlamState:
 
 
 class SlamMapper:
+    MAX_TRAIL = 2000
+
     """Small pluggable pose/map store.
 
     It intentionally works without scan data. Odometry can keep movement
@@ -40,6 +42,8 @@ class SlamMapper:
         self.state = SlamState()
         self._grid_size = self._compute_grid_size()
         self._grid: list[list[int]] = self._new_grid()
+        self._trail: list[dict[str, float]] = []
+        self._record_trail()
 
     def configure(self, patch: dict[str, Any]) -> dict[str, Any]:
         if "map_enabled" in patch:
@@ -57,6 +61,8 @@ class SlamMapper:
     def reset(self) -> None:
         self.state = SlamState()
         self._grid = self._new_grid()
+        self._trail = []
+        self._record_trail()
 
     def update_odometry(self, dx_m: float, dy_m: float = 0.0, dyaw_rad: float = 0.0, source: str = "odometry") -> dict[str, Any]:
         cos_y = math.cos(self.state.yaw_rad)
@@ -69,6 +75,7 @@ class SlamMapper:
         self.state.distance_travelled_m += math.hypot(dx_m, dy_m)
         self.state.source = source
         self.state.updated_at = time.time()
+        self._record_trail()
         return self.snapshot(include_map=False)
 
     def update_scan(self, ranges_m: list[float], angle_min_rad: float, angle_increment_rad: float) -> dict[str, Any]:
@@ -102,6 +109,7 @@ class SlamMapper:
             },
             "config": self.config_snapshot(),
             "map_available": self.config.map_enabled,
+            "trail": self._trail[-500:],
         }
         if include_map:
             payload["map"] = self.map_snapshot()
@@ -142,6 +150,18 @@ class SlamMapper:
         if row < 0 or row >= self._grid_size or col < 0 or col >= self._grid_size:
             return None
         return row, col
+
+    def _record_trail(self) -> None:
+        self._trail.append(
+            {
+                "x_m": round(self.state.x_m, 4),
+                "y_m": round(self.state.y_m, 4),
+                "yaw_deg": round(math.degrees(self.state.yaw_rad), 2),
+                "t": self.state.updated_at,
+            }
+        )
+        if len(self._trail) > self.MAX_TRAIL:
+            self._trail = self._trail[-self.MAX_TRAIL:]
 
     @staticmethod
     def _normalize_angle(angle: float) -> float:
