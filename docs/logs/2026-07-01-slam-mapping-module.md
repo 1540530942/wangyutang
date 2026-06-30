@@ -5,6 +5,7 @@
 - Purpose: Add an optional SLAM-style pose and occupancy-grid service so motion control can query travelled distance when available, while still running without map data.
 - Changed files:
   - `action_move/README.md`
+  - `action_move/Dockerfile`
   - `action_move/server.py`
   - `action_move/slam_reporting.py`
   - `action_move/tests/test_slam_reporting.py`

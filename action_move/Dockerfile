@@ -13,6 +13,7 @@ RUN if [ -n "$PIP_INDEX_URL" ]; then python -m pip config set global.index-url "
     && pip install --no-cache-dir -r requirements.txt
 
 COPY server.py ./server.py
+COPY slam_reporting.py ./slam_reporting.py
 COPY skill_catalog.json ./skill_catalog.json
 COPY static ./static
 
