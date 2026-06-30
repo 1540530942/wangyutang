@@ -86,3 +86,19 @@
   - Passed: `GET https://www.wangyutang.cn/slam/api/state?include_map=true` returned live state with `trail`.
   - Seeded visual verification state through public API: pose `x_m=0.2`, `y_m=0.2`, `yaw_deg=90.0`, `distance_travelled_cm=40.0`, `trail_len=4`, `map_available=true`, occupied cells with value `100`: `1`.
   - Browser screenshot was not captured in the local environment because Playwright/Chromium are not installed; HTTP-level checks prove the public route, assets, and live data contract are available.
+
+## Gateway Homepage Fix
+
+- Date: 2026-07-01
+- Purpose: Make SLAM discoverable and open reliably from `https://www.wangyutang.cn/`.
+- Changed files:
+  - `robot_gateway/site/index.html`
+  - `robot_gateway/site/styles.css`
+  - `robot_gateway/Caddyfile`
+- Changes:
+  - Added a hero action and module card linking to `/slam/`.
+  - Removed stale homepage copy that said SLAM was retired.
+  - Added `/slam` -> `/slam/` redirect so the route works with or without the trailing slash.
+- Local validation:
+  - Passed static checks that homepage contains `href="/slam/"`, no longer says old SLAM is retired, and Caddyfile contains the `/slam` redirect.
+- Public validation: pending deployment.

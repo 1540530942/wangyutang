@@ -15,6 +15,7 @@
           <div class="hero-actions">
             <a class="primary" href="/camera/">查看摄像头</a>
             <a class="secondary" href="/action/">动作控制</a>
+            <a class="secondary" href="/slam/">SLAM 地图</a>
           </div>
         </div>
 
@@ -96,6 +97,12 @@
           <p>巡查机器人 MVP、仿真服务和任务日志入口。</p>
           <strong>打开 /robot/</strong>
         </a>
+        <a class="card" href="/slam/">
+          <span class="tag">SLAM</span>
+          <h2>实时构图</h2>
+          <p>查看占用栅格、位姿、朝向箭头、轨迹和障碍格统计。</p>
+          <strong>打开 /slam/</strong>
+        </a>
         <a class="card" href="/face/">
           <span class="tag">Face</span>
           <h2>表情屏</h2>
@@ -107,8 +114,8 @@
       <section class="status">
         <h2>保留边界</h2>
         <p>
-          已下线旧的论文学习、SLAM、遥感、Web Manager、Control Platform 门户和远程控制模块。
-          这个首页只作为轻量入口，不再维护模块注册表或后台聚合服务。
+          已下线旧的论文学习、遥感、Web Manager、Control Platform 门户和远程控制模块。
+          当前首页保留机器人核心入口，SLAM 地图展示来自实时位姿和占用栅格接口。
         </p>
       </section>
     </main>
