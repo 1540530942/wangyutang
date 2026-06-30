@@ -17,6 +17,7 @@ on:
       - "audio_recognition/**"
       - "audio_interact/**"
       - "pi5_robot/**"
+      - "slam_mapping/**"
       - "smile_face/**"
       - "scripts/tencent_apply_release.sh"
   workflow_dispatch:
@@ -35,6 +36,7 @@ on:
           - audio_recognition
           - audio_interact
           - pi5_robot
+          - slam_mapping
           - smile_face
 
 concurrency:
@@ -76,6 +78,7 @@ jobs:
             [audio_recognition]="audio-recognition"
             [audio_interact]="audio-interact"
             [pi5_robot]="pi5-robot"
+            [slam_mapping]="slam-mapping"
             [smile_face]="smile-face"
           )
           declare -A up_services=(
@@ -85,10 +88,11 @@ jobs:
             [audio_recognition]="audio-recognition"
             [audio_interact]="audio-interact"
             [pi5_robot]="pi5-robot"
+            [slam_mapping]="slam-mapping"
             [smile_face]="smile-face"
           )
 
-          all_modules=(robot_gateway camera_snapshot action_move audio_recognition audio_interact pi5_robot smile_face)
+          all_modules=(robot_gateway camera_snapshot action_move audio_recognition audio_interact pi5_robot slam_mapping smile_face)
           selected=()
 
           add_module() {
@@ -124,6 +128,7 @@ jobs:
               echo "$changed" | grep -Eq '^audio_recognition/' && add_module audio_recognition || true
               echo "$changed" | grep -Eq '^audio_interact/' && add_module audio_interact || true
               echo "$changed" | grep -Eq '^pi5_robot/' && add_module pi5_robot || true
+              echo "$changed" | grep -Eq '^slam_mapping/' && add_module slam_mapping || true
               echo "$changed" | grep -Eq '^smile_face/' && add_module smile_face || true
             fi
           fi
@@ -160,7 +165,7 @@ jobs:
           set -euo pipefail
           cp .env.example .env
           docker compose --env-file .env -f docker-compose.yml config --quiet
-          python -m compileall -q camera_snapshot action_move audio_recognition audio_interact pi5_robot smile_face
+          python -m compileall -q camera_snapshot action_move audio_recognition audio_interact pi5_robot slam_mapping smile_face
 
       - name: Create source release archive
         if: steps.scope.outputs.up_services != ''
@@ -183,6 +188,7 @@ jobs:
             audio_recognition \
             audio_interact \
             pi5_robot \
+            slam_mapping \
             smile_face
           echo "RELEASE_ARCHIVE=robot-platform-${GITHUB_SHA}.tgz" >> "$GITHUB_ENV"
 
@@ -295,6 +301,7 @@ jobs:
               audio-recognition) check_url audio-recognition http://127.0.0.1:8095/api/health ;;
               audio-interact) check_url audio-interact http://127.0.0.1:8097/api/health ;;
               pi5-robot) check_url pi5-robot http://127.0.0.1:8093/api/health ;;
+              slam-mapping) check_url slam-mapping http://127.0.0.1:8301/api/health ;;
               smile-face) check_url smile-face http://127.0.0.1:8096/api/health ;;
             esac
           done
