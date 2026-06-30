@@ -23,7 +23,7 @@ class OdometryUpdate(BaseModel):
     dx_m: float = Field(..., ge=-2.0, le=2.0)
     dy_m: float = Field(0.0, ge=-2.0, le=2.0)
     dyaw_rad: float = Field(0.0, ge=-6.28319, le=6.28319)
-    source: str = Field("odometry", max_length=40)
+    source: str = Field("odometry", max_length=160)
 
 
 class ScanUpdate(BaseModel):
