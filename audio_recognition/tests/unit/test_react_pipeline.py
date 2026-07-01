@@ -993,5 +993,44 @@ class LatencyTraceabilityTest(unittest.TestCase):
             self.assertEqual(getattr(original, field), getattr(loaded, field), f"{field} changed across round-trip")
 
 
+class VehicleLatencyTest(unittest.TestCase):
+    """Envelope owns the full web->server->car latency/log chain (task 2)."""
+
+    def test_vehicle_execution_extracted_from_action_task(self) -> None:
+        from audio_recognition.tools.dispatcher import _vehicle_execution_from_task
+
+        final_task = {
+            "id": "t1",
+            "status": "complete",
+            "claim_latency_seconds": 0.27,
+            "completion_latency_seconds": 1.70,
+            "output": "[INFO] 向左转 -> turn_left\n[INFO] elapsed_seconds=1.002",
+        }
+        ve = _vehicle_execution_from_task(final_task)
+        self.assertEqual(ve["vehicle_claim"], 270.0)
+        self.assertEqual(ve["vehicle_exec"], 1430.0)  # (completion - claim) * 1000
+        self.assertEqual(ve["vehicle_ros"], 1002.0)   # parsed from ROS output
+        self.assertIn("output_tail", ve)
+
+    def test_vehicle_stages_fold_into_latency_breakdown(self) -> None:
+        env = DecisionEnvelope()
+        t = 1_700_000_000.0
+        env.t_capture, env.t_transcribe = t, t + 0.3
+        env.t_dispatch_start, env.t_dispatch_end = t + 0.5, t + 2.0
+        env.vehicle_execution = {"vehicle_claim": 270.0, "vehicle_exec": 1430.0, "vehicle_ros": 1002.0}
+        lm = env.compute_latency()
+        self.assertEqual(lm["vehicle_claim"], 270.0)
+        self.assertEqual(lm["vehicle_exec"], 1430.0)
+        self.assertEqual(lm["vehicle_ros"], 1002.0)
+        self.assertIn("asr", lm)  # web-side stages still present
+
+    def test_no_vehicle_execution_leaves_latency_clean(self) -> None:
+        env = DecisionEnvelope()
+        t = 1_700_000_000.0
+        env.t_capture, env.t_transcribe = t, t + 0.3
+        lm = env.compute_latency()
+        self.assertNotIn("vehicle_claim", lm)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -78,6 +78,7 @@ class DecisionEnvelope(BaseModel):
     final_response: str = ""
     errors: list[dict[str, Any]] = Field(default_factory=list)
     latency_ms: dict[str, float] = Field(default_factory=dict)
+    vehicle_execution: dict[str, Any] = Field(default_factory=dict)
     raw: dict[str, Any] = Field(default_factory=dict)
 
     def add_error(self, stage: str, message: str, detail: dict[str, Any] | None = None) -> None:
@@ -105,5 +106,14 @@ class DecisionEnvelope(BaseModel):
             "dispatch": delta_ms(self.t_dispatch_start, self.t_dispatch_end),
             "total": delta_ms(self.t_capture or self.t_transcribe or self.t_created, self.t_dispatch_end or self.t_agent_end),
         }
+        # Car-side execution latency, reported by action_move once the edge
+        # device claims and completes the task (see vehicle_execution). Folding
+        # it in makes the envelope the single source of truth for the full
+        # web -> server -> car chain.
+        ve = self.vehicle_execution or {}
+        for key in ("vehicle_claim", "vehicle_exec", "vehicle_ros"):
+            value = ve.get(key)
+            if isinstance(value, (int, float)):
+                stages[key] = round(float(value), 1)
         self.latency_ms = {key: value for key, value in stages.items() if value is not None}
         return self.latency_ms

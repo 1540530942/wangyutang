@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 import json
 import urllib.request
@@ -9,6 +10,36 @@ from typing import Any
 from audio_recognition.core.contracts import PlannedTask
 from audio_recognition.core.envelope import DecisionEnvelope, TaskStep
 from audio_recognition.tools.executors import execute_planned_task
+
+
+def _vehicle_execution_from_task(final_task: dict[str, Any]) -> dict[str, Any]:
+    """Extract car-side execution latency/log from a completed action task.
+
+    action_move reports claim/completion latency (queue->claim, claim->done)
+    and the edge ROS controller emits ``elapsed_seconds`` in its output. This
+    folds the car layer into the envelope so the full web->server->car chain
+    is traceable in one record.
+    """
+    claim = final_task.get("claim_latency_seconds")
+    completion = final_task.get("completion_latency_seconds")
+    output = str(final_task.get("output") or "")
+    ve: dict[str, Any] = {
+        "task_id": final_task.get("id") or final_task.get("task_id") or "",
+        "status": final_task.get("status") or "",
+    }
+    if isinstance(claim, (int, float)):
+        ve["vehicle_claim"] = round(float(claim) * 1000.0, 1)
+    if isinstance(claim, (int, float)) and isinstance(completion, (int, float)):
+        ve["vehicle_exec"] = round((float(completion) - float(claim)) * 1000.0, 1)
+    match = re.search(r"elapsed_seconds=([0-9.]+)", output)
+    if match:
+        try:
+            ve["vehicle_ros"] = round(float(match.group(1)) * 1000.0, 1)
+        except ValueError:
+            pass
+    if output:
+        ve["output_tail"] = output[-600:]
+    return ve
 
 
 def _planned_from_task(task: TaskStep) -> PlannedTask:
@@ -152,6 +183,7 @@ def dispatch_task(
             else:
                 task.status = "failed"
                 task.error = str(final_task.get("error") or f"action task ended with {action_status}")
+            envelope.vehicle_execution = _vehicle_execution_from_task(final_task)
             execution["action_task"] = final_payload
         except (TimeoutError, RuntimeError, urllib.error.HTTPError, urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
             task.status = "failed"
