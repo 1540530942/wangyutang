@@ -98,6 +98,64 @@ class ActionMoveCommander:
             return json.loads(resp.read().decode())
 
 
+class SlamPoseFeedback:
+    """Command via action_move; measure actual motion from the slam pose delta.
+
+    slam integrates the edge's IMU-measured actuals when the edge reports them
+    (else commanded), so the pose delta between before/after a burst is the
+    real executed motion. This closes the loop fully automatically once the
+    edge emits ``[IMU] actual_*`` — no separate measurement wiring needed.
+
+    Stateful to fit the controller's command-then-measure call order: ``command``
+    snapshots the pre-move pose and issues the burst; ``measure`` waits for the
+    pose to advance and returns the achieved magnitude.
+    """
+
+    def __init__(
+        self,
+        commander: "ActionMoveCommander",
+        *,
+        slam_base: str = "https://www.wangyutang.cn/slam",
+        settle_timeout: float = 8.0,
+        poll_interval: float = 0.3,
+    ) -> None:
+        self._commander = commander
+        self._slam = slam_base.rstrip("/")
+        self._settle_timeout = settle_timeout
+        self._poll = poll_interval
+        self._before: dict[str, float] = {}
+
+    def _pose(self) -> dict[str, float]:
+        with urllib.request.urlopen(self._slam + "/api/state", timeout=8) as resp:
+            return json.loads(resp.read().decode()).get("pose", {})
+
+    def command(self, commanded: float, kind: MotionKind) -> None:
+        self._before = self._pose()
+        self._commander.command(commanded, kind)
+
+    def measure(self, commanded: float, kind: MotionKind) -> float:
+        import math as _math
+        import time as _time
+
+        before = self._before or self._pose()
+        deadline = _time.time() + self._settle_timeout
+        last = before
+        while _time.time() < deadline:
+            _time.sleep(self._poll)
+            cur = self._pose()
+            if cur.get("updated_at") != before.get("updated_at"):
+                last = cur
+                break
+            last = cur
+        if kind == "translate":
+            dx = float(last.get("x_m", 0)) - float(before.get("x_m", 0))
+            dy = float(last.get("y_m", 0)) - float(before.get("y_m", 0))
+            magnitude = _math.hypot(dx, dy)
+            return magnitude if commanded >= 0 else -magnitude
+        dyaw = _math.radians(float(last.get("yaw_deg", 0)) - float(before.get("yaw_deg", 0)))
+        return dyaw
+
+
 def make_measure_placeholder(measured_by: Callable[[float, MotionKind], float] | None = None):
     """Return a ``measure_fn`` for the controller.
 
