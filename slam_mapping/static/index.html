@@ -38,6 +38,34 @@
           <span><i class="unknown"></i>未知</span>
           <span><i class="trail"></i>轨迹</span>
         </div>
+        <section class="controls" aria-label="实车控制">
+          <div class="control-head">
+            <label class="switch">
+              <input type="checkbox" id="realtimeToggle" checked>
+              <span>实时追踪</span>
+            </label>
+            <label class="step">步长
+              <input type="number" id="stepCm" value="10" min="1" max="50" step="1"> cm
+            </label>
+          </div>
+          <div class="pad">
+            <button class="btn" data-cmd="move_forward">前进</button>
+            <div class="pad-mid">
+              <button class="btn" data-cmd="move_left">左移</button>
+              <button class="btn stop" data-cmd="emergency_stop">停</button>
+              <button class="btn" data-cmd="move_right">右移</button>
+            </div>
+            <button class="btn" data-cmd="move_backward">后退</button>
+          </div>
+          <div class="rotate-row">
+            <button class="btn" data-cmd="turn_left" data-angle="45">↺ 左转45°</button>
+            <button class="btn" data-cmd="turn_right" data-angle="45">↻ 右转45°</button>
+          </div>
+          <div class="control-foot">
+            <button class="btn ghost" id="resetBtn">复位里程</button>
+            <span id="cmdStatus" class="cmd-status">就绪</span>
+          </div>
+        </section>
       </aside>
     </main>
     <script src="static/app.js"></script>

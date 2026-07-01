@@ -186,3 +186,86 @@ dd {
     width: 100%;
   }
 }
+
+/* --- Vehicle control panel --- */
+.controls {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+}
+.control-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.control-head .step input {
+  width: 52px;
+  margin: 0 4px;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.pad {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+.pad-mid {
+  display: flex;
+  gap: 6px;
+}
+.rotate-row {
+  display: flex;
+  gap: 8px;
+}
+.rotate-row .btn {
+  flex: 1;
+}
+.btn {
+  min-width: 76px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, transform 0.05s;
+}
+.btn:hover { background: #eef2f6; }
+.btn:active { transform: scale(0.96); }
+.btn.stop {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #fff;
+}
+.btn.ghost {
+  background: transparent;
+  color: var(--muted);
+  min-width: auto;
+}
+.control-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.cmd-status {
+  font-size: 12px;
+  color: var(--muted);
+}
+.cmd-status.ok { color: var(--robot); }
+.cmd-status.err { color: #b91c1c; }
+.cmd-status.pending { color: var(--accent); }

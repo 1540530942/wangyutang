@@ -157,4 +157,78 @@ async function refresh() {
 }
 
 refresh();
-setInterval(refresh, 1500);
+
+// --- Real-time tracking toggle: faster polling when enabled ---
+let pollTimer = null;
+const realtimeToggle = document.getElementById("realtimeToggle");
+function applyPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  const period = realtimeToggle && realtimeToggle.checked ? 500 : 1500;
+  pollTimer = setInterval(refresh, period);
+}
+if (realtimeToggle) realtimeToggle.addEventListener("change", applyPolling);
+applyPolling();
+
+// --- Vehicle control: buttons POST to the action_move queue (same origin) ---
+const cmdStatus = document.getElementById("cmdStatus");
+const stepCm = document.getElementById("stepCm");
+
+function setCmdStatus(text, cls) {
+  if (!cmdStatus) return;
+  cmdStatus.textContent = text;
+  cmdStatus.className = `cmd-status ${cls || ""}`.trim();
+}
+
+async function sendCommand(action, settingsOverride) {
+  setCmdStatus(`下发 ${action}…`, "pending");
+  try {
+    const body = { action, source: "slam-web", ttl_seconds: 30 };
+    if (settingsOverride) body.settings_override = settingsOverride;
+    const resp = await fetch("/action/api/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      setCmdStatus(`失败: ${data.detail || resp.status}`, "err");
+      return;
+    }
+    setCmdStatus(`已下发 ${action}`, "ok");
+    refresh();
+  } catch (error) {
+    setCmdStatus(`错误: ${error.message}`, "err");
+  }
+}
+
+document.querySelectorAll(".controls .btn[data-cmd]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const cmd = btn.dataset.cmd;
+    if (cmd === "emergency_stop") {
+      sendCommand("emergency_stop");
+      return;
+    }
+    const override = {};
+    if (cmd.startsWith("move_")) {
+      const cm = Math.max(1, Math.min(50, Number(stepCm && stepCm.value) || 10));
+      override.unit_distance_cm = cm;
+    } else if (cmd.startsWith("turn_")) {
+      override.turn_angle_deg = Number(btn.dataset.angle) || 45;
+    }
+    sendCommand(cmd, override);
+  });
+});
+
+const resetBtn = document.getElementById("resetBtn");
+if (resetBtn) {
+  resetBtn.addEventListener("click", async () => {
+    setCmdStatus("复位里程…", "pending");
+    try {
+      await fetch("api/reset", { method: "POST" });
+      setCmdStatus("已复位", "ok");
+      refresh();
+    } catch (error) {
+      setCmdStatus(`错误: ${error.message}`, "err");
+    }
+  });
+}
