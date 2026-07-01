@@ -95,9 +95,11 @@ MODEL_REGISTRY: list[dict[str, Any]] = [
     },
 ]
 
-# 1x1 transparent PNG for a minimal but real vision inference.
+# A real 32x32 red/blue checker PNG — large enough for vision models to accept
+# (a 1x1 pixel often makes them error). Minimal but genuine for validation.
 _TINY_PNG_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAOUlEQVR42mO4Y2ODFdlEncCKSFXPMGrBqAVDwAJqGYRL"
+    "/agFoxYMBQtGi4pRC0YtGK0PRi0YtQCIAF5wZEzMocn+AAAAAElFTkSuQmCC"
 )
 
 
