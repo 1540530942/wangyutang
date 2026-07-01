@@ -932,5 +932,66 @@ class ReactPipelineTest(unittest.TestCase):
         self.assertTrue(envelope.safety_result["allowed"])
 
 
+class LatencyTraceabilityTest(unittest.TestCase):
+    """Locks in the timestamp + latency-breakdown contract used for problem
+    localization, replay reproduction, and RL training data."""
+
+    def _route(self, text: str, raw: dict | None = None) -> dict:
+        # Exact-action aliases bypass the LLM; patch defensively like sibling tests.
+        with patch(
+            "audio_recognition.agent.react_agent.requests.post",
+            side_effect=[action_response("turn_left", text=text), finish_response()],
+        ):
+            return route_transcript(
+                base_dir=BASE_DIR,
+                text=text,
+                router_config=ROUTER_CONFIG,
+                cloud_config={},
+                route_action=False,
+                source="unit",
+                raw=raw,
+            )
+
+    def test_capture_and_transcribe_timestamps_forwarded_from_raw(self) -> None:
+        capture_at = 1_700_000_000.0
+        routed = self._route("左转", raw={"capture_at": capture_at, "asr_done_at": capture_at + 0.85})
+        env = routed["envelope"]
+        self.assertEqual(env["t_capture"], capture_at)
+        self.assertEqual(env["t_transcribe"], capture_at + 0.85)
+        # ASR stage equals the capture->transcribe gap (850 ms here).
+        self.assertAlmostEqual(env["latency_ms"]["asr"], 850.0, places=1)
+        self.assertIn("ingest", env["latency_ms"])
+
+    def test_agent_and_dispatch_timestamps_set_for_non_llm_path(self) -> None:
+        # Emergency / exact-action paths must still record agent + dispatch spans.
+        env = self._route("左转")["envelope"]
+        for field in ("t_agent_start", "t_agent_end", "t_dispatch_start", "t_dispatch_end"):
+            self.assertIsNotNone(env[field], f"{field} should be set on the exact-action path")
+        self.assertLessEqual(env["t_agent_start"], env["t_agent_end"])
+        self.assertLessEqual(env["t_dispatch_start"], env["t_dispatch_end"])
+        for stage in ("agent", "dispatch", "total"):
+            self.assertIn(stage, env["latency_ms"])
+
+    def test_latency_breakdown_survives_save_load_round_trip(self) -> None:
+        capture_at = 1_700_000_000.0
+        routed = self._route("左转", raw={"capture_at": capture_at, "asr_done_at": capture_at + 0.5})
+        original = DecisionEnvelope(**routed["envelope"])
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            save_envelope(data_dir, original)
+            loaded = load_envelope(data_dir, original.envelope_id)
+        for field in (
+            "t_capture",
+            "t_transcribe",
+            "t_agent_start",
+            "t_agent_end",
+            "t_dispatch_start",
+            "t_dispatch_end",
+            "latency_ms",
+            "transcript",
+        ):
+            self.assertEqual(getattr(original, field), getattr(loaded, field), f"{field} changed across round-trip")
+
+
 if __name__ == "__main__":
     unittest.main()

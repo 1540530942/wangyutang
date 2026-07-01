@@ -347,6 +347,7 @@ def simulate_route_text(*, text: str, device_id: str, source: str, raw: dict[str
         route_action=False,
         source=source,
         device_id=device_id,
+        raw=raw,
     )
     return {
         "ok": True,
@@ -693,6 +694,7 @@ def add_result(payload: AudioResult, x_audio_token: Annotated[str | None, Header
         route_action=text != "noise_or_unrecognized_audio",
         source="audio_result",
         device_id=str(item.get("device_id") or "turbopi-01"),
+        raw=item.get("raw") if isinstance(item.get("raw"), dict) else None,
     )
     plan = routed.get("plan")
     if routed.get("skill_id"):
@@ -922,6 +924,7 @@ def recognize_text(payload: TextCommand, x_audio_token: Annotated[str | None, He
         route_action=payload.route_action,
         source="audio_recognition",
         device_id=payload.device_id,
+        raw=payload.raw,
     )
     plan = routed.get("plan")
     plan_skill_id = str(plan.get("skill_id") or "") if isinstance(plan, dict) else ""

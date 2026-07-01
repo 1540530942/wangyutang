@@ -77,7 +77,33 @@ class DecisionEnvelope(BaseModel):
     source_chain: list[dict[str, Any]] = Field(default_factory=list)
     final_response: str = ""
     errors: list[dict[str, Any]] = Field(default_factory=list)
+    latency_ms: dict[str, float] = Field(default_factory=dict)
     raw: dict[str, Any] = Field(default_factory=dict)
 
     def add_error(self, stage: str, message: str, detail: dict[str, Any] | None = None) -> None:
         self.errors.append({"stage": stage, "message": message, "detail": detail or {}, "t": time.time()})
+
+    def compute_latency(self) -> dict[str, float]:
+        """Derive a per-stage latency breakdown (milliseconds) from recorded timestamps.
+
+        Populated once routing finishes so the persisted envelope is directly
+        analyzable for problem localization, replay, and RL reward shaping.
+        Stages whose endpoints are missing are simply omitted rather than guessed.
+        """
+
+        def delta_ms(start: float | None, end: float | None) -> float | None:
+            if start is None or end is None:
+                return None
+            return round((end - start) * 1000.0, 1)
+
+        # t_transcribe is the absolute ASR-done time from the upstream audio
+        # service, so created-minus-transcribe captures the inbound hop+queue.
+        stages: dict[str, float | None] = {
+            "asr": delta_ms(self.t_capture, self.t_transcribe),
+            "ingest": delta_ms(self.t_transcribe, self.t_created),
+            "agent": delta_ms(self.t_agent_start, self.t_agent_end),
+            "dispatch": delta_ms(self.t_dispatch_start, self.t_dispatch_end),
+            "total": delta_ms(self.t_capture or self.t_transcribe or self.t_created, self.t_dispatch_end or self.t_agent_end),
+        }
+        self.latency_ms = {key: value for key, value in stages.items() if value is not None}
+        return self.latency_ms

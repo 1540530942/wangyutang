@@ -241,6 +241,7 @@ def route_transcript(
     route_action: bool,
     source: str,
     device_id: str = "turbopi-01",
+    raw: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     envelope = decide_transcript(
         base_dir=base_dir,
@@ -250,7 +251,9 @@ def route_transcript(
         dispatch_mode="cloud_queue" if route_action else "dry_run",
         source=source,
         device_id=device_id,
+        raw=raw,
     )
+    envelope.compute_latency()
     first_task = next((task for task in envelope.tasks if task.status != "rejected"), None) or (envelope.tasks[0] if envelope.tasks else None)
     first_observation = envelope.observations[0] if envelope.observations else None
     first_dispatch = next((item for item in envelope.dispatch_results if item.get("status") not in {"rejected"}), None) or (
@@ -307,6 +310,9 @@ def decide_transcript(
 ) -> DecisionEnvelope:
     envelope = DecisionEnvelope(device_id=device_id, source=source, transcript=str(text or "").strip(), raw=raw or {}, dispatch_mode=dispatch_mode)
     envelope.source_chain.append({"node": source, "stage": "received", "ts": envelope.t_created})
+    capture_at = (raw or {}).get("capture_at")
+    if capture_at:
+        envelope.t_capture = float(capture_at)
     asr_done_at = (raw or {}).get("asr_done_at")
     if asr_done_at:
         envelope.t_transcribe = float(asr_done_at)
@@ -316,6 +322,9 @@ def decide_transcript(
     if not envelope.transcript:
         envelope.reasoning_summary = "Empty transcript."
         return envelope
+    # Mark decision start uniformly so the agent latency stage is measurable for
+    # every path (emergency / exact-action / LLM), not only the LLM ReAct loop.
+    envelope.t_agent_start = time.time()
     if has_emergency_intent(envelope.transcript):
         envelope.reasoning_summary = "Emergency intent detected before LLM; dispatching emergency_stop."
         call = ToolCall(

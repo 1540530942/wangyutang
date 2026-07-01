@@ -410,6 +410,7 @@ def _process(wav_bytes: bytes, device_id: str, session_id: str) -> dict[str, Any
                     "asr_text": text,
                     "wake_status": wake.status,
                     "wake_message": wake.message,
+                    "capture_at": started,
                     "asr_done_at": asr_done_at,
                     "asr_elapsed_ms": int((asr_done_at - started) * 1000),
                 },
