@@ -367,3 +367,25 @@ details summary {
   .model-strip { grid-template-columns: 1fr; }
   .panel { padding: 18px; }
 }
+
+/* --- Model catalog + validation matrix --- */
+.catalog { margin-top: 28px; }
+.catalog .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.catalog-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.catalog-table th, .catalog-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid rgba(148,163,184,0.25); vertical-align: top; }
+.catalog-table th { color: #64748b; font-weight: 600; font-size: 12px; }
+.catalog-table code { font-size: 11px; background: rgba(148,163,184,0.14); padding: 1px 5px; border-radius: 4px; word-break: break-all; }
+.catalog-table code.alias { background: transparent; color: #94a3b8; }
+.alias-row { margin-top: 4px; font-size: 11px; color: #94a3b8; }
+.type-tag { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.type-text { background: #dbeafe; color: #1e40af; }
+.type-vision { background: #ede9fe; color: #6d28d9; }
+.type-asr { background: #dcfce7; color: #166534; }
+.type-tts { background: #fef3c7; color: #92400e; }
+.cat-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.cat-badge.ok { background: #dcfce7; color: #166534; }
+.cat-badge.err { background: #fee2e2; color: #b91c1c; }
+.cat-badge.warn { background: #fef3c7; color: #92400e; }
+.cat-out { margin-top: 4px; font-size: 11px; color: #64748b; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-validate { padding: 4px 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; cursor: pointer; font-size: 12px; font-weight: 600; }
+.cat-validate:hover { background: #f1f5f9; }
