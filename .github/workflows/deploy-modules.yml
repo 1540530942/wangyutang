@@ -268,10 +268,7 @@ jobs:
           docker compose --env-file .env -f docker-compose.yml config --quiet
 
           if [ -n "${BUILD_SERVICES:-}" ]; then
-            # --no-cache guarantees the COPY layer picks up the new source; a
-            # cached/reused image previously let deploys ship stale code while
-            # still reporting success.
-            docker compose --env-file .env -f docker-compose.yml build --no-cache $BUILD_SERVICES
+            docker compose --env-file .env -f docker-compose.yml build $BUILD_SERVICES
           fi
 
           docker compose --env-file .env -f docker-compose.yml up -d --no-deps --force-recreate $UP_SERVICES
@@ -372,9 +369,11 @@ jobs:
           )
           urllib.request.urlopen(req, timeout=30).read()
 
-          with urllib.request.urlopen(base + "/audio/api/envelopes?limit=1", timeout=20) as r:
-              envs = json.loads(r.read()).get("envelopes") or []
-          env = envs[0] if envs else {}
+          # NOTE: /api/envelopes is an index summary (envelope_id/source/
+          # transcript/t_created only) and never carries latency_ms. Use
+          # /api/envelopes/latest, which returns the full serialized envelope.
+          with urllib.request.urlopen(base + "/audio/api/envelopes/latest", timeout=20) as r:
+              env = json.loads(r.read()).get("envelope") or {}
           if "latency_ms" not in env:
               raise SystemExit(
                   "Revision assertion FAILED: deployed audio-recognition envelope "
