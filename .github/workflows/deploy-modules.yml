@@ -268,7 +268,10 @@ jobs:
           docker compose --env-file .env -f docker-compose.yml config --quiet
 
           if [ -n "${BUILD_SERVICES:-}" ]; then
-            docker compose --env-file .env -f docker-compose.yml build $BUILD_SERVICES
+            # --no-cache guarantees the COPY layer picks up the new source; a
+            # cached/reused image previously let deploys ship stale code while
+            # still reporting success.
+            docker compose --env-file .env -f docker-compose.yml build --no-cache $BUILD_SERVICES
           fi
 
           docker compose --env-file .env -f docker-compose.yml up -d --no-deps --force-recreate $UP_SERVICES
@@ -331,4 +334,52 @@ jobs:
                       payload = json.loads(body.decode("utf-8"))
                       if payload.get("status") != "ok":
                           raise SystemExit(payload)
+          PY
+
+      - name: Assert new revision is actually live
+        if: steps.scope.outputs.up_services != ''
+        env:
+          MODULES: ${{ steps.scope.outputs.modules }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import time
+          import urllib.request
+
+          modules = (os.environ.get("MODULES") or "").split()
+          # A health check only proves the container is up, not that the new
+          # code shipped. For audio_recognition we assert a schema marker that
+          # only the new DecisionEnvelope model emits (latency_ms), so a
+          # stale-image deploy fails loudly instead of reporting success.
+          if "audio_recognition" not in modules:
+              print("audio_recognition not in scope; skipping revision assertion")
+              raise SystemExit(0)
+
+          base = "https://www.wangyutang.cn"
+          cap = time.time()
+          req = urllib.request.Request(
+              base + "/audio/api/recognize-text",
+              data=json.dumps({
+                  "device_id": "deploy-assert",
+                  "text": "左转",
+                  "source": "deploy-revision-assert",
+                  "route_action": False,
+                  "raw": {"capture_at": cap, "asr_done_at": cap + 0.3},
+              }).encode(),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          urllib.request.urlopen(req, timeout=30).read()
+
+          with urllib.request.urlopen(base + "/audio/api/envelopes?limit=1", timeout=20) as r:
+              envs = json.loads(r.read()).get("envelopes") or []
+          env = envs[0] if envs else {}
+          if "latency_ms" not in env:
+              raise SystemExit(
+                  "Revision assertion FAILED: deployed audio-recognition envelope "
+                  "has no latency_ms field -> stale image is still live despite a "
+                  "successful build/health-check. Investigate image reuse on host."
+              )
+          print("Revision assertion OK: latency_ms present ->", env.get("latency_ms"))
           PY
