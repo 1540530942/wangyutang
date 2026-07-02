@@ -192,17 +192,29 @@ curl.exe -X POST https://www.wangyutang.cn/common/api/llm/chat `
 
 ## 图像理解（Vision）
 
-图像理解接口对外统一收口于 `spark_qwen_vision` 模块，后端当前使用 **spark-c9a7 上的 Qwen3.6-35B-A3B-NVFP4**（多模态视觉模型），通过 SSH tunnel 路由。
+图像理解目前提供两条公网接口，统一收口于 `common_api_manager`：
 
-> **注意**：lv_server 本机也部署了 Qwen2.5-VL-7B（端口 8015），速度更快（~0.2s vs ~5s），但仅限 lv_server 内部调用；公网接口统一走 wangyutang.cn → Spark。
+| 接口 | 路径前缀 | 后端模型 | 特点 |
+|---|---|---|---|
+| **lv**（推荐） | `/common/api/vision/lv/` | Qwen2.5-VL-7B-Q4KM（lv_server RTX 4090） | ~0.4s，速度快 6x |
+| **spark** | `/common/api/vision/spark/` | Qwen3.6-35B-A3B-NVFP4（spark-c9a7 GB10） | ~2.5s，回答更详细 |
+
+两条接口**请求格式完全一致**，可直接切换。
 
 ### 接口地址
 
 ```text
+# lv_server Qwen2.5-VL-7B（推荐，速度快）
+GET  https://www.wangyutang.cn/common/api/vision/lv/health
+GET  https://www.wangyutang.cn/common/api/vision/lv/models
+POST https://www.wangyutang.cn/common/api/vision/lv/analyze-json   # base64 JSON（推荐）
+POST https://www.wangyutang.cn/common/api/vision/lv/analyze        # multipart 文件上传
+
+# spark-c9a7 Qwen3.6-35B（回答更丰富）
 GET  https://www.wangyutang.cn/common/api/vision/spark/health
 GET  https://www.wangyutang.cn/common/api/vision/spark/models
-POST https://www.wangyutang.cn/common/api/vision/spark/analyze-json   # base64 JSON 方式（推荐）
-POST https://www.wangyutang.cn/common/api/vision/spark/analyze        # multipart 文件上传方式
+POST https://www.wangyutang.cn/common/api/vision/spark/analyze-json
+POST https://www.wangyutang.cn/common/api/vision/spark/analyze
 ```
 
 ### base64 JSON 方式（推荐）
@@ -220,18 +232,18 @@ POST https://www.wangyutang.cn/common/api/vision/spark/analyze        # multipar
 字段说明：
 
 ```text
-image_base64  必填，JPEG / PNG / WebP 图片的 base64 编码（图片超过 10MB 会被拒绝，超过 1280px 长边会自动缩放）
-question      可选，提问内容，默认"请描述这张图片，并提取其中的文字和关键信息。"
+image_base64  必填，JPEG / PNG / WebP 图片的 base64 编码（超过 10MB 拒绝，超过 1280px 长边自动缩放）
+question      可选，默认"请描述这张图片，并提取其中的文字和关键信息。"
 filename      可选，用于推断图片格式，默认 image.jpg
 ```
 
-返回 JSON：
+返回 JSON（lv 与 spark 格式相同，provider 字段不同）：
 
 ```json
 {
-  "text": "模型回答（已去除 <think>...</think> 推理过程）",
-  "model": "qwen3.6-35b-a3b-fp8",
-  "provider": "spark_qwen_vision",
+  "text": "模型回答",
+  "model": "qwen25vl7b-q4km.gguf",
+  "provider": "lv_qwen_vision",
   "image": {
     "original_width": 640,
     "original_height": 480,
@@ -240,16 +252,21 @@ filename      可选，用于推断图片格式，默认 image.jpg
     "bytes": 12345,
     "format": "jpeg"
   },
-  "raw": { "...": "vLLM 原始响应，含 usage 统计" }
+  "raw": { "...": "后端原始响应，含 usage 统计" }
 }
 ```
 
 ### curl 调用示例
 
 ```bash
-# 将图片编码为 base64 并发送
 IMAGE_B64=$(base64 -w 0 /path/to/image.jpg)
 
+# lv（快）
+curl -s -X POST https://www.wangyutang.cn/common/api/vision/lv/analyze-json \
+  -H "Content-Type: application/json" \
+  -d "{\"image_base64\": \"${IMAGE_B64}\", \"question\": \"这张图片里有什么？\"}"
+
+# spark（更详细）
 curl -s -X POST https://www.wangyutang.cn/common/api/vision/spark/analyze-json \
   -H "Content-Type: application/json" \
   -d "{\"image_base64\": \"${IMAGE_B64}\", \"question\": \"这张图片里有什么？\"}"
@@ -262,7 +279,7 @@ $bytes = [System.IO.File]::ReadAllBytes("C:\path\to\image.jpg")
 $b64 = [Convert]::ToBase64String($bytes)
 $body = @{ image_base64 = $b64; question = "这张图片里有什么？" } | ConvertTo-Json
 
-curl.exe -s -X POST https://www.wangyutang.cn/common/api/vision/spark/analyze-json `
+curl.exe -s -X POST https://www.wangyutang.cn/common/api/vision/lv/analyze-json `
   -H "Content-Type: application/json" `
   -d $body
 ```
@@ -273,19 +290,17 @@ curl.exe -s -X POST https://www.wangyutang.cn/common/api/vision/spark/analyze-js
 import base64
 import requests
 
-def analyze_image(image_path: str, question: str = "描述这张图片") -> str:
+def analyze_image(image_path: str, question: str = "描述这张图片", provider: str = "lv") -> str:
     with open(image_path, "rb") as f:
         image_b64 = base64.b64encode(f.read()).decode()
 
-    resp = requests.post(
-        "https://www.wangyutang.cn/common/api/vision/spark/analyze-json",
-        json={"image_base64": image_b64, "question": question},
-        timeout=60,
-    )
+    url = f"https://www.wangyutang.cn/common/api/vision/{provider}/analyze-json"
+    resp = requests.post(url, json={"image_base64": image_b64, "question": question}, timeout=60)
     resp.raise_for_status()
     return resp.json()["text"]
 
-print(analyze_image("photo.jpg", "图中有哪些物体？"))
+print(analyze_image("photo.jpg", "图中有哪些物体？"))            # lv（默认，快）
+print(analyze_image("photo.jpg", "详细描述图片", provider="spark"))  # spark（详细）
 ```
 
 用 PIL 生成测试图并发送：
@@ -300,17 +315,17 @@ img.save(buf, format="JPEG", quality=85)
 b64 = base64.b64encode(buf.getvalue()).decode()
 
 resp = requests.post(
-    "https://www.wangyutang.cn/common/api/vision/spark/analyze-json",
+    "https://www.wangyutang.cn/common/api/vision/lv/analyze-json",
     json={"image_base64": b64, "question": "这是什么颜色的图片？"},
-    timeout=60,
+    timeout=30,
 )
-print(resp.json()["text"])  # → "蓝色"
+print(resp.json()["text"])  # → "红色"
 ```
 
 ### multipart 文件上传方式
 
 ```bash
-curl -s -X POST https://www.wangyutang.cn/common/api/vision/spark/analyze \
+curl -s -X POST https://www.wangyutang.cn/common/api/vision/lv/analyze \
   -F "file=@/path/to/image.jpg" \
   -F "question=图中有什么内容？"
 ```
@@ -320,110 +335,43 @@ import requests
 
 with open("image.jpg", "rb") as f:
     resp = requests.post(
-        "https://www.wangyutang.cn/common/api/vision/spark/analyze",
+        "https://www.wangyutang.cn/common/api/vision/lv/analyze",
         files={"file": ("image.jpg", f, "image/jpeg")},
         data={"question": "图中有什么内容？"},
-        timeout=60,
+        timeout=30,
     )
 print(resp.json()["text"])
 ```
 
-### 健康检查与模型查询
+### 健康检查
 
 ```bash
+curl https://www.wangyutang.cn/common/api/vision/lv/health
+# → {"provider":"lv_qwen_vision","model":"qwen25vl7b-q4km.gguf",...}
+
 curl https://www.wangyutang.cn/common/api/vision/spark/health
 # → {"provider":"spark_qwen_vision","model":"qwen3.6-35b-a3b-fp8",...}
-
-curl https://www.wangyutang.cn/common/api/vision/spark/models
-# → {"object":"list","data":[{"id":"qwen3.6-35b-a3b-fp8","capability":"vision_understanding"}]}
 ```
 
-### lv_server 直连外部接口（更快）
+### 实测性能（2026-07-01，18 张 640×480 JPEG，公网外部调用验证）
 
-lv_server 上的 Qwen2.5-VL-7B 通过端口 **8015** 对外开放，使用 OpenAI-compatible API，响应速度比 Spark 快约 **15–30x**。
+| 接口 | 模型 | 均值响应时间 | 说明 |
+|---|---|---|---|
+| `vision/lv/analyze-json` | Qwen2.5-VL-7B-Q4KM（RTX 4090） | **~0.4s** | 已验证 ✅ |
+| `vision/spark/analyze-json` | Qwen3.6-35B-A3B-NVFP4（GB10） | **~2.5s** | 已验证 ✅ |
 
-```text
-GET  http://39.156.151.204:8015/health
-GET  http://39.156.151.204:8015/v1/models
-POST http://39.156.151.204:8015/v1/chat/completions
-```
-
-curl 调用示例：
-
-```bash
-IMAGE_B64=$(base64 -w 0 /path/to/image.jpg)
-
-curl -s -X POST http://39.156.151.204:8015/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"model\": \"qwen2.5-vl-7b\",
-    \"messages\": [{
-      \"role\": \"user\",
-      \"content\": [
-        {\"type\": \"image_url\", \"image_url\": {\"url\": \"data:image/jpeg;base64,${IMAGE_B64}\"}},
-        {\"type\": \"text\", \"text\": \"这张图片里有什么？\"}
-      ]
-    }],
-    \"max_tokens\": 256
-  }"
-```
-
-Python 调用示例（已在公网外部验证）：
-
-```python
-import base64, requests
-from PIL import Image
-import io
-
-# 从文件读取
-with open("image.jpg", "rb") as f:
-    b64 = base64.b64encode(f.read()).decode()
-
-resp = requests.post(
-    "http://39.156.151.204:8015/v1/chat/completions",
-    json={
-        "model": "qwen2.5-vl-7b",
-        "messages": [{"role": "user", "content": [
-            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-            {"type": "text", "text": "描述这张图片"}
-        ]}],
-        "max_tokens": 256,
-    },
-    timeout=15,
-)
-print(resp.json()["choices"][0]["message"]["content"])
-```
-
-返回格式为标准 OpenAI chat completions 格式：
-
-```json
-{
-  "choices": [{"message": {"role": "assistant", "content": "模型回答"}}],
-  "model": "qwen25vl7b-q4km.gguf",
-  "usage": {"prompt_tokens": 80, "completion_tokens": 10, "total_tokens": 90}
-}
-```
-
-### 实测性能（2026-07-01，640×480 JPEG，从公网外部调用验证）
-
-| 后端 | 地址 | 模型 | 实测响应时间 | 说明 |
-|---|---|---|---|---|
-| **lv_server 直连** | `http://39.156.151.204:8015` | Qwen2.5-VL-7B-Q4KM | **~0.2–0.4s** | 外部可访问，已验证 ✅ |
-| **wangyutang.cn → Spark** | `https://www.wangyutang.cn/common/api/vision/spark/analyze-json` | Qwen3.6-35B-A3B-NVFP4 | **~3–8s** | 回答更详细，外部可访问，已验证 ✅ |
-
-详细基准测试（18 张图）见 `tests/vision_benchmark/`，结果存于 `tests/vision_benchmark/results.json`。
+lv 比 spark 快约 **6x**。详细基准测试（18 张图）见 `tests/vision_benchmark/`。
 
 ### 当前上游配置
 
 ```text
 lv_server VL:  http://39.156.151.204:8015/v1/chat/completions
-               model=qwen2.5-vl-7b（实为 qwen25vl7b-q4km.gguf）
-               端口 8015 外部可直接访问，无需鉴权
-               GPU 0（RTX 4090），~0.2s/张
+               model=qwen25vl7b-q4km.gguf（llama-server，GPU 0，RTX 4090）
+               common_api_manager 直接 HTTP 调用，~0.4s/张
 
 Spark Vision:  spark-c9a7:8000/v1/chat/completions
-               model=qwen3.6-35b-a3b-fp8
-               经腾讯云 SSH tunnel :18000 → spark-c9a7:8000 路由
+               model=qwen3.6-35b-a3b-fp8（vLLM，GB10）
+               经腾讯云 SSH tunnel :18000 → spark-c9a7:8000 路由，~2.5s/张
                图片超过 1280px 自动缩放，超过 10MB 拒绝
 ```
 

@@ -1,10 +1,10 @@
-"""Run vision benchmark against lv_server (local VL) and Spark (qwen3.6-35b).
+"""Run vision benchmark against lv_server VL and Spark vision APIs.
 
 Usage:
     python run_benchmark.py [--lv URL] [--spark URL] [--out results.json]
 
 Defaults:
-    --lv    http://127.0.0.1:8013/common/api/vision/spark/analyze-json  (lv_server proxy)
+    --lv    https://www.wangyutang.cn/common/api/vision/lv/analyze-json
     --spark https://www.wangyutang.cn/common/api/vision/spark/analyze-json
 """
 
@@ -117,7 +117,7 @@ def run(lv_url: str, spark_url: str, out_path: Path) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lv", default="http://127.0.0.1:8013/common/api/vision/spark/analyze-json")
+    parser.add_argument("--lv", default="https://www.wangyutang.cn/common/api/vision/lv/analyze-json")
     parser.add_argument("--spark", default="https://www.wangyutang.cn/common/api/vision/spark/analyze-json")
     parser.add_argument("--out", default=str(Path(__file__).parent / "results.json"))
     args = parser.parse_args()
