@@ -407,11 +407,29 @@ common_api_manager/
     spark_qwen_vision/        POST /api/vision/spark/analyze-json
     lab_catalog/              GET /api/lab/catalog
   tests/
-    test_smoke.py             部署后 smoke tests（11 个用例）
+    test_smoke.py             部署后 smoke tests（15 个用例）
     vision_benchmark/         18 张图评测集，results.json 基准数据
   systemd/
     common-api.env.example    环境变量模板
 ```
+
+---
+
+## 交互实验台（Lab）
+
+`https://www.wangyutang.cn/common/lab`
+
+一页式 UI，可直接在浏览器体验所有接口：
+
+| 面板 | 说明 |
+|---|---|
+| **01 ASR** | 上传音频 → Qwen3-ASR-1.7B 识别 |
+| **02 图像理解 VL** | 上传图片 + 选择接口（LV / Spark / DashScope）→ 视觉问答 |
+| **03 LLM** | 选择接口（DashScope / Spark / LV）+ 输入 Prompt → 聊天 |
+| **04 Spark 视觉** | Spark Qwen3.6-35B 专用视觉面板 |
+| **★ 模型总览** | 所有模型健康状态 + 一键真实推理校验 |
+
+验证码提示：`12`（入口轻量保护，防爬虫）。
 
 ---
 
