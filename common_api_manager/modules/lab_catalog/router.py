@@ -41,7 +41,7 @@ MODEL_REGISTRY: list[dict[str, Any]] = [
         "paths": ["/common/api/llm/spark-qwen/chat/completions", "/common/api/llm/qwen3.6-35b/chat/completions"],
         "health": "/common/api/llm/spark-qwen/health",
         "models": "/common/api/llm/spark-qwen/models",
-        "validate": {"kind": "chat", "path": "/common/api/llm/spark-qwen/chat/completions", "model": "qwen3.6-35b-a3b"},
+        "validate": {"kind": "chat", "path": "/common/api/llm/spark-qwen/chat/completions", "model": "qwen3.6-35b-a3b-fp8"},
     },
     {
         "id": "lv-qwen-chat",
@@ -61,7 +61,7 @@ MODEL_REGISTRY: list[dict[str, Any]] = [
         "paths": ["/common/api/vision/spark/analyze-json", "/common/api/vision/spark-qwen/analyze-json"],
         "health": "/common/api/vision/spark/health",
         "models": "/common/api/vision/spark/models",
-        "validate": {"kind": "vision", "path": "/common/api/vision/spark/analyze-json", "model": "qwen3.6-35b-a3b"},
+        "validate": {"kind": "vision", "path": "/common/api/vision/spark/analyze-json", "model": "qwen3.6-35b-a3b-fp8"},
     },
     {
         "id": "dashscope-qwen-vision",
