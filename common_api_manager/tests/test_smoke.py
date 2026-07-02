@@ -128,3 +128,33 @@ def test_vision_spark_analyze_json():
     body = r.json()
     assert body.get("provider") == "spark_qwen_vision", body
     assert body.get("text", "").strip(), f"empty text in: {body}"
+
+
+def test_vision_dashscope_health():
+    r = requests.get(f"{BASE}/api/vision/dashscope/health", timeout=SHORT)
+    assert r.status_code == 200, r.text
+    assert r.json()["provider"] == "dashscope_qwen_vision"
+
+
+def test_vision_dashscope_analyze_json():
+    r = requests.post(
+        f"{BASE}/api/vision/dashscope/analyze-json",
+        json={"image_base64": _red_jpeg_b64(), "question": "图片主要是什么颜色？"},
+        timeout=VISION,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body.get("provider") == "dashscope_qwen_vision", body
+    assert body.get("text", "").strip(), f"empty text in: {body}"
+
+
+def test_spark_llm_returns_text():
+    r = requests.post(
+        f"{BASE}/api/llm/qwen3.6-35b/chat",
+        json={"messages": [{"role": "user", "content": "只回答数字：3+3="}], "max_tokens": 20},
+        timeout=CHAT,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body.get("provider") == "spark_qwen_chat", body
+    assert body.get("text", "").strip(), f"empty text in: {body}"
