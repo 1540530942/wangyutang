@@ -32,6 +32,8 @@ class Settings:
     lv_tts_instructions: str = os.getenv("LV_TTS_INSTRUCTIONS", "用清新自然、甜美温柔的语气说，声音明亮亲切，语调轻快柔和")
     lv_chat_base_url: str = os.getenv("LV_CHAT_BASE_URL", "http://127.0.0.1:8002").rstrip("/")
     lv_chat_model: str = os.getenv("LV_CHAT_MODEL", "qwen3.5-9b")
+    lv_vl_base_url: str = os.getenv("LV_VL_BASE_URL", "http://39.156.151.204:8015").rstrip("/")
+    lv_vl_model: str = os.getenv("LV_VL_MODEL", "qwen25vl7b-q4km.gguf")
     dashscope_llm_api_key: str = (
         os.getenv("DASHSCOPE_LLM_API_KEY", "").strip()
         or os.getenv("DASHSCOPE_API_KEY", "").strip()

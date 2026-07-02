@@ -54,6 +54,16 @@ MODEL_REGISTRY: list[dict[str, Any]] = [
         "validate": {"kind": "chat", "path": "/common/api/chat/qwen3/completions", "model": "qwen3"},
     },
     {
+        "id": "lv-qwen-vision",
+        "name": "Qwen2.5-VL-7B (LV self-host)",
+        "provider": "LV",
+        "type": "vision",
+        "paths": ["/common/api/vision/lv/analyze-json"],
+        "health": "/common/api/vision/lv/health",
+        "models": "/common/api/vision/lv/models",
+        "validate": {"kind": "vision", "path": "/common/api/vision/lv/analyze-json", "model": ""},
+    },
+    {
         "id": "spark-qwen-vision",
         "name": "Qwen-VL (Spark vision)",
         "provider": "Spark",

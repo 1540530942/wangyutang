@@ -14,6 +14,7 @@ from modules.lab_catalog import router as lab_catalog_router
 from modules.lv_qwen_asr import router as lv_qwen_asr_router
 from modules.lv_qwen_chat import router as lv_qwen_chat_router
 from modules.lv_qwen_tts import router as lv_qwen_tts_router
+from modules.lv_qwen_vision import router as lv_qwen_vision_router
 from modules.spark_qwen_chat import router as spark_qwen_chat_router
 from modules.spark_qwen_vision import router as spark_qwen_vision_router
 
@@ -34,6 +35,7 @@ app.include_router(lv_qwen_chat_router)
 app.include_router(dashscope_qwen_chat_router)
 app.include_router(dashscope_qwen_vision_router)
 app.include_router(lv_qwen_tts_router)
+app.include_router(lv_qwen_vision_router)
 app.include_router(spark_qwen_chat_router)
 app.include_router(spark_qwen_vision_router)
 
