@@ -14,15 +14,14 @@ def _extract_message_text(payload: dict[str, Any]) -> str:
     if not choices:
         return ""
     message = choices[0].get("message") or {}
-    content = message.get("content") or ""
-    text = str(content).strip()
+    content = str(message.get("content") or "").strip()
     marker = "</think>"
-    if marker in text:
-        return text.split(marker, 1)[1].strip()
-    thinking_prefix = "Thinking Process:"
-    if text.startswith(thinking_prefix):
+    if marker in content:
+        return content.split(marker, 1)[1].strip()
+    # llama-server format: thinking in reasoning_content, answer in content
+    if not content and message.get("reasoning_content"):
         return ""
-    return text
+    return content
 
 
 class LvQwenChatClient:
@@ -56,6 +55,9 @@ class LvQwenChatClient:
         request_payload["model"] = request_payload.get("model") or settings.lv_chat_model
         if not request_payload.get("messages"):
             raise HTTPException(status_code=400, detail="messages is required")
+        # disable thinking by default so content is always populated
+        if "chat_template_kwargs" not in request_payload:
+            request_payload["chat_template_kwargs"] = {"enable_thinking": False}
         try:
             response = requests.post(
                 self._url("/v1/chat/completions"),
