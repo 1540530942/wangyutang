@@ -60,7 +60,7 @@ jobs:
       - name: Backup current deployment
         run: |
           BACKUP_TAG=$(date +%Y%m%d_%H%M%S)
-          ssh tencent-prod "cp -a \$APP_SRC \${APP_SRC}.backup.${BACKUP_TAG}"
+          ssh tencent-prod "cp -a ${APP_SRC} ${APP_SRC}.backup.${BACKUP_TAG}"
           echo "BACKUP_TAG=${BACKUP_TAG}" >> "$GITHUB_ENV"
 
       - name: Rsync source to Tencent Cloud
@@ -117,16 +117,17 @@ jobs:
         if: failure()
         run: |
           echo "⚠️  Smoke tests failed — rolling back to backup.${BACKUP_TAG}"
+          REMOTE_APP="${APP_SRC}"
+          REMOTE_BACKUP="${APP_SRC}.backup.${BACKUP_TAG}"
           ssh tencent-prod "
             set -e
-            backup=\"\${APP_SRC}.backup.${BACKUP_TAG}\"
-            if [ -d \"\$backup\" ]; then
-              rm -rf \"\$APP_SRC\"
-              cp -a \"\$backup\" \"\$APP_SRC\"
+            if [ -d \"${REMOTE_BACKUP}\" ]; then
+              rm -rf \"${REMOTE_APP}\"
+              cp -a \"${REMOTE_BACKUP}\" \"${REMOTE_APP}\"
               systemctl restart common-api
               echo 'Rollback complete'
             else
-              echo 'Backup not found: '\"\$backup\" >&2
+              echo 'Backup not found: ${REMOTE_BACKUP}' >&2
               exit 1
             fi
           "
