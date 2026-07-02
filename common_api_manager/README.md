@@ -338,22 +338,93 @@ curl https://www.wangyutang.cn/common/api/vision/spark/models
 # → {"object":"list","data":[{"id":"qwen3.6-35b-a3b-fp8","capability":"vision_understanding"}]}
 ```
 
-### 实测性能（2026-07-01，640×480 JPEG）
+### lv_server 直连外部接口（更快）
 
-| 后端 | 模型 | 平均响应时间 | 说明 |
-|---|---|---|---|
-| 公网（wangyutang.cn → Spark） | Qwen3.6-35B-A3B-NVFP4 | ~3–8s | 回答详细，支持色值估算、场景理解等 |
-| lv_server 内部 | Qwen2.5-VL-7B-Q4KM | ~0.2–0.4s | 仅 lv_server 内部可用 |
+lv_server 上的 Qwen2.5-VL-7B 通过端口 **8015** 对外开放，使用 OpenAI-compatible API，响应速度比 Spark 快约 **15–30x**。
+
+```text
+GET  http://39.156.151.204:8015/health
+GET  http://39.156.151.204:8015/v1/models
+POST http://39.156.151.204:8015/v1/chat/completions
+```
+
+curl 调用示例：
+
+```bash
+IMAGE_B64=$(base64 -w 0 /path/to/image.jpg)
+
+curl -s -X POST http://39.156.151.204:8015/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"model\": \"qwen2.5-vl-7b\",
+    \"messages\": [{
+      \"role\": \"user\",
+      \"content\": [
+        {\"type\": \"image_url\", \"image_url\": {\"url\": \"data:image/jpeg;base64,${IMAGE_B64}\"}},
+        {\"type\": \"text\", \"text\": \"这张图片里有什么？\"}
+      ]
+    }],
+    \"max_tokens\": 256
+  }"
+```
+
+Python 调用示例（已在公网外部验证）：
+
+```python
+import base64, requests
+from PIL import Image
+import io
+
+# 从文件读取
+with open("image.jpg", "rb") as f:
+    b64 = base64.b64encode(f.read()).decode()
+
+resp = requests.post(
+    "http://39.156.151.204:8015/v1/chat/completions",
+    json={
+        "model": "qwen2.5-vl-7b",
+        "messages": [{"role": "user", "content": [
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+            {"type": "text", "text": "描述这张图片"}
+        ]}],
+        "max_tokens": 256,
+    },
+    timeout=15,
+)
+print(resp.json()["choices"][0]["message"]["content"])
+```
+
+返回格式为标准 OpenAI chat completions 格式：
+
+```json
+{
+  "choices": [{"message": {"role": "assistant", "content": "模型回答"}}],
+  "model": "qwen25vl7b-q4km.gguf",
+  "usage": {"prompt_tokens": 80, "completion_tokens": 10, "total_tokens": 90}
+}
+```
+
+### 实测性能（2026-07-01，640×480 JPEG，从公网外部调用验证）
+
+| 后端 | 地址 | 模型 | 实测响应时间 | 说明 |
+|---|---|---|---|---|
+| **lv_server 直连** | `http://39.156.151.204:8015` | Qwen2.5-VL-7B-Q4KM | **~0.2–0.4s** | 外部可访问，已验证 ✅ |
+| **wangyutang.cn → Spark** | `https://www.wangyutang.cn/common/api/vision/spark/analyze-json` | Qwen3.6-35B-A3B-NVFP4 | **~3–8s** | 回答更详细，外部可访问，已验证 ✅ |
 
 详细基准测试（18 张图）见 `tests/vision_benchmark/`，结果存于 `tests/vision_benchmark/results.json`。
 
 ### 当前上游配置
 
 ```text
-Vision: spark-c9a7:8000/v1/chat/completions
-        model=qwen3.6-35b-a3b-fp8
-        经腾讯云 SSH tunnel :18000 → spark-c9a7:8000 路由
-        图片超过 1280px 自动缩放，超过 10MB 拒绝
+lv_server VL:  http://39.156.151.204:8015/v1/chat/completions
+               model=qwen2.5-vl-7b（实为 qwen25vl7b-q4km.gguf）
+               端口 8015 外部可直接访问，无需鉴权
+               GPU 0（RTX 4090），~0.2s/张
+
+Spark Vision:  spark-c9a7:8000/v1/chat/completions
+               model=qwen3.6-35b-a3b-fp8
+               经腾讯云 SSH tunnel :18000 → spark-c9a7:8000 路由
+               图片超过 1280px 自动缩放，超过 10MB 拒绝
 ```
 
 ---
