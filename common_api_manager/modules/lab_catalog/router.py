@@ -51,7 +51,7 @@ MODEL_REGISTRY: list[dict[str, Any]] = [
         "paths": ["/common/api/chat/qwen3/completions", "/common/api/llm/chat"],
         "health": "/common/api/chat/qwen3/health",
         "models": "/common/api/chat/qwen3/models",
-        "validate": {"kind": "chat", "path": "/common/api/chat/qwen3/completions", "model": "qwen3"},
+        "validate": {"kind": "chat", "path": "/common/api/chat/qwen3/completions", "model": "Qwen3.5-35B-A3B-Q4_K_M.gguf"},
     },
     {
         "id": "lv-qwen-vision",
