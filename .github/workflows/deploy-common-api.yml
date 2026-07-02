@@ -1,0 +1,134 @@
+name: Deploy common-api
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - "feature/**"
+      - "codex/**"
+    paths:
+      - "common_api_manager/**"
+      - ".github/workflows/deploy-common-api.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: common-api-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy & smoke-test common-api
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+
+    env:
+      TENCENT_HOST: ${{ secrets.TENCENT_HOST }}
+      TENCENT_USER: ${{ secrets.TENCENT_USER }}
+      TENCENT_SSH_PRIVATE_KEY: ${{ secrets.TENCENT_SSH_PRIVATE_KEY }}
+      APP_SRC: /root/control_platform/common_api/app_src
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Syntax check
+        run: python -m compileall -q common_api_manager
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$TENCENT_SSH_PRIVATE_KEY" > ~/.ssh/tencent_key
+          chmod 600 ~/.ssh/tencent_key
+          {
+            echo "Host tencent-prod"
+            echo "  HostName $TENCENT_HOST"
+            echo "  User $TENCENT_USER"
+            echo "  IdentityFile ~/.ssh/tencent_key"
+            echo "  StrictHostKeyChecking accept-new"
+            echo "  ServerAliveInterval 15"
+            echo "  ServerAliveCountMax 4"
+          } > ~/.ssh/config
+
+      - name: Backup current deployment
+        run: |
+          BACKUP_TAG=$(date +%Y%m%d_%H%M%S)
+          ssh tencent-prod "cp -a \$APP_SRC \${APP_SRC}.backup.${BACKUP_TAG}"
+          echo "BACKUP_TAG=${BACKUP_TAG}" >> "$GITHUB_ENV"
+
+      - name: Rsync source to Tencent Cloud
+        run: |
+          rsync -avz \
+            --exclude '__pycache__' \
+            --exclude '*.pyc' \
+            --exclude '.pytest_cache' \
+            --exclude 'tests/' \
+            --exclude 'online_backup' \
+            --exclude 'start_api.ps1' \
+            common_api_manager/ \
+            tencent-prod:$APP_SRC/
+
+      - name: Restart service
+        run: |
+          ssh tencent-prod "systemctl restart common-api"
+
+      - name: Wait for service to come up
+        run: |
+          for i in $(seq 1 15); do
+            status=$(curl -s -o /dev/null -w "%{http_code}" \
+              https://www.wangyutang.cn/common/api/health || echo 000)
+            if [ "$status" = "200" ]; then
+              echo "Service healthy after ${i}x3s"
+              exit 0
+            fi
+            echo "Attempt $i: HTTP $status — waiting..."
+            sleep 3
+          done
+          echo "ERROR: service did not become healthy within 45s" >&2
+          ssh tencent-prod "journalctl -u common-api -n 50 --no-pager" || true
+          exit 1
+
+      - name: Install test dependencies
+        run: pip install requests pytest Pillow
+
+      - name: Run smoke tests
+        env:
+          API_BASE: https://www.wangyutang.cn/common
+        run: |
+          pytest common_api_manager/tests/test_smoke.py \
+            -v --tb=short \
+            --junitxml=test-results.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-results
+          path: test-results.xml
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "⚠️  Smoke tests failed — rolling back to backup.${BACKUP_TAG}"
+          ssh tencent-prod "
+            set -e
+            backup=\"\${APP_SRC}.backup.${BACKUP_TAG}\"
+            if [ -d \"\$backup\" ]; then
+              rm -rf \"\$APP_SRC\"
+              cp -a \"\$backup\" \"\$APP_SRC\"
+              systemctl restart common-api
+              echo 'Rollback complete'
+            else
+              echo 'Backup not found: '\"\$backup\" >&2
+              exit 1
+            fi
+          "
+          echo "❌ Pipeline failed — deployment rolled back" >&2
+          exit 1
