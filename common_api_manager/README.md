@@ -190,6 +190,174 @@ curl.exe -X POST https://www.wangyutang.cn/common/api/llm/chat `
   -d "{\"model\":\"qwen3.5-9b\",\"messages\":[{\"role\":\"user\",\"content\":\"你好\"}],\"temperature\":0.7,\"max_tokens\":512}"
 ```
 
+## 图像理解（Vision）
+
+图像理解接口对外统一收口于 `spark_qwen_vision` 模块，后端当前使用 **spark-c9a7 上的 Qwen3.6-35B-A3B-NVFP4**（多模态视觉模型），通过 SSH tunnel 路由。
+
+> **注意**：lv_server 本机也部署了 Qwen2.5-VL-7B（端口 8015），速度更快（~0.2s vs ~5s），但仅限 lv_server 内部调用；公网接口统一走 wangyutang.cn → Spark。
+
+### 接口地址
+
+```text
+GET  https://www.wangyutang.cn/common/api/vision/spark/health
+GET  https://www.wangyutang.cn/common/api/vision/spark/models
+POST https://www.wangyutang.cn/common/api/vision/spark/analyze-json   # base64 JSON 方式（推荐）
+POST https://www.wangyutang.cn/common/api/vision/spark/analyze        # multipart 文件上传方式
+```
+
+### base64 JSON 方式（推荐）
+
+请求体（`Content-Type: application/json`）：
+
+```json
+{
+  "image_base64": "<图片 base64 字符串>",
+  "question": "描述这张图片",
+  "filename": "image.jpg"
+}
+```
+
+字段说明：
+
+```text
+image_base64  必填，JPEG / PNG / WebP 图片的 base64 编码（图片超过 10MB 会被拒绝，超过 1280px 长边会自动缩放）
+question      可选，提问内容，默认"请描述这张图片，并提取其中的文字和关键信息。"
+filename      可选，用于推断图片格式，默认 image.jpg
+```
+
+返回 JSON：
+
+```json
+{
+  "text": "模型回答（已去除 <think>...</think> 推理过程）",
+  "model": "qwen3.6-35b-a3b-fp8",
+  "provider": "spark_qwen_vision",
+  "image": {
+    "original_width": 640,
+    "original_height": 480,
+    "width": 640,
+    "height": 480,
+    "bytes": 12345,
+    "format": "jpeg"
+  },
+  "raw": { "...": "vLLM 原始响应，含 usage 统计" }
+}
+```
+
+### curl 调用示例
+
+```bash
+# 将图片编码为 base64 并发送
+IMAGE_B64=$(base64 -w 0 /path/to/image.jpg)
+
+curl -s -X POST https://www.wangyutang.cn/common/api/vision/spark/analyze-json \
+  -H "Content-Type: application/json" \
+  -d "{\"image_base64\": \"${IMAGE_B64}\", \"question\": \"这张图片里有什么？\"}"
+```
+
+Windows PowerShell：
+
+```powershell
+$bytes = [System.IO.File]::ReadAllBytes("C:\path\to\image.jpg")
+$b64 = [Convert]::ToBase64String($bytes)
+$body = @{ image_base64 = $b64; question = "这张图片里有什么？" } | ConvertTo-Json
+
+curl.exe -s -X POST https://www.wangyutang.cn/common/api/vision/spark/analyze-json `
+  -H "Content-Type: application/json" `
+  -d $body
+```
+
+### Python 调用示例
+
+```python
+import base64
+import requests
+
+def analyze_image(image_path: str, question: str = "描述这张图片") -> str:
+    with open(image_path, "rb") as f:
+        image_b64 = base64.b64encode(f.read()).decode()
+
+    resp = requests.post(
+        "https://www.wangyutang.cn/common/api/vision/spark/analyze-json",
+        json={"image_base64": image_b64, "question": question},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return resp.json()["text"]
+
+print(analyze_image("photo.jpg", "图中有哪些物体？"))
+```
+
+用 PIL 生成测试图并发送：
+
+```python
+from PIL import Image
+import io, base64, requests
+
+img = Image.new("RGB", (640, 480), (50, 150, 220))
+buf = io.BytesIO()
+img.save(buf, format="JPEG", quality=85)
+b64 = base64.b64encode(buf.getvalue()).decode()
+
+resp = requests.post(
+    "https://www.wangyutang.cn/common/api/vision/spark/analyze-json",
+    json={"image_base64": b64, "question": "这是什么颜色的图片？"},
+    timeout=60,
+)
+print(resp.json()["text"])  # → "蓝色"
+```
+
+### multipart 文件上传方式
+
+```bash
+curl -s -X POST https://www.wangyutang.cn/common/api/vision/spark/analyze \
+  -F "file=@/path/to/image.jpg" \
+  -F "question=图中有什么内容？"
+```
+
+```python
+import requests
+
+with open("image.jpg", "rb") as f:
+    resp = requests.post(
+        "https://www.wangyutang.cn/common/api/vision/spark/analyze",
+        files={"file": ("image.jpg", f, "image/jpeg")},
+        data={"question": "图中有什么内容？"},
+        timeout=60,
+    )
+print(resp.json()["text"])
+```
+
+### 健康检查与模型查询
+
+```bash
+curl https://www.wangyutang.cn/common/api/vision/spark/health
+# → {"provider":"spark_qwen_vision","model":"qwen3.6-35b-a3b-fp8",...}
+
+curl https://www.wangyutang.cn/common/api/vision/spark/models
+# → {"object":"list","data":[{"id":"qwen3.6-35b-a3b-fp8","capability":"vision_understanding"}]}
+```
+
+### 实测性能（2026-07-01，640×480 JPEG）
+
+| 后端 | 模型 | 平均响应时间 | 说明 |
+|---|---|---|---|
+| 公网（wangyutang.cn → Spark） | Qwen3.6-35B-A3B-NVFP4 | ~3–8s | 回答详细，支持色值估算、场景理解等 |
+| lv_server 内部 | Qwen2.5-VL-7B-Q4KM | ~0.2–0.4s | 仅 lv_server 内部可用 |
+
+详细基准测试（18 张图）见 `tests/vision_benchmark/`，结果存于 `tests/vision_benchmark/results.json`。
+
+### 当前上游配置
+
+```text
+Vision: spark-c9a7:8000/v1/chat/completions
+        model=qwen3.6-35b-a3b-fp8
+        经腾讯云 SSH tunnel :18000 → spark-c9a7:8000 路由
+        图片超过 1280px 自动缩放，超过 10MB 拒绝
+```
+
+---
+
 qwen3-32b tools 调用示例：
 
 ```powershell
