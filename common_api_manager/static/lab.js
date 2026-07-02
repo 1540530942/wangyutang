@@ -40,11 +40,10 @@ function applyHealth(data) {
   $('healthDetail').textContent = '模型信息已同步';
   const models = data.models || {};
   $('asrModelLabel').textContent = models.asr || '-';
-  $('visionModelLabel').textContent = models.vision || '-';
+  $('visionModelLabel').textContent = 'Qwen2.5-VL-7B';
   $('llmModelLabel').textContent = models.llm_tools || models.llm || '-';
   $('sparkModelLabel').textContent = models.spark_llm || '-';
   if (!$('asrModel').value) $('asrModel').value = models.asr || '';
-  if (!$('visionModel').value && models.vision) $('visionModel').value = models.vision;
   $('llmModel').value = models.llm_tools || 'qwen3-32b';
   updateAsrPrompt();
   updateLlmEndpoint();
@@ -78,10 +77,21 @@ function llmRoute() {
   return '/api/llm/qwen3-32b/chat';
 }
 
+function visionRoute() {
+  const p = $('visionProvider').value;
+  if (p === 'spark') return '/api/vision/spark/analyze-json';
+  if (p === 'dashscope') return '/api/vision/dashscope/analyze-json';
+  return '/api/vision/lv/analyze-json';
+}
+
+function updateVisionEndpoint() {
+  $('visionEndpointLabel').textContent = `POST ${visionRoute()}`;
+}
+
 function updateLlmEndpoint() {
   const models = (state.health && state.health.models) || {};
   if ($('llmEndpoint').value === 'spark') $('llmModel').value = models.spark_llm || 'qwen3.6-35b-a3b';
-  if ($('llmEndpoint').value === 'lv') $('llmModel').value = models.llm || 'qwen3.5-9b';
+  if ($('llmEndpoint').value === 'lv') $('llmModel').value = models.llm || 'qwen3.5-35b';
   if ($('llmEndpoint').value === 'dashscope') $('llmModel').value = models.llm_tools || 'qwen3-32b';
   $('llmEndpointLabel').textContent = `POST ${llmRoute()}`;
   updateFullPrompt();
@@ -125,13 +135,19 @@ async function runAsr() {
 async function runVision() {
   const file = $('imageFile').files[0];
   if (!file) return toast('请先选择图片', true);
-  const body = new FormData();
-  body.append('question', $('visionPrompt').value.trim());
-  body.append('model', $('visionModel').value.trim());
-  body.append('file', file);
+  const question = $('visionQuestion').value.trim() || '请描述这张图片。';
   setBusy($('runVision'), true, '理解中...');
   try {
-    const data = await requestJson('/api/vision/qwen/analyze', { method: 'POST', body });
+    const arrayBuffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+    const image_base64 = btoa(binary);
+    const data = await requestJson(visionRoute(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_base64, question }),
+    });
     $('visionResult').value = data.text || pretty(data);
     $('visionRaw').textContent = pretty(data);
     toast('图像理解完成');
@@ -204,7 +220,7 @@ async function runLlm() {
 
 $('loginForm').addEventListener('submit', (event) => {
   event.preventDefault();
-  if ($('captchaInput').value.trim() !== '123') {
+  if ($('captchaInput').value.trim() !== '12') {
     $('loginError').textContent = '验证码不正确。提示：12。';
     return;
   }
@@ -236,6 +252,7 @@ $('sparkImageFile').addEventListener('change', () => {
 });
 $('runSparkVision').addEventListener('click', runSparkVision);
 $('asrModel').addEventListener('input', updateAsrPrompt);
+$('visionProvider').addEventListener('change', updateVisionEndpoint);
 $('llmEndpoint').addEventListener('change', updateLlmEndpoint);
 $('llmModel').addEventListener('input', updateFullPrompt);
 $('systemPrompt').addEventListener('input', updateFullPrompt);
@@ -250,4 +267,5 @@ if (sessionStorage.getItem('common_api_lab_unlocked') === '1') {
   loadHealth();
 }
 updateAsrPrompt();
+updateVisionEndpoint();
 updateFullPrompt();

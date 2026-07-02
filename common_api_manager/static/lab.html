@@ -75,18 +75,26 @@
               <span class="panel-index">02</span>
               <h2>图像理解 VL</h2>
             </div>
-            <code>POST /api/vision/qwen/analyze</code>
+            <code id="visionEndpointLabel">POST /api/vision/lv/analyze-json</code>
           </div>
-          <label class="field-label">模型</label>
-          <input id="visionModel" class="text-input" value="qwen-vl-plus" />
+          <div class="split-row">
+            <label><span class="field-label">接口</span>
+              <select id="visionProvider" class="text-input">
+                <option value="lv">LV Qwen2.5-VL-7B（~0.4s）</option>
+                <option value="spark">Spark Qwen3.6-35B（~2.5s）</option>
+                <option value="dashscope">DashScope Qwen-VL-Plus</option>
+              </select>
+            </label>
+            <label><span class="field-label">问题</span>
+              <input id="visionQuestion" class="text-input" value="请用中文描述这张图片的主要内容。" />
+            </label>
+          </div>
           <label class="drop-zone image-zone" for="imageFile">
             <input id="imageFile" type="file" accept="image/*" />
             <img id="imagePreview" alt="图片预览" />
             <span>选择图片</span>
             <strong id="imageName">JPG / PNG / WebP</strong>
           </label>
-          <label class="field-label">完整提示词</label>
-          <textarea id="visionPrompt" class="prompt-input">请用中文描述这张图片，说明主要物体、环境、文字内容和是否有人。</textarea>
           <button id="runVision" class="run-button">运行图像理解</button>
           <div class="result-box"><textarea id="visionResult" readonly placeholder="图像理解结果"></textarea></div>
           <details><summary>原始返回</summary><pre id="visionRaw">{}</pre></details>
