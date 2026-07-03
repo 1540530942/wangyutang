@@ -90,7 +90,7 @@ function updateVisionEndpoint() {
 
 function updateLlmEndpoint() {
   const models = (state.health && state.health.models) || {};
-  if ($('llmEndpoint').value === 'spark') $('llmModel').value = models.spark_llm || 'qwen3.6-35b-a3b';
+  if ($('llmEndpoint').value === 'spark') $('llmModel').value = models.spark_llm || 'qwen3.6-35b-a3b-fp8';
   if ($('llmEndpoint').value === 'lv') $('llmModel').value = models.llm || 'qwen3.5-35b';
   if ($('llmEndpoint').value === 'dashscope') $('llmModel').value = models.llm_tools || 'qwen3-32b';
   $('llmEndpointLabel').textContent = `POST ${llmRoute()}`;
