@@ -22,10 +22,16 @@ def build_call_id(prefix: str = "call") -> str:
 
 class CompatModel(BaseModel):
     def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        return self.dict(*args, **kwargs)
+        try:
+            return super().model_dump(*args, **kwargs)
+        except AttributeError:
+            return self.dict(*args, **kwargs)
 
     def model_copy(self, *args: Any, **kwargs: Any) -> Any:
-        return self.copy(*args, **kwargs)
+        try:
+            return super().model_copy(*args, **kwargs)
+        except AttributeError:
+            return self.copy(*args, **kwargs)
 
 
 class ToolCall(CompatModel):
