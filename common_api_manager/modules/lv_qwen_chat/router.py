@@ -13,10 +13,13 @@ router = APIRouter(tags=["lv_qwen_chat"])
 
 
 class ChatMessage(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     role: Literal["system", "user", "assistant", "tool"]
-    content: Any
+    content: Any = None
     name: str | None = None
     tool_call_id: str | None = None
+    tool_calls: list[dict[str, Any]] | None = None
 
 
 class ChatCompletionRequest(BaseModel):
