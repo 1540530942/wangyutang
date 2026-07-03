@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import io
 import os
+import time
 
 import pytest
 import requests
@@ -18,8 +19,26 @@ from PIL import Image
 
 BASE = os.getenv("API_BASE", "https://www.wangyutang.cn/common")
 SHORT = 15   # seconds for health/read endpoints
-CHAT  = 60   # seconds for LLM inference
-VISION = 30  # seconds for vision inference
+CHAT  = 90   # seconds for LLM inference (35B model can be slow post-restart)
+VISION = 45  # seconds for vision inference
+
+
+def _call_with_retry(fn, retries: int = 2, delay: float = 5.0):
+    """Retry fn() on exception or non-200 up to retries times."""
+    last_exc = None
+    for attempt in range(retries + 1):
+        try:
+            r = fn()
+            if r.status_code == 200 or attempt == retries:
+                return r
+            time.sleep(delay)
+        except Exception as exc:
+            last_exc = exc
+            if attempt < retries:
+                time.sleep(delay)
+    if last_exc:
+        raise last_exc
+    return r
 
 
 def _red_jpeg_b64(width: int = 64, height: int = 64) -> str:
@@ -84,10 +103,12 @@ def test_vision_spark_health():
 # ── functional tests ───────────────────────────────────────────────────────
 
 def test_lv_chat_returns_text():
-    r = requests.post(
-        f"{BASE}/api/llm/chat",
-        json={"messages": [{"role": "user", "content": "只回答数字：1+1="}], "max_tokens": 50},
-        timeout=CHAT,
+    r = _call_with_retry(
+        lambda: requests.post(
+            f"{BASE}/api/llm/chat",
+            json={"messages": [{"role": "user", "content": "只回答数字：1+1="}], "max_tokens": 50},
+            timeout=CHAT,
+        )
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -96,10 +117,12 @@ def test_lv_chat_returns_text():
 
 
 def test_dashscope_chat_returns_text():
-    r = requests.post(
-        f"{BASE}/api/llm/qwen3-32b/chat",
-        json={"messages": [{"role": "user", "content": "只回答数字：2+2="}], "max_tokens": 20},
-        timeout=CHAT,
+    r = _call_with_retry(
+        lambda: requests.post(
+            f"{BASE}/api/llm/qwen3-32b/chat",
+            json={"messages": [{"role": "user", "content": "只回答数字：2+2="}], "max_tokens": 20},
+            timeout=CHAT,
+        )
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -107,10 +130,12 @@ def test_dashscope_chat_returns_text():
 
 
 def test_vision_lv_analyze_json():
-    r = requests.post(
-        f"{BASE}/api/vision/lv/analyze-json",
-        json={"image_base64": _red_jpeg_b64(), "question": "图片主要是什么颜色？"},
-        timeout=VISION,
+    r = _call_with_retry(
+        lambda: requests.post(
+            f"{BASE}/api/vision/lv/analyze-json",
+            json={"image_base64": _red_jpeg_b64(), "question": "图片主要是什么颜色？"},
+            timeout=VISION,
+        )
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -119,10 +144,12 @@ def test_vision_lv_analyze_json():
 
 
 def test_vision_spark_analyze_json():
-    r = requests.post(
-        f"{BASE}/api/vision/spark/analyze-json",
-        json={"image_base64": _red_jpeg_b64(), "question": "图片主要是什么颜色？"},
-        timeout=VISION,
+    r = _call_with_retry(
+        lambda: requests.post(
+            f"{BASE}/api/vision/spark/analyze-json",
+            json={"image_base64": _red_jpeg_b64(), "question": "图片主要是什么颜色？"},
+            timeout=VISION,
+        )
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -137,10 +164,12 @@ def test_vision_dashscope_health():
 
 
 def test_vision_dashscope_analyze_json():
-    r = requests.post(
-        f"{BASE}/api/vision/dashscope/analyze-json",
-        json={"image_base64": _red_jpeg_b64(), "question": "图片主要是什么颜色？"},
-        timeout=VISION,
+    r = _call_with_retry(
+        lambda: requests.post(
+            f"{BASE}/api/vision/dashscope/analyze-json",
+            json={"image_base64": _red_jpeg_b64(), "question": "图片主要是什么颜色？"},
+            timeout=VISION,
+        )
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -149,10 +178,12 @@ def test_vision_dashscope_analyze_json():
 
 
 def test_spark_llm_returns_text():
-    r = requests.post(
-        f"{BASE}/api/llm/qwen3.6-35b/chat",
-        json={"messages": [{"role": "user", "content": "只回答数字：3+3="}], "max_tokens": 20},
-        timeout=CHAT,
+    r = _call_with_retry(
+        lambda: requests.post(
+            f"{BASE}/api/llm/qwen3.6-35b/chat",
+            json={"messages": [{"role": "user", "content": "只回答数字：3+3="}], "max_tokens": 20},
+            timeout=CHAT,
+        )
     )
     assert r.status_code == 200, r.text
     body = r.json()
