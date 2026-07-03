@@ -169,9 +169,10 @@ function applyPolling() {
 if (realtimeToggle) realtimeToggle.addEventListener("change", applyPolling);
 applyPolling();
 
-// --- Vehicle control: buttons POST to the action_move queue (same origin) ---
+// --- Vehicle control: open-loop (action_move) or closed-loop (/api/move) ---
 const cmdStatus = document.getElementById("cmdStatus");
 const stepCm = document.getElementById("stepCm");
+const closedLoopToggle = document.getElementById("closedLoopToggle");
 
 function setCmdStatus(text, cls) {
   if (!cmdStatus) return;
@@ -179,22 +180,55 @@ function setCmdStatus(text, cls) {
   cmdStatus.className = `cmd-status ${cls || ""}`.trim();
 }
 
+function isClosedLoop() {
+  return closedLoopToggle && closedLoopToggle.checked;
+}
+
+async function sendCommandOpenLoop(action, settingsOverride) {
+  const body = { action, source: "slam-web", ttl_seconds: 30 };
+  if (settingsOverride) body.settings_override = settingsOverride;
+  const resp = await fetch("/action/api/tasks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data.detail || String(resp.status));
+  return data;
+}
+
+async function sendCommandClosedLoop(action, distanceCm, angleDeg) {
+  const body = { action, closed_loop: true, source: "slam-web" };
+  if (distanceCm != null) body.distance_cm = distanceCm;
+  if (angleDeg != null) body.angle_deg = angleDeg;
+  const resp = await fetch("api/move", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data.ok) throw new Error(data.error || String(resp.status));
+  return data;
+}
+
 async function sendCommand(action, settingsOverride) {
-  setCmdStatus(`下发 ${action}…`, "pending");
+  const cl = isClosedLoop();
+  setCmdStatus(`${cl ? "闭环" : "下发"} ${action}…`, "pending");
   try {
-    const body = { action, source: "slam-web", ttl_seconds: 30 };
-    if (settingsOverride) body.settings_override = settingsOverride;
-    const resp = await fetch("/action/api/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-      setCmdStatus(`失败: ${data.detail || resp.status}`, "err");
-      return;
+    let data;
+    if (action === "emergency_stop" || !cl) {
+      data = await sendCommandOpenLoop(action, settingsOverride);
+      const label = cl ? "" : "";
+      setCmdStatus(`已下发 ${action}`, "ok");
+    } else {
+      const cm = settingsOverride && settingsOverride.unit_distance_cm;
+      const deg = settingsOverride && settingsOverride.turn_angle_deg;
+      data = await sendCommandClosedLoop(action, cm, deg);
+      const iters = data.iterations || 1;
+      const err = data.error != null ? `误差${(data.error * 100).toFixed(1)}cm` : "";
+      const conv = data.converged ? "已收敛" : "未收敛";
+      setCmdStatus(`闭环完成 ${iters}轮 ${conv} ${err}`, data.converged ? "ok" : "warn");
     }
-    setCmdStatus(`已下发 ${action}`, "ok");
     refresh();
   } catch (error) {
     setCmdStatus(`错误: ${error.message}`, "err");

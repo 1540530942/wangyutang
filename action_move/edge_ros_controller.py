@@ -10,10 +10,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+import math
 import rclpy
 from geometry_msgs.msg import Twist
+from sensor_msgs.msg import Imu
 from rclpy.node import Node
-from ros_robot_controller_msgs.msg import MotorSpeedControl, MotorsSpeedControl, PWMServoState, RGBState, RGBStates, SetPWMServoState
+from ros_robot_controller_msgs.msg import PWMServoState, RGBState, RGBStates, SetPWMServoState
 
 try:
     from sdk.sonar import Sonar
@@ -82,15 +84,6 @@ def unit_duration_ms(defaults: dict[str, Any], kind: str) -> int:
     return int(round(clamp(base * (unit / 5.0) / sensitivity, lower, upper)))
 
 
-def velocity_scale(defaults: dict[str, Any]) -> float:
-    if not bool(defaults.get("scale_velocity_by_sensitivity", True)):
-        return 1.0
-    sensitivity = float(defaults.get("sensitivity", 1.0))
-    minimum = float(defaults.get("min_velocity_scale", 0.25))
-    maximum = float(defaults.get("max_velocity_scale", 1.0))
-    return clamp(sensitivity, minimum, maximum)
-
-
 def cmd_vel_topics(defaults: dict[str, Any]) -> list[str]:
     topics = defaults.get("cmd_vel_topics")
     if not isinstance(topics, list) or not topics:
@@ -120,7 +113,6 @@ class TurboPiController(Node):
             topic: self.create_publisher(Twist, topic, 10)
             for topic in self.cmd_vel_topics
         }
-        self.motors_pub = self.create_publisher(MotorsSpeedControl, "/ros_robot_controller/set_motor_speeds", 10)
         self.servo_pub = self.create_publisher(SetPWMServoState, self.pwm_servo_topic, 10)
         self.rgb_pub = self.create_publisher(RGBStates, self.rgb_topic, 10)
         self.sonar_rgb = None
@@ -130,6 +122,58 @@ class TurboPiController(Node):
         self.last_executed_at = 0.0
         center = int(defaults.get("pwm_center", 1500))
         self.servo_positions: dict[int, int] = {1: center, 2: center}
+        self._imu_lock = threading.Lock()
+        self._imu_samples: list[tuple[float, float, float, float, float]] = []
+        self.create_subscription(Imu, "/ros_robot_controller/imu_raw", self._imu_callback, 20)
+
+
+    def _imu_callback(self, msg: Imu) -> None:
+        t = time.monotonic()
+        with self._imu_lock:
+            self._imu_samples.append((
+                t,
+                msg.linear_acceleration.x,
+                msg.linear_acceleration.y,
+                msg.linear_acceleration.z,
+                msg.angular_velocity.z,
+            ))
+
+    def _measure_imu_actuals(
+        self, samples: list, skill_type: str, twist: dict[str, Any]
+    ) -> dict[str, float]:
+        if len(samples) < 4:
+            return {}
+        samples = sorted(samples, key=lambda s: s[0])
+        # Integrate gyro z for yaw (reliable for short bursts)
+        dyaw_rad = 0.0
+        for i in range(1, len(samples)):
+            dt = samples[i][0] - samples[i - 1][0]
+            if 0.0 < dt < 0.2:
+                dyaw_rad += samples[i][4] * dt
+        result: dict[str, float] = {}
+        if skill_type == "base_turn":
+            result["actual_yaw_deg"] = round(abs(math.degrees(dyaw_rad)), 2)
+        elif skill_type == "base_move":
+            # Double-integrate the dominant translation axis (noisy but directional)
+            lx = float(twist.get("linear_x", 0.0))
+            ly = float(twist.get("linear_y", 0.0))
+            axis_idx = 1 if abs(lx) >= abs(ly) else 2  # 1=ax, 2=ay
+            # Remove mean (static bias / gravity projection)
+            axis_vals = [s[axis_idx] for s in samples]
+            bias = sum(axis_vals) / len(axis_vals)
+            vel = 0.0
+            pos = 0.0
+            for i in range(1, len(samples)):
+                dt = samples[i][0] - samples[i - 1][0]
+                if 0.0 < dt < 0.2:
+                    a = samples[i][axis_idx] - bias
+                    vel += a * dt
+                    pos += vel * dt
+            dist_cm = abs(pos) * 100.0
+            # Only report if result is physically plausible (1–60 cm)
+            if 1.0 <= dist_cm <= 60.0:
+                result["actual_distance_cm"] = round(dist_cm, 2)
+        return result
 
     def execute(self, action: str, settings: dict[str, Any] | None = None) -> dict[str, Any]:
         started = time.time()
@@ -179,39 +223,38 @@ class TurboPiController(Node):
                             "[INFO] confidence={confidence}".format(**distance),
                         ]
                     )
-                elif skill["type"] == "base_move":
+                elif skill["type"] in {"base_move", "base_turn"}:
                     self.stop_event.clear()
-                    if "motor_override" in skill:
-                        output.extend(self.publish_motor_override(skill["motor_override"]))
-                    else:
-                        duration_ms = unit_duration_ms(defaults, "move")
-                        output.append(f"[INFO] duration_ms={duration_ms}")
-                        output.extend(
-                            self.publish_twist_burst(
-                                skill["twist"],
-                                duration_ms,
-                                int(defaults.get("stop_publish_times", 3)),
-                                defaults,
-                            )
+                    kind = "turn" if skill["type"] == "base_turn" else "move"
+                    duration_ms = unit_duration_ms(defaults, kind)
+                    output.append(f"[INFO] duration_ms={duration_ms}")
+                    with self._imu_lock:
+                        self._imu_samples.clear()
+                    output.extend(
+                        self.publish_twist_burst(
+                            skill["twist"],
+                            duration_ms,
+                            int(defaults.get("stop_publish_times", 3)),
+                            defaults,
                         )
-                elif skill["type"] == "base_turn":
-                    self.stop_event.clear()
-                    if "motor_override" in skill:
-                        output.extend(self.publish_motor_override(skill["motor_override"]))
-                    else:
-                        duration_ms = unit_duration_ms(defaults, "turn")
-                        output.append(f"[INFO] duration_ms={duration_ms}")
-                        output.extend(
-                            self.publish_twist_burst(
-                                skill["twist"],
-                                duration_ms,
-                                int(defaults.get("stop_publish_times", 3)),
-                                defaults,
-                            )
-                        )
-                elif skill["type"] == "camera_snapshot":
-                    self.request_camera_capture(defaults)
-                    output.append("[INFO] camera_snapshot triggered")
+                    )
+                    with self._imu_lock:
+                        imu_snap = list(self._imu_samples)
+                    actuals = self._measure_imu_actuals(imu_snap, skill["type"], skill.get("twist", {}))
+                    if "actual_distance_cm" in actuals:
+                        output.append(f"[IMU] actual_distance_cm={actuals['actual_distance_cm']}")
+                    if "actual_yaw_deg" in actuals:
+                        output.append(f"[IMU] actual_yaw_deg={actuals['actual_yaw_deg']}")
+                    # IMU unavailable — echo the commanded value as the best estimate
+                    if not actuals:
+                        if skill["type"] == "base_turn":
+                            commanded_deg = float(defaults.get("turn_angle_deg", 0.0))
+                            if commanded_deg > 0.0:
+                                output.append(f"[CMD] actual_yaw_deg={round(commanded_deg, 2)}")
+                        elif skill["type"] == "base_move":
+                            commanded_cm = float(defaults.get("unit_distance_cm", 0.0))
+                            if commanded_cm > 0.0:
+                                output.append(f"[CMD] actual_distance_cm={round(commanded_cm, 2)}")
                 else:
                     raise ValueError(f"unsupported skill type: {skill['type']}")
                 self.last_action = skill["id"]
@@ -257,8 +300,7 @@ class TurboPiController(Node):
         stop_times: int,
         defaults: dict[str, Any],
     ) -> list[str]:
-        target_scale = velocity_scale(defaults)
-        message = self.scale_twist(self.make_twist(twist), target_scale)
+        message = self.make_twist(twist)
         rate_hz = 20.0
         interval = 1.0 / rate_hz
         started = time.monotonic()
@@ -284,24 +326,7 @@ class TurboPiController(Node):
             "[INFO] cmd_vel_subscription_counts="
             + ",".join(f"{topic}:{count}" for topic, count in topic_counts.items()),
             f"[INFO] move_ramp_ms={int(ramp_seconds * 1000)} move_start_scale={start_scale}",
-            f"[INFO] velocity_scale={target_scale}",
         ]
-
-    def publish_motor_override(self, override: dict[str, Any]) -> list[str]:
-        speeds = override["speeds"]
-        duration_ms = int(override.get("duration_ms", 500))
-        msg = MotorsSpeedControl()
-        msg.data = [MotorSpeedControl(id=int(s["id"]), speed=float(s["speed"])) for s in speeds]
-        with self.publish_lock:
-            self.motors_pub.publish(msg)
-            rclpy.spin_once(self, timeout_sec=0.0)
-        time.sleep(duration_ms / 1000.0)
-        stop_msg = MotorsSpeedControl()
-        stop_msg.data = [MotorSpeedControl(id=i, speed=0.0) for i in [1, 2, 3, 4]]
-        with self.publish_lock:
-            self.motors_pub.publish(stop_msg)
-            rclpy.spin_once(self, timeout_sec=0.0)
-        return [f"[INFO] motor_override duration_ms={duration_ms} speeds={[s['speed'] for s in speeds]}"]
 
     def publish_stop(self, times: int = 3) -> None:
         stop = Twist()
@@ -503,7 +528,11 @@ def main() -> int:
 
     rclpy.init()
     Handler.controller = TurboPiController(args.catalog)
-    spin_thread = threading.Thread(target=lambda: rclpy.spin(Handler.controller), daemon=True, name="rclpy_spin")
+    spin_thread = threading.Thread(
+        target=lambda: rclpy.spin(Handler.controller),
+        daemon=True,
+        name="rclpy_spin",
+    )
     spin_thread.start()
     server = ReusableThreadingHTTPServer((args.host, args.port), Handler)
     try:

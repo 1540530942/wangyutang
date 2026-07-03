@@ -269,3 +269,4 @@ dd {
 .cmd-status.ok { color: var(--robot); }
 .cmd-status.err { color: #b91c1c; }
 .cmd-status.pending { color: var(--accent); }
+.cmd-status.warn { color: #b45309; }

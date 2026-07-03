@@ -18,33 +18,43 @@ TURN_SKILLS = {
 }
 
 
-def parse_edge_actuals(output: str) -> dict[str, float]:
-    """Extract IMU/odometry-measured actuals from the edge controller output.
+def parse_edge_actuals(output: str) -> tuple[dict[str, float], str]:
+    """Extract measured actuals from the edge controller output.
 
-    Edge contract: the on-Pi controller appends measured motion to its result
-    output as ``[IMU] actual_distance_cm=<x>`` / ``[IMU] actual_yaw_deg=<y>``
-    once it reads the robot's IMU / wheel odometry. When present these are the
-    *real* executed motion and take precedence over the commanded values, so
-    slam shows the true distance and the closed loop can correct on real error.
+    Returns (actuals_dict, source_tag) where source_tag is:
+    - "imu"      — hardware IMU measured values ([IMU] prefix)
+    - "cmd_vel"  — cmd_vel dead-reckoning estimate ([CMD] prefix)
+    - "commanded"— no measurement, use task commanded values
     """
     actuals: dict[str, float] = {}
-    for key, pattern in (
-        ("actual_distance_cm", r"actual_distance_cm=(-?[0-9.]+)"),
-        ("actual_yaw_deg", r"actual_yaw_deg=(-?[0-9.]+)"),
+    source_tag = "commanded"
+    output = output or ""
+    for key, imu_pattern, cmd_pattern in (
+        ("actual_distance_cm", r"\[IMU\] actual_distance_cm=(-?[0-9.]+)", r"\[CMD\] actual_distance_cm=(-?[0-9.]+)"),
+        ("actual_yaw_deg", r"\[IMU\] actual_yaw_deg=(-?[0-9.]+)", r"\[CMD\] actual_yaw_deg=(-?[0-9.]+)"),
     ):
-        match = re.search(pattern, output or "")
-        if match:
+        m = re.search(imu_pattern, output)
+        if m:
             try:
-                actuals[key] = float(match.group(1))
+                actuals[key] = float(m.group(1))
+                source_tag = "imu"
             except ValueError:
                 pass
-    return actuals
+            continue
+        m = re.search(cmd_pattern, output)
+        if m:
+            try:
+                actuals[key] = float(m.group(1))
+                if source_tag == "commanded":
+                    source_tag = "cmd_vel"
+            except ValueError:
+                pass
+    return actuals, source_tag
 
 
 def slam_odometry_payload(task: dict[str, Any]) -> dict[str, Any] | None:
     skill_id = str(task.get("skill_id") or "")
-    actuals = parse_edge_actuals(str(task.get("output") or ""))
-    measured = "imu" if actuals else "commanded"
+    actuals, measured = parse_edge_actuals(str(task.get("output") or ""))
 
     if skill_id in TRANSLATION_SKILLS:
         x_scale, y_scale = TRANSLATION_SKILLS[skill_id]
