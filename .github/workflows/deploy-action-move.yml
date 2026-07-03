@@ -235,6 +235,8 @@ jobs:
 
       - name: Update Raspberry Pi action edge
         if: steps.scope.outputs.deploy_pi == 'true'
+        id: pi_deploy
+        continue-on-error: true
         run: |
           retry_pi() {
             local attempt
@@ -357,8 +359,12 @@ jobs:
           }, ensure_ascii=False))
           PY
 
+      - name: Warn if Pi deployment skipped
+        if: steps.pi_deploy.outcome == 'failure'
+        run: echo "::warning::Pi deployment failed — Pi may be offline (Tailscale). Cloud deployment succeeded. Re-run deploy manually when Pi is online."
+
       - name: Verify live RGB task through Pi
-        if: steps.scope.outputs.deploy_pi == 'true' && env.VERIFY_LIVE_RGB == 'true'
+        if: steps.scope.outputs.deploy_pi == 'true' && env.VERIFY_LIVE_RGB == 'true' && steps.pi_deploy.outcome == 'success'
         run: |
           python - <<'PY'
           import json
