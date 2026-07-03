@@ -170,6 +170,8 @@ def selected_vision_config(selection: dict[str, Any] | None = None) -> dict[str,
 
 
 def build_cloud_config(selection: dict[str, Any] | None = None) -> dict[str, Any]:
+    if selection is None:
+        selection = fetch_lab_model_selection()
     vision = selected_vision_config(selection)
     return {
         "face_server": FACE_SERVER,
