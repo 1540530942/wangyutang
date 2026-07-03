@@ -42,12 +42,18 @@ CAMERA_SERVER = os.getenv("AUDIO_CAMERA_SERVER", "http://camera-snapshot:8099")
 COMMON_ASR_URL = os.getenv("COMMON_ASR_URL", "https://www.wangyutang.cn/common/api/asr/transcribe")
 VISION_ANALYZE_URL = os.getenv("AUDIO_VISION_ANALYZE_URL", "https://www.wangyutang.cn/common/api/vision/spark/analyze-json")
 VISION_LLM_MODEL = os.getenv("AUDIO_VISION_LLM_MODEL", "qwen3.6-35b-a3b-fp8")
+COMMON_API_PUBLIC_BASE = os.getenv("COMMON_API_PUBLIC_BASE", "https://www.wangyutang.cn").rstrip("/")
+COMMON_LAB_SELECTION_URL = os.getenv("AUDIO_COMMON_LAB_SELECTION_URL", f"{COMMON_API_PUBLIC_BASE}/common/api/lab/selection").strip()
+COMMON_LAB_SELECTION_TIMEOUT_SECONDS = float(os.getenv("AUDIO_COMMON_LAB_SELECTION_TIMEOUT_SECONDS", "1.5") or 1.5)
+COMMON_LAB_SELECTION_CACHE_TTL_SECONDS = float(os.getenv("AUDIO_COMMON_LAB_SELECTION_CACHE_TTL_SECONDS", "2") or 2)
 MAX_RESULTS = 100
 MAX_EVENTS = 200
 MAX_DASHBOARD_RESULTS = 40
 MAX_DASHBOARD_EVENTS = 60
 DATA_LOCK = threading.Lock()
 HTTP_TIMEOUT_SECONDS = 3.0
+MODEL_SELECTION_LOCK = threading.Lock()
+MODEL_SELECTION_CACHE: dict[str, Any] = {"ts": 0.0, "selection": None, "error": ""}
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
@@ -106,14 +112,92 @@ DEFAULT_SETTINGS = {
 }
 
 
+def _absolute_common_url(path_or_url: str) -> str:
+    value = str(path_or_url or "").strip()
+    if value.startswith(("http://", "https://")):
+        return value
+    if value.startswith("/"):
+        return f"{COMMON_API_PUBLIC_BASE}{value}"
+    return value
+
+
+def fetch_lab_model_selection() -> dict[str, Any]:
+    if not COMMON_LAB_SELECTION_URL:
+        return {}
+    now = time.time()
+    with MODEL_SELECTION_LOCK:
+        if now - float(MODEL_SELECTION_CACHE.get("ts") or 0) < COMMON_LAB_SELECTION_CACHE_TTL_SECONDS:
+            cached = MODEL_SELECTION_CACHE.get("selection")
+            return dict(cached) if isinstance(cached, dict) else {}
+    try:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        request = urllib.request.Request(COMMON_LAB_SELECTION_URL, headers={"Accept": "application/json"})
+        with opener.open(request, timeout=COMMON_LAB_SELECTION_TIMEOUT_SECONDS) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        selection = payload.get("selection") if isinstance(payload, dict) else {}
+        selection = selection if isinstance(selection, dict) else {}
+        error = ""
+    except Exception as exc:  # noqa: BLE001 - runtime selection must not block audio control
+        error = str(exc)
+        with MODEL_SELECTION_LOCK:
+            cached = MODEL_SELECTION_CACHE.get("selection")
+            selection = dict(cached) if isinstance(cached, dict) else {}
+    with MODEL_SELECTION_LOCK:
+        MODEL_SELECTION_CACHE.update({"ts": now, "selection": selection, "error": error})
+    return dict(selection)
+
+
+def selected_llm_config(selection: dict[str, Any] | None = None) -> dict[str, Any]:
+    llm = ((selection or {}).get("llm") or {}) if isinstance(selection, dict) else {}
+    endpoint = _absolute_common_url(llm.get("endpoint") or os.getenv("AUDIO_REACT_LLM_ENDPOINT", "https://www.wangyutang.cn/common/api/llm/qwen3-32b/chat/completions"))
+    model = str(llm.get("model") or os.getenv("AUDIO_REACT_LLM_MODEL", "qwen3-32b")).strip()
+    return {
+        "endpoint": endpoint,
+        "model": model,
+        "provider": str(llm.get("provider") or "env").strip(),
+    }
+
+
+def selected_vision_config(selection: dict[str, Any] | None = None) -> dict[str, Any]:
+    vision = ((selection or {}).get("vision") or {}) if isinstance(selection, dict) else {}
+    endpoint = _absolute_common_url(vision.get("endpoint") or VISION_ANALYZE_URL)
+    model = str(vision.get("model") or VISION_LLM_MODEL).strip()
+    return {
+        "vision_analyze_url": endpoint,
+        "vision_llm_model": model,
+        "vision_provider": str(vision.get("provider") or "env").strip(),
+    }
+
+
+def build_cloud_config(selection: dict[str, Any] | None = None) -> dict[str, Any]:
+    vision = selected_vision_config(selection)
+    return {
+        "face_server": FACE_SERVER,
+        "face_enabled": True,
+        "action_server": ACTION_SERVER,
+        "action_enabled": True,
+        "sensor_server": CAMERA_SERVER,
+        "camera_server": CAMERA_SERVER,
+        **vision,
+    }
+
+
 def build_router_config() -> dict[str, Any]:
+    selection = fetch_lab_model_selection()
+    llm_selection = selected_llm_config(selection)
     config: dict[str, Any] = {
         "skill_catalog": str(ACTION_CATALOG_PATH),
         "skill_registry": str(os.getenv("AUDIO_SKILL_REGISTRY", str(SKILL_REGISTRY_PATH))).strip(),
+        "model_selection": {
+            "source_url": COMMON_LAB_SELECTION_URL,
+            "selection": selection,
+            "selection_error": str(MODEL_SELECTION_CACHE.get("error") or ""),
+        },
     }
     react_llm = {
-        "endpoint": str(os.getenv("AUDIO_REACT_LLM_ENDPOINT", "https://www.wangyutang.cn/common/api/llm/qwen3-32b/chat/completions")).strip(),
-        "model": str(os.getenv("AUDIO_REACT_LLM_MODEL", "qwen3-32b")).strip(),
+        "endpoint": llm_selection["endpoint"],
+        "model": llm_selection["model"],
+        "provider": llm_selection["provider"],
         "timeout_seconds": float(os.getenv("AUDIO_REACT_LLM_TIMEOUT_SECONDS", "90") or 90),
         "retries": int(os.getenv("AUDIO_REACT_LLM_RETRIES", "2") or 2),
     }
@@ -334,16 +418,7 @@ def simulate_route_text(*, text: str, device_id: str, source: str, raw: dict[str
         base_dir=PACKAGE_DIR,
         text=text,
         router_config=build_router_config(),
-        cloud_config={
-            "face_server": FACE_SERVER,
-            "face_enabled": True,
-            "action_server": ACTION_SERVER,
-            "action_enabled": True,
-            "sensor_server": CAMERA_SERVER,
-            "camera_server": CAMERA_SERVER,
-            "vision_analyze_url": VISION_ANALYZE_URL,
-            "vision_llm_model": VISION_LLM_MODEL,
-        },
+        cloud_config=build_cloud_config(),
         route_action=False,
         source=source,
         device_id=device_id,
@@ -460,6 +535,7 @@ def health() -> dict[str, Any]:
         "latest_event": latest_event,
         "age_seconds": age,
         "router": build_router_config(),
+        "cloud_config": build_cloud_config(),
     }
 
 
@@ -483,6 +559,7 @@ def dashboard() -> dict[str, Any]:
         "camera": camera_snapshot(),
         "settings": load_settings(),
         "router": build_router_config(),
+        "cloud_config": build_cloud_config(),
         "server_time": time.time(),
     }
 
@@ -681,16 +758,7 @@ def add_result(payload: AudioResult, x_audio_token: Annotated[str | None, Header
         base_dir=PACKAGE_DIR,
         text=text,
         router_config=build_router_config(),
-        cloud_config={
-            "face_server": FACE_SERVER,
-            "face_enabled": True,
-            "action_server": ACTION_SERVER,
-            "action_enabled": True,
-            "sensor_server": CAMERA_SERVER,
-            "camera_server": CAMERA_SERVER,
-            "vision_analyze_url": VISION_ANALYZE_URL,
-            "vision_llm_model": VISION_LLM_MODEL,
-        },
+        cloud_config=build_cloud_config(),
         route_action=text != "noise_or_unrecognized_audio",
         source="audio_result",
         device_id=str(item.get("device_id") or "turbopi-01"),
@@ -911,16 +979,7 @@ def recognize_text(payload: TextCommand, x_audio_token: Annotated[str | None, He
         base_dir=PACKAGE_DIR,
         text=text,
         router_config=build_router_config(),
-        cloud_config={
-            "face_server": FACE_SERVER,
-            "face_enabled": True,
-            "action_server": ACTION_SERVER,
-            "action_enabled": True,
-            "sensor_server": CAMERA_SERVER,
-            "camera_server": CAMERA_SERVER,
-            "vision_analyze_url": VISION_ANALYZE_URL,
-            "vision_llm_model": VISION_LLM_MODEL,
-        },
+        cloud_config=build_cloud_config(),
         route_action=payload.route_action,
         source="audio_recognition",
         device_id=payload.device_id,

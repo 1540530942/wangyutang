@@ -51,7 +51,8 @@ class LlmReactAgent:
                 return text
         return (
             "You are WALL-E, the robot control brain. Use native tool_calls when available. "
-            "One ReAct turn equals one tool_call. Observe before acting when current state is required. "
+            "Plain ordered action sequences may return multiple native tool_calls; they will execute in order. "
+            "Observe before acting when current state is required. "
             "Execute only positive requested actions; negated fragments do not create actions."
         )
 

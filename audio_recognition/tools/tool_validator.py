@@ -63,6 +63,19 @@ def _validate_duration(skill_id: str, args: dict[str, Any], registry: SkillRegis
     return value, ""
 
 
+def _distance_settings_override(skill_id: str, args: dict[str, Any]) -> dict[str, Any]:
+    if skill_id not in {"move_forward", "move_backward", "move_left", "move_right"}:
+        return {}
+    raw = args.get("distance_cm")
+    if raw in {None, ""}:
+        return {}
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return {}
+    return {"unit_distance_cm": round(max(1.0, min(50.0, value)), 2)}
+
+
 def _normalize_skill_id_as_tool(call: ToolCall, registry: SkillRegistry) -> ToolCall:
     """If LLM calls a skill_id directly (e.g. move_forward), reroute to its registered tool."""
     spec = registry.get(call.tool)
@@ -173,6 +186,7 @@ def validate_tool_call(
         order=int(args.get("order") or len(envelope.tasks) + 1),
         duration_ms=args.get("duration_ms"),
         wait_until=wait_until,
+        settings_override=_distance_settings_override(skill_id, args),
     )
     envelope.tasks.append(task)
     return task

@@ -44,6 +44,37 @@
         <div><span>Spark</span><strong id="sparkModelLabel">-</strong></div>
       </section>
 
+      <section class="panel platform-selection">
+        <div class="panel-head">
+          <div class="panel-title"><span class="panel-index">◎</span><h2>Audio Recognition 模型选择</h2></div>
+          <button id="applyAudioModels" class="run-button">应用到 audio_recognition</button>
+        </div>
+        <div class="split-row">
+          <label><span class="field-label">推理提供方</span>
+            <select id="audioLlmProvider" class="text-input">
+              <option value="dashscope">DashScope Qwen3-32B</option>
+              <option value="spark">Spark Qwen3.6-35B</option>
+              <option value="lv">LV Qwen Chat</option>
+            </select>
+          </label>
+          <label><span class="field-label">推理模型</span><input id="audioLlmModel" class="text-input" value="qwen3-32b" /></label>
+        </div>
+        <div class="split-row">
+          <label><span class="field-label">视觉提供方</span>
+            <select id="audioVisionProvider" class="text-input">
+              <option value="spark">Spark Qwen3.6 Vision</option>
+              <option value="lv">LV Qwen2.5-VL-7B</option>
+              <option value="dashscope">DashScope Qwen-VL-Plus</option>
+            </select>
+          </label>
+          <label><span class="field-label">视觉模型</span><input id="audioVisionModel" class="text-input" value="qwen3.6-35b-a3b-fp8" /></label>
+        </div>
+        <div class="prompt-box">
+          <span>当前 audio_recognition 选择</span>
+          <pre id="audioModelSelection">{}</pre>
+        </div>
+      </section>
+
       <section class="catalog" id="catalogSection">
         <div class="panel-head">
           <div class="panel-title"><span class="panel-index">★</span><h2>可调用模型总览 · 真实性校验</h2></div>

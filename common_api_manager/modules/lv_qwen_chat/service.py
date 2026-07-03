@@ -24,6 +24,31 @@ def _extract_message_text(payload: dict[str, Any]) -> str:
     return content
 
 
+def _sanitize_messages_for_lv(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    sanitized: list[dict[str, Any]] = []
+    for item in messages:
+        message = dict(item or {})
+        role = str(message.get("role") or "user")
+        if role == "tool":
+            name = str(message.get("name") or "tool")
+            sanitized.append(
+                {
+                    "role": "user",
+                    "content": f"工具 {name} 返回: {message.get('content') or ''}\n请根据这个工具结果继续下一步；如果全部完成就调用 finish。",
+                }
+            )
+            continue
+        if role == "assistant" and message.get("tool_calls") and not message.get("content"):
+            calls = []
+            for call in message.get("tool_calls") or []:
+                function = call.get("function") if isinstance(call, dict) else {}
+                calls.append({"name": function.get("name"), "arguments": function.get("arguments")})
+            sanitized.append({"role": "assistant", "content": f"已调用工具: {calls}"})
+            continue
+        sanitized.append(message)
+    return sanitized
+
+
 class LvQwenChatClient:
     def _url(self, path: str) -> str:
         return f"{settings.lv_chat_base_url}{path}"
@@ -55,6 +80,7 @@ class LvQwenChatClient:
         request_payload["model"] = request_payload.get("model") or settings.lv_chat_model
         if not request_payload.get("messages"):
             raise HTTPException(status_code=400, detail="messages is required")
+        request_payload["messages"] = _sanitize_messages_for_lv(list(request_payload.get("messages") or []))
         # disable thinking by default so content is always populated
         if "chat_template_kwargs" not in request_payload:
             request_payload["chat_template_kwargs"] = {"enable_thinking": False}

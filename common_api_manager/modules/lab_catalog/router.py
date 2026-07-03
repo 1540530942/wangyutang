@@ -9,15 +9,19 @@ so the lab page can prove a model really works rather than displaying a
 hard-coded "online" badge.
 """
 
+import json
 import time
+from pathlib import Path
 from typing import Any
 
 import requests
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from common.settings import settings
 
 router = APIRouter()
+SELECTION_FILE = Path(settings.base_dir) / "data" / "lab_model_selection.json"
 
 # Every model the platform can really call. `paths` lists the primary interface
 # first, then historical/alias paths that still route. `health` is a GET probe;
@@ -118,6 +122,106 @@ class ValidateRequest(BaseModel):
     base_url: str = Field("http://127.0.0.1:8101", max_length=200)
 
 
+class ModelChoice(BaseModel):
+    provider: str = Field("", max_length=40)
+    model: str = Field("", max_length=120)
+
+
+class SelectionRequest(BaseModel):
+    llm: ModelChoice = Field(default_factory=ModelChoice)
+    vision: ModelChoice = Field(default_factory=ModelChoice)
+
+
+def _provider_choice(kind: str, provider: str, model: str = "") -> dict[str, Any]:
+    provider = (provider or "").strip().lower()
+    model = (model or "").strip()
+    if kind == "llm":
+        choices = {
+            "dashscope": {
+                "provider": "dashscope",
+                "endpoint": "/common/api/llm/qwen3-32b/chat/completions",
+                "model": settings.dashscope_text_model,
+                "supports_tools": True,
+            },
+            "spark": {
+                "provider": "spark",
+                "endpoint": "/common/api/llm/spark-qwen/chat/completions",
+                "model": settings.spark_qwen_model,
+                "supports_tools": True,
+            },
+            "lv": {
+                "provider": "lv",
+                "endpoint": "/common/api/chat/qwen3/completions",
+                "model": settings.lv_chat_model,
+                "supports_tools": True,
+            },
+        }
+        default_provider = "dashscope"
+    else:
+        choices = {
+            "lv": {
+                "provider": "lv",
+                "endpoint": "/common/api/vision/lv/analyze-json",
+                "model": settings.lv_vl_model,
+            },
+            "spark": {
+                "provider": "spark",
+                "endpoint": "/common/api/vision/spark/analyze-json",
+                "model": settings.spark_qwen_model,
+            },
+            "dashscope": {
+                "provider": "dashscope",
+                "endpoint": "/common/api/vision/qwen/analyze-json",
+                "model": settings.dashscope_vision_model,
+            },
+        }
+        default_provider = "spark"
+    choice = dict(choices.get(provider) or choices[default_provider])
+    if model:
+        choice["model"] = model
+    return choice
+
+
+def default_selection() -> dict[str, Any]:
+    return {
+        "llm": _provider_choice("llm", "dashscope"),
+        "vision": _provider_choice("vision", "spark"),
+        "updated_at": 0,
+        "source": "defaults",
+    }
+
+
+def load_selection() -> dict[str, Any]:
+    if not SELECTION_FILE.exists():
+        return default_selection()
+    try:
+        data = json.loads(SELECTION_FILE.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return default_selection()
+    llm = data.get("llm") if isinstance(data.get("llm"), dict) else {}
+    vision = data.get("vision") if isinstance(data.get("vision"), dict) else {}
+    return {
+        "llm": _provider_choice("llm", str(llm.get("provider") or ""), str(llm.get("model") or "")),
+        "vision": _provider_choice("vision", str(vision.get("provider") or ""), str(vision.get("model") or "")),
+        "updated_at": data.get("updated_at") or 0,
+        "source": data.get("source") or "common_lab",
+    }
+
+
+def save_selection(payload: SelectionRequest) -> dict[str, Any]:
+    selected = {
+        "llm": _provider_choice("llm", payload.llm.provider, payload.llm.model),
+        "vision": _provider_choice("vision", payload.vision.provider, payload.vision.model),
+        "updated_at": time.time(),
+        "source": "common_lab",
+    }
+    SELECTION_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = SELECTION_FILE.with_suffix(".json.tmp")
+    tmp_path.write_text(json.dumps(selected, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp_path.replace(SELECTION_FILE)
+    return selected
+
+
 @router.get("/api/lab/catalog")
 def catalog() -> dict[str, Any]:
     """Return the model registry (paths + historical aliases). Health/validation
@@ -126,6 +230,16 @@ def catalog() -> dict[str, Any]:
         "count": len(MODEL_REGISTRY),
         "models": [{k: v for k, v in m.items() if k != "validate"} | {"validatable": m["validate"]["kind"] != "health_only"} for m in MODEL_REGISTRY],
     }
+
+
+@router.get("/api/lab/selection")
+def get_selection() -> dict[str, Any]:
+    return {"ok": True, "selection": load_selection()}
+
+
+@router.post("/api/lab/selection")
+def update_selection(payload: SelectionRequest) -> dict[str, Any]:
+    return {"ok": True, "selection": save_selection(payload)}
 
 
 @router.post("/api/lab/validate")

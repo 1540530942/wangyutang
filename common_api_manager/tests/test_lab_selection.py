@@ -1,0 +1,39 @@
+from __future__ import annotations
+
+import tempfile
+import unittest
+import sys
+from pathlib import Path
+from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import modules.lab_catalog.router as lab_router
+
+
+class LabSelectionTest(unittest.TestCase):
+    def test_lv_selection_is_saved_with_audio_recognition_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(lab_router, "SELECTION_FILE", Path(tmp) / "selection.json"):
+            saved = lab_router.save_selection(
+                lab_router.SelectionRequest(
+                    llm=lab_router.ModelChoice(provider="lv"),
+                    vision=lab_router.ModelChoice(provider="lv"),
+                )
+            )
+            loaded = lab_router.load_selection()
+
+        self.assertEqual(saved, loaded)
+        self.assertEqual(loaded["llm"]["endpoint"], "/common/api/chat/qwen3/completions")
+        self.assertEqual(loaded["llm"]["model"], "Qwen3.5-35B-A3B-Q4_K_M.gguf")
+        self.assertEqual(loaded["vision"]["endpoint"], "/common/api/vision/lv/analyze-json")
+        self.assertEqual(loaded["vision"]["model"], "qwen25vl7b-q4km.gguf")
+
+    def test_unknown_provider_falls_back_to_audio_defaults(self) -> None:
+        selected = lab_router.default_selection()
+        self.assertEqual(selected["llm"]["provider"], "dashscope")
+        self.assertEqual(selected["vision"]["provider"], "spark")
+        self.assertEqual(selected["vision"]["model"], "qwen3.6-35b-a3b-fp8")
+
+
+if __name__ == "__main__":
+    unittest.main()

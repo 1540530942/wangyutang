@@ -46,6 +46,12 @@ def build_react_tools_schema(registry_path: str | Path | None = None, catalog_pa
                     "properties": {
                         "skill_id": {"type": "string", "enum": [spec.skill_id for spec in action_skills]},
                         "duration_ms": {"type": "integer", "minimum": 0, "maximum": action_max},
+                        "distance_cm": {
+                            "type": "number",
+                            "minimum": 1,
+                            "maximum": 50,
+                            "description": "Requested move distance in centimeters for move_forward/move_backward/move_left/move_right.",
+                        },
                         **common,
                     },
                     "required": ["skill_id"],

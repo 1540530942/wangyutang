@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const API_PREFIX = window.location.pathname.startsWith('/common/') ? '/common' : '';
-const state = { health: null };
+const state = { health: null, selection: null };
 
 function toast(message, bad = false) {
   const node = $('toast');
@@ -52,10 +52,94 @@ function applyHealth(data) {
 async function loadHealth() {
   try {
     applyHealth(await requestJson('/api/health'));
+    await loadAudioModelSelection();
   } catch (error) {
     $('healthSignal').classList.add('bad');
     $('healthText').textContent = '健康检查失败';
     $('healthDetail').textContent = error.message;
+  }
+}
+
+function defaultAudioModel(kind, provider) {
+  const models = (state.health && state.health.models) || {};
+  if (kind === 'llm') {
+    if (provider === 'spark') return models.spark_llm || 'qwen3.6-35b-a3b-fp8';
+    if (provider === 'lv') return models.llm || 'Qwen3.5-35B-A3B-Q4_K_M.gguf';
+    return models.llm_tools || 'qwen3-32b';
+  }
+  if (provider === 'lv') return models.lv_vl || 'qwen25vl7b-q4km.gguf';
+  if (provider === 'dashscope') return models.vision || 'qwen-vl-plus';
+  return models.spark_llm || 'qwen3.6-35b-a3b-fp8';
+}
+
+function updateAudioModelDefaults(kind) {
+  if (kind === 'llm') $('audioLlmModel').value = defaultAudioModel('llm', $('audioLlmProvider').value);
+  if (kind === 'vision') $('audioVisionModel').value = defaultAudioModel('vision', $('audioVisionProvider').value);
+  renderAudioModelSelection();
+}
+
+function renderAudioModelSelection() {
+  const preview = {
+    llm: {
+      provider: $('audioLlmProvider').value,
+      model: $('audioLlmModel').value.trim(),
+    },
+    vision: {
+      provider: $('audioVisionProvider').value,
+      model: $('audioVisionModel').value.trim(),
+    },
+    saved: state.selection || null,
+  };
+  $('audioModelSelection').textContent = pretty(preview);
+}
+
+function applyAudioModelSelection(data) {
+  const selection = data.selection || data;
+  state.selection = selection;
+  if (selection.llm) {
+    $('audioLlmProvider').value = selection.llm.provider || 'dashscope';
+    $('audioLlmModel').value = selection.llm.model || defaultAudioModel('llm', $('audioLlmProvider').value);
+  }
+  if (selection.vision) {
+    $('audioVisionProvider').value = selection.vision.provider || 'spark';
+    $('audioVisionModel').value = selection.vision.model || defaultAudioModel('vision', $('audioVisionProvider').value);
+  }
+  renderAudioModelSelection();
+}
+
+async function loadAudioModelSelection() {
+  try {
+    applyAudioModelSelection(await requestJson('/api/lab/selection'));
+  } catch (error) {
+    $('audioModelSelection').textContent = error.message;
+  }
+}
+
+async function saveAudioModelSelection() {
+  const payload = {
+    llm: {
+      provider: $('audioLlmProvider').value,
+      model: $('audioLlmModel').value.trim(),
+    },
+    vision: {
+      provider: $('audioVisionProvider').value,
+      model: $('audioVisionModel').value.trim(),
+    },
+  };
+  setBusy($('applyAudioModels'), true, '应用中...');
+  try {
+    const data = await requestJson('/api/lab/selection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    applyAudioModelSelection(data);
+    toast('audio_recognition 模型选择已更新');
+  } catch (error) {
+    $('audioModelSelection').textContent = error.message;
+    toast(error.message, true);
+  } finally {
+    setBusy($('applyAudioModels'), false);
   }
 }
 
@@ -251,6 +335,11 @@ $('sparkImageFile').addEventListener('change', () => {
   zone.classList.add('has-image');
 });
 $('runSparkVision').addEventListener('click', runSparkVision);
+$('applyAudioModels').addEventListener('click', saveAudioModelSelection);
+$('audioLlmProvider').addEventListener('change', () => updateAudioModelDefaults('llm'));
+$('audioVisionProvider').addEventListener('change', () => updateAudioModelDefaults('vision'));
+$('audioLlmModel').addEventListener('input', renderAudioModelSelection);
+$('audioVisionModel').addEventListener('input', renderAudioModelSelection);
 $('asrModel').addEventListener('input', updateAsrPrompt);
 $('visionProvider').addEventListener('change', updateVisionEndpoint);
 $('llmEndpoint').addEventListener('change', updateLlmEndpoint);

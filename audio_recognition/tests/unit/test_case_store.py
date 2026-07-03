@@ -66,5 +66,32 @@ class OfflineSimulationApiTest(unittest.TestCase):
             self.assertEqual(load_cases(Path(tmp), limit=10), [])
 
 
+class LabModelSelectionTest(unittest.TestCase):
+    def test_router_and_cloud_config_follow_common_lab_lv_selection(self) -> None:
+        selection = {
+            "llm": {
+                "provider": "lv",
+                "endpoint": "/common/api/chat/qwen3/completions",
+                "model": "Qwen3.5-35B-A3B-Q4_K_M.gguf",
+            },
+            "vision": {
+                "provider": "lv",
+                "endpoint": "/common/api/vision/lv/analyze-json",
+                "model": "qwen25vl7b-q4km.gguf",
+            },
+        }
+        with patch("audio_recognition.web.server.fetch_lab_model_selection", return_value=selection):
+            router = server.build_router_config()
+            cloud = server.build_cloud_config(server.fetch_lab_model_selection())
+
+        llm = router["react_agent"]["llm"]
+        self.assertEqual(llm["provider"], "lv")
+        self.assertEqual(llm["model"], "Qwen3.5-35B-A3B-Q4_K_M.gguf")
+        self.assertEqual(llm["endpoint"], "https://www.wangyutang.cn/common/api/chat/qwen3/completions")
+        self.assertEqual(cloud["vision_provider"], "lv")
+        self.assertEqual(cloud["vision_llm_model"], "qwen25vl7b-q4km.gguf")
+        self.assertEqual(cloud["vision_analyze_url"], "https://www.wangyutang.cn/common/api/vision/lv/analyze-json")
+
+
 if __name__ == "__main__":
     unittest.main()

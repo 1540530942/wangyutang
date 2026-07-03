@@ -62,21 +62,24 @@ def native_finish_response(content: str = "done") -> Mock:
     return native_llm_message({"role": "assistant", "content": content})
 
 
-def action_response(skill_id: str, *, text: str = "", order: int = 1, duration_ms: int = 800) -> Mock:
+def action_response(skill_id: str, *, text: str = "", order: int = 1, duration_ms: int = 800, distance_cm: float | None = None) -> Mock:
+    args = {
+        "skill_id": skill_id,
+        "order": order,
+        "duration_ms": duration_ms,
+        "wait_until": "completed",
+        "confidence": 0.9,
+        "text": text or skill_id,
+    }
+    if distance_cm is not None:
+        args["distance_cm"] = distance_cm
     return llm_response(
         {
             "protocol_version": "react_v1_single_tool",
             "reasoning_summary": f"dispatch {skill_id}",
             "tool_call": {
                 "tool": "dispatch_action",
-                "args": {
-                    "skill_id": skill_id,
-                    "order": order,
-                    "duration_ms": duration_ms,
-                    "wait_until": "completed",
-                    "confidence": 0.9,
-                    "text": text or skill_id,
-                },
+                "args": args,
             },
         }
     )
@@ -248,7 +251,7 @@ class ReactPipelineTest(unittest.TestCase):
         self.assertEqual(agent.model, DEFAULT_LLM_MODEL)
         self.assertIn("WALL-E", agent._system_prompt())
         self.assertIn("react_v1_single_tool", agent._system_prompt())
-        self.assertIn("one tool_call", agent._system_prompt())
+        self.assertIn("multiple native tool_calls", agent._system_prompt())
         self.assertIn("Skill aliases", agent._system_prompt())
 
     def test_simple_command_generates_envelope_tool_task_and_dry_run(self) -> None:
@@ -820,7 +823,7 @@ class ReactPipelineTest(unittest.TestCase):
         self.assertEqual(envelope.observations[0]["data"]["timeout_ms"], 10000)
         self.assertEqual(envelope.observations[0]["data"]["timeout_s"], 10)
 
-    def test_multiple_native_tool_calls_are_collapsed_to_first_and_deferred(self) -> None:
+    def test_multiple_native_tool_calls_are_executed_in_order_from_deferred_queue(self) -> None:
         with patch("audio_recognition.agent.react_agent.requests.post", side_effect=[multi_tool_response(), finish_response(2)]):
             envelope = decide_transcript(
                 base_dir=BASE_DIR,
@@ -830,9 +833,10 @@ class ReactPipelineTest(unittest.TestCase):
                 dispatch_mode="dry_run",
                 source="unit",
             )
-        self.assertEqual([task.skill_id for task in envelope.tasks], ["move_forward"])
+        self.assertEqual([task.skill_id for task in envelope.tasks], ["move_forward", "turn_right"])
         self.assertEqual(envelope.react_turns[0]["deferred_tool_calls"][0]["id"], "call_second")
         self.assertIn("multiple_tool_calls_collapsed_to_first", envelope.react_turns[0]["warnings"])
+        self.assertIn("deferred_tool_call_replayed", envelope.react_turns[1]["warnings"])
         self.assertEqual(len(envelope.react_turns[0]["message_for_history"]["tool_calls"]), 1)
 
     def test_invalid_native_tool_arguments_records_agent_error(self) -> None:
@@ -930,6 +934,65 @@ class ReactPipelineTest(unittest.TestCase):
         self.assertEqual(post.call_count, 6)
         self.assertEqual([task.skill_id for task in envelope.tasks], ["move_forward", "move_backward", "look_up", "look_down"])
         self.assertTrue(envelope.safety_result["allowed"])
+
+    def test_obstacle_then_forward_15cm_uses_llm_not_rule_path(self) -> None:
+        with patch(
+            "audio_recognition.agent.react_agent.requests.post",
+            side_effect=[
+                observation_response("inspect_scene", order=1),
+                action_response("move_forward", text="前进15cm", order=2, distance_cm=15),
+                finish_response(3),
+            ],
+        ) as post, patch(
+            "audio_recognition.tools.observation_executor._post_json",
+            return_value={"ok": True},
+        ), patch(
+            "audio_recognition.tools.observation_executor._get_bytes",
+            return_value=(b"fake-jpeg", "image/jpeg"),
+        ), patch(
+            "audio_recognition.tools.observation_executor._call_vision_analyze",
+            return_value={"answer": "前方没有障碍物", "model": "qwen25vl7b-q4km.gguf"},
+        ):
+            envelope = decide_transcript(
+                base_dir=BASE_DIR,
+                text="看看前面有没有障碍物，没有障碍物的话前进15cm",
+                router_config=ROUTER_CONFIG,
+                cloud_config={
+                    "camera_server": "http://camera.local",
+                    "vision_analyze_url": "http://vision.local/analyze-json",
+                    "vision_llm_model": "qwen25vl7b-q4km.gguf",
+                },
+                dispatch_mode="dry_run",
+                source="unit",
+            )
+        self.assertGreaterEqual(post.call_count, 2)
+        self.assertFalse(any(turn.get("preflight") for turn in envelope.react_turns))
+        self.assertEqual(envelope.observations[0]["tool"], "inspect_scene")
+        self.assertEqual([task.skill_id for task in envelope.tasks], ["move_forward"])
+        self.assertEqual(envelope.tasks[0].settings_override["unit_distance_cm"], 15.0)
+        self.assertEqual(envelope.dispatch_results[0]["result"]["settings_override"]["unit_distance_cm"], 15.0)
+
+    def test_left_turn_then_backward_10cm_uses_llm_not_rule_path(self) -> None:
+        with patch(
+            "audio_recognition.agent.react_agent.requests.post",
+            side_effect=[
+                action_response("turn_left", text="先左转", order=1),
+                action_response("move_backward", text="后退10cm", order=2, distance_cm=10),
+                finish_response(3),
+            ],
+        ) as post:
+            envelope = decide_transcript(
+                base_dir=BASE_DIR,
+                text="先左转然后后退10cm",
+                router_config=ROUTER_CONFIG,
+                cloud_config={},
+                dispatch_mode="dry_run",
+                source="unit",
+            )
+        self.assertEqual(post.call_count, 3)
+        self.assertFalse(any(turn.get("preflight") for turn in envelope.react_turns))
+        self.assertEqual([task.skill_id for task in envelope.tasks], ["turn_left", "move_backward"])
+        self.assertEqual(envelope.tasks[1].settings_override["unit_distance_cm"], 10.0)
 
 
 class LatencyTraceabilityTest(unittest.TestCase):

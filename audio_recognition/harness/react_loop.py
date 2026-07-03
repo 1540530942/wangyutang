@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import re
 import time
+import json
 from pathlib import Path
 from typing import Any
 
 from audio_recognition.agent.react_agent import build_llm_react_agent, run_react_agent
-from audio_recognition.core.envelope import DecisionEnvelope, ToolCall
+from audio_recognition.core.envelope import DecisionEnvelope, ToolCall, build_call_id
 from audio_recognition.safety.guard import has_emergency_intent, run_safety_guard, run_safety_guard_for_task
 from audio_recognition.skills.registry import load_skill_registry, resolve_catalog_path, resolve_registry_path
 from audio_recognition.tools.dispatcher import dispatch_envelope, dispatch_task
@@ -232,6 +233,38 @@ def _exact_observation_alias_call(transcript: str, *, registry_path: Path, catal
     return None
 
 
+def _tool_call_from_raw(item: dict[str, Any]) -> ToolCall:
+    function = item.get("function") if isinstance(item.get("function"), dict) else {}
+    name = str(function.get("name") or item.get("tool") or item.get("name") or "")
+    raw_args = function.get("arguments") if function else item.get("args") if "args" in item else item.get("arguments")
+    args: dict[str, Any] = {}
+    if isinstance(raw_args, dict):
+        args = dict(raw_args)
+    elif isinstance(raw_args, str) and raw_args.strip():
+        try:
+            parsed = json.loads(raw_args)
+            if isinstance(parsed, dict):
+                args = parsed
+        except json.JSONDecodeError:
+            args = {}
+    call_id = str(item.get("id") or item.get("call_id") or build_call_id())
+    return ToolCall(call_id=call_id, tool=name, args=args)
+
+
+def _assistant_message_for_call(call: ToolCall) -> dict[str, Any]:
+    return {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [
+            {
+                "id": call.call_id,
+                "type": "function",
+                "function": {"name": call.tool, "arguments": json.dumps(call.args, ensure_ascii=False)},
+            }
+        ],
+    }
+
+
 def route_transcript(
     *,
     base_dir: Path,
@@ -390,13 +423,25 @@ def decide_transcript(
     ]
     envelope.react_messages = list(messages)
     envelope.t_agent_start = envelope.t_agent_start or __import__("time").time()
+    pending_deferred: list[dict[str, Any]] = []
     for turn in range(1, max(max_steps, 1) + 1):
-        try:
-            call = agent.run_turn(envelope, messages, turn)
-        except Exception as exc:  # noqa: BLE001
-            envelope.add_error("react_agent", str(exc), {"turn": turn})
-            break
-        decision = dict(getattr(agent, "last_decision", {}) or {})
+        if pending_deferred:
+            raw_deferred = pending_deferred.pop(0)
+            call = _tool_call_from_raw(raw_deferred)
+            decision = {
+                "raw_assistant_message": _assistant_message_for_call(call),
+                "message_for_history": _assistant_message_for_call(call),
+                "deferred_tool_calls": [],
+                "deferred_policy": "execute_deferred_in_order",
+                "warnings": ["deferred_tool_call_replayed"],
+            }
+        else:
+            try:
+                call = agent.run_turn(envelope, messages, turn)
+            except Exception as exc:  # noqa: BLE001
+                envelope.add_error("react_agent", str(exc), {"turn": turn})
+                break
+            decision = dict(getattr(agent, "last_decision", {}) or {})
         envelope.tool_calls.append(call)
         message_for_history = decision.get("message_for_history")
         if isinstance(message_for_history, dict):
@@ -428,6 +473,8 @@ def decide_transcript(
             "warnings": decision.get("warnings", []),
         }
         envelope.react_turns.append(turn_record)
+        deferred = decision.get("deferred_tool_calls") if isinstance(decision.get("deferred_tool_calls"), list) else []
+        pending_deferred.extend(item for item in deferred if isinstance(item, dict))
         if call.tool == "finish":
             envelope.final_response = str(call.args.get("message") or call.args.get("final") or "done")
             validate_tool_call(envelope, call, registry_path=registry_path, catalog_path=catalog_path)
@@ -458,6 +505,9 @@ def decide_transcript(
         messages.append(build_tool_result_message(call.call_id, call.tool, result))
         envelope.react_turns[-1]["tool_result"] = result
         envelope.react_messages = list(messages)
+        if decision.get("deferred_policy") == "execute_deferred_in_order" and not pending_deferred and call.tool not in OBSERVATION_TOOLS:
+            envelope.final_response = "done"
+            break
         if task.skill_id == "emergency_stop":
             break
         if result.get("status") not in {"completed", "dry_run"} and task.route != "face":

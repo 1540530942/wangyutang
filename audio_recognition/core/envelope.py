@@ -20,7 +20,15 @@ def build_call_id(prefix: str = "call") -> str:
     return f"{prefix}_{secrets.token_hex(6)}"
 
 
-class ToolCall(BaseModel):
+class CompatModel(BaseModel):
+    def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        return self.dict(*args, **kwargs)
+
+    def model_copy(self, *args: Any, **kwargs: Any) -> Any:
+        return self.copy(*args, **kwargs)
+
+
+class ToolCall(CompatModel):
     call_id: str = Field(default_factory=build_call_id)
     tool: str = Field(..., max_length=80)
     args: dict[str, Any] = Field(default_factory=dict)
@@ -29,7 +37,7 @@ class ToolCall(BaseModel):
     error: str = ""
 
 
-class TaskStep(BaseModel):
+class TaskStep(CompatModel):
     task_id: str = Field(default_factory=lambda: build_call_id("task"))
     skill_id: str = Field("", max_length=80)
     route: RouteKind = "none"
@@ -43,7 +51,7 @@ class TaskStep(BaseModel):
     settings_override: dict[str, Any] = Field(default_factory=dict)
 
 
-class DecisionEnvelope(BaseModel):
+class DecisionEnvelope(CompatModel):
     protocol_version: str = "react_v1_single_tool"
     envelope_id: str = Field(default_factory=build_envelope_id)
     device_id: str = Field("turbopi-01", max_length=80)

@@ -26,6 +26,7 @@ def health_payload() -> dict[str, object]:
             "llm": settings.lv_chat_model,
             "llm_tools": settings.dashscope_text_model,
             "vision": settings.dashscope_vision_model,
+            "lv_vl": settings.lv_vl_model,
             "spark_llm": settings.spark_qwen_model,
         },
         "upstreams": {
@@ -34,6 +35,7 @@ def health_payload() -> dict[str, object]:
             "llm": settings.lv_chat_base_url,
             "llm_tools": settings.dashscope_compatible_base_url,
             "vision": settings.dashscope_base_http_api_url,
+            "lv_vl": settings.lv_vl_base_url,
             "spark_llm": settings.spark_qwen_base_url,
         },
         "routes": {

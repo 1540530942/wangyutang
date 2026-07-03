@@ -111,6 +111,7 @@ def _execute_local_action(task: TaskStep, cloud_config: dict[str, Any] | None) -
         raise RuntimeError("local action_server is required")
     settings = {"unit_distance_cm": 1.0, "sensitivity": 2.0, "stop_publish_times": 5}
     settings.update(dict(cloud_config.get("local_settings") or {}))
+    settings.update(dict(task.settings_override or {}))
     if task.duration_ms is not None:
         settings["requested_duration_ms"] = task.duration_ms
     result = _post_json(f"{action_server}/execute", {"action": task.skill_id, "settings": settings})
@@ -136,7 +137,7 @@ def dispatch_task(
         return result
     if envelope.dispatch_mode == "dry_run":
         task.status = "completed"
-        task.result = {"dry_run": True, "skill_id": task.skill_id, "route": task.route}
+        task.result = {"dry_run": True, "skill_id": task.skill_id, "route": task.route, "settings_override": task.settings_override}
         result = {"task_id": task.task_id, "skill_id": task.skill_id, "status": "dry_run", "result": task.result}
         envelope.dispatch_results.append(result)
         return result
@@ -216,7 +217,7 @@ def dispatch_envelope(
             continue
         if envelope.dispatch_mode == "dry_run":
             task.status = "completed"
-            task.result = {"dry_run": True, "skill_id": task.skill_id, "route": task.route}
+            task.result = {"dry_run": True, "skill_id": task.skill_id, "route": task.route, "settings_override": task.settings_override}
             results.append({"task_id": task.task_id, "skill_id": task.skill_id, "status": "dry_run", "result": task.result})
             continue
         result = dispatch_task(envelope, task, cloud_config=cloud_config, source=source, dispatch_mode=envelope.dispatch_mode)
