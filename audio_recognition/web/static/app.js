@@ -62,7 +62,7 @@ let recordingStartedAt = 0;
 let vadRuntime = null;
 let vadRealtimeResult = null;
 let actionSettings = {
-  unit_distance_cm: 5,
+  unit_distance_cm: 10,
   turn_angle_deg: 5,
   sensitivity: 1,
   voice_volume_percent: 0,

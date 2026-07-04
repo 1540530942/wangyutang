@@ -60,7 +60,7 @@ def merged_defaults(catalog: dict[str, Any], params: dict[str, Any] | None = Non
     for key in ("unit_distance_cm", "turn_angle_deg", "sensitivity", "rgb_red", "rgb_green", "rgb_blue"):
         if params and key in params:
             defaults[key] = params[key]
-    defaults["unit_distance_cm"] = clamp(float(defaults.get("unit_distance_cm", 5.0)), 1.0, 50.0)
+    defaults["unit_distance_cm"] = clamp(float(defaults.get("unit_distance_cm", 10.0)), 1.0, 50.0)
     defaults["turn_angle_deg"] = clamp(float(defaults.get("turn_angle_deg", 5.0)), 1.0, 90.0)
     defaults["sensitivity"] = clamp(float(defaults.get("sensitivity", 1.0)), 0.2, 2.0)
     defaults["rgb_red"] = int(round(clamp(float(defaults.get("rgb_red", 0)), 0.0, 255.0)))
@@ -77,7 +77,7 @@ def unit_duration_ms(defaults: dict[str, Any], kind: str) -> int:
         lower = float(defaults.get("min_turn_duration_ms", 180))
         upper = float(defaults.get("max_turn_duration_ms", 2500))
     else:
-        unit = float(defaults.get("unit_distance_cm", 5.0))
+        unit = float(defaults.get("unit_distance_cm", 10.0))
         base = float(defaults.get("move_duration_ms_at_5cm", 800))
         lower = float(defaults.get("min_move_duration_ms", 180))
         upper = float(defaults.get("max_move_duration_ms", 3000))

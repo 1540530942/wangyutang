@@ -75,7 +75,7 @@ The skill catalog lives in `skill_catalog.json`.
 
 The cloud service persists runtime settings in `data/settings.json`:
 
-- `unit_distance_cm`: movement unit distance, default `5.0`.
+- `unit_distance_cm`: movement unit distance, default `10.0`.
 - `turn_angle_deg`: heading turn unit, default `5.0`.
 - `sensitivity`: duration multiplier, default `1.0`.
 - `voice_volume_percent`: completion voice volume, `0` means muted.

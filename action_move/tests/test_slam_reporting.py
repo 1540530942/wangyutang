@@ -68,8 +68,9 @@ class SlamReportingTest(unittest.TestCase):
         self.assertIn(":imu:", payload["source"])
 
     def test_parse_edge_actuals(self) -> None:
-        self.assertEqual(parse_edge_actuals("[IMU] actual_distance_cm=12.3"), {"actual_distance_cm": 12.3})
-        self.assertEqual(parse_edge_actuals("nothing here"), {})
+        self.assertEqual(parse_edge_actuals("[IMU] actual_distance_cm=12.3"), ({"actual_distance_cm": 12.3}, "imu"))
+        self.assertEqual(parse_edge_actuals("[CMD] actual_distance_cm=10.0"), ({"actual_distance_cm": 10.0}, "cmd_vel"))
+        self.assertEqual(parse_edge_actuals("nothing here"), ({}, "commanded"))
 
 
 if __name__ == "__main__":

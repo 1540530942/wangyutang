@@ -42,7 +42,7 @@ let lastVoiceVolumePercent = 30;
 let settingsDirty = false;
 let lastTouchActionAt = 0;
 let currentSettings = {
-  unit_distance_cm: 1,
+  unit_distance_cm: 10,
   turn_angle_deg: 5,
   sensitivity: 0.5,
   voice_volume_percent: 0,
@@ -364,7 +364,7 @@ function setMotionLocked(locked) {
 
 function getFormSettings() {
   return {
-    unit_distance_cm: Number(unitDistanceInput.value || 1),
+    unit_distance_cm: Number(unitDistanceInput.value || 10),
     turn_angle_deg: Number(turnAngleInput.value || 5),
     sensitivity: Number(sensitivityInput.value || 0.5),
     voice_volume_percent: Number(currentSettings.voice_volume_percent || 0),
