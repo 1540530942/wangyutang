@@ -44,6 +44,16 @@
         <div><span>Spark</span><strong id="sparkModelLabel">-</strong></div>
       </section>
 
+      <section class="catalog" id="catalogSection">
+        <div class="catalog-head">
+          <div class="panel-title"><span class="panel-index">★</span><h2>可调用模型总览 · 真实性校验</h2></div>
+          <div class="catalog-head-right">
+            <button id="validateAll" class="run-button catalog-validate-btn">全部真实校验</button>
+          </div>
+        </div>
+        <div id="catalogBody"><div style="padding:16px;color:#8aa09a">加载中…</div></div>
+      </section>
+
       <section class="panel platform-selection">
         <div class="panel-head">
           <div class="panel-title"><span class="panel-index">◎</span><h2>Audio Recognition 模型选择</h2></div>
@@ -73,17 +83,6 @@
           <span>当前 audio_recognition 选择</span>
           <pre id="audioModelSelection">{}</pre>
         </div>
-      </section>
-
-      <section class="catalog" id="catalogSection">
-        <div class="panel-head">
-          <div class="panel-title"><span class="panel-index">★</span><h2>可调用模型总览 · 真实性校验</h2></div>
-          <button id="validateAll" class="run-button">全部真实校验</button>
-        </div>
-        <table class="catalog-table">
-          <thead><tr><th>模型</th><th>类型</th><th>提供方</th><th>接口路径（含历史别名）</th><th>健康</th><th>真实推理校验</th></tr></thead>
-          <tbody id="catalogBody"><tr><td colspan="6">加载中…</td></tr></tbody>
-        </table>
       </section>
 
       <section class="panels">

@@ -59,7 +59,7 @@ class Settings:
     dashscope_timeout_seconds: float = float(os.getenv("DASHSCOPE_TIMEOUT_SECONDS", "180"))
     lv_timeout_seconds: float = float(os.getenv("LV_QWEN_TIMEOUT_SECONDS", "180"))
     spark_qwen_base_url: str = os.getenv("SPARK_QWEN_BASE_URL", "http://127.0.0.1:18000").rstrip("/")
-    spark_qwen_model: str = os.getenv("SPARK_QWEN_MODEL", "qwen3.6-35b-a3b-fp8")
+    spark_qwen_model: str = os.getenv("SPARK_QWEN_MODEL", "qwen3.6-35b-a3b")
     spark_qwen_timeout_seconds: float = float(os.getenv("SPARK_QWEN_TIMEOUT_SECONDS", "180"))
     model_usage_collector_url: str = os.getenv("MODEL_USAGE_COLLECTOR_URL", "").strip()
 
