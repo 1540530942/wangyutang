@@ -6,6 +6,7 @@ import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock, patch
 
 from audio_recognition.skills.catalog_loader import create_action_task
@@ -15,6 +16,7 @@ from audio_recognition.storage.envelope_store import load_envelope, save_envelop
 from audio_recognition.harness.react_loop import decide_transcript, route_transcript
 from audio_recognition.storage.replay import replay_envelope
 from audio_recognition.skills.registry import load_skill_registry
+from audio_recognition.tools.observation_executor import execute_observation_tool
 from audio_recognition.tools.tool_schema import build_react_tools_schema, tool_skill_groups
 from audio_recognition.tools.tool_validator import validate_tool_calls
 
@@ -429,6 +431,22 @@ class ReactPipelineTest(unittest.TestCase):
         self.assertEqual(envelope.dispatch_results[0]["status"], "dry_run")
         self.assertTrue(envelope.safety_result["allowed"])
 
+    def test_exact_forward_distance_uses_action_path_with_distance_override(self) -> None:
+        with patch("audio_recognition.tools.observation_executor._get_json", return_value={"available": True, "front_distance_estimate_cm": 40, "confidence": 0.9}):
+            envelope = decide_transcript(
+                base_dir=BASE_DIR,
+                text="前进25cm",
+                router_config=ROUTER_CONFIG,
+                cloud_config={"sensor_server": "http://sensor.local"},
+                dispatch_mode="dry_run",
+                source="unit",
+            )
+
+        self.assertEqual(envelope.observations[0]["tool"], "front_distance")
+        self.assertEqual(envelope.tasks[0].skill_id, "move_forward")
+        self.assertEqual(envelope.tasks[0].settings_override["unit_distance_cm"], 25.0)
+        self.assertEqual(envelope.dispatch_results[0]["status"], "dry_run")
+
     def test_front_distance_low_confidence_rejects_forward_motion(self) -> None:
         with patch(
             "audio_recognition.agent.react_agent.requests.post",
@@ -632,6 +650,62 @@ class ReactPipelineTest(unittest.TestCase):
         self.assertEqual(envelope.observations[0]["tool"], "front_distance")
         self.assertEqual(envelope.observations[0]["data"]["front_distance_estimate_cm"], 42.5)
         self.assertEqual(get_json.call_args.args[0], "http://sensor.local/api/sonar")
+
+    def test_front_distance_falls_back_to_camera_sonar_when_action_sonar_missing(self) -> None:
+        def fake_get_json(url: str, timeout: float = 5) -> dict[str, Any]:
+            if url == "http://action.local/api/sonar":
+                raise RuntimeError("HTTP Error 404: Not Found")
+            if url == "http://camera.local/api/sonar":
+                return {"available": True, "front_distance_estimate_cm": 38.0, "confidence": 0.9}
+            raise AssertionError(url)
+
+        with patch(
+            "audio_recognition.agent.react_agent.requests.post",
+            side_effect=[observation_response("front_distance"), finish_response(2)],
+        ), patch("audio_recognition.tools.observation_executor._get_json", side_effect=fake_get_json) as get_json:
+            envelope = decide_transcript(
+                base_dir=BASE_DIR,
+                text="鍓嶉潰璺濈澶氬皯",
+                router_config=ROUTER_CONFIG,
+                cloud_config={"action_server": "http://action.local", "camera_server": "http://camera.local"},
+                dispatch_mode="dry_run",
+                source="unit",
+            )
+
+        self.assertEqual(envelope.observations[0]["tool"], "front_distance")
+        self.assertEqual(envelope.observations[0]["data"]["front_distance_estimate_cm"], 38.0)
+        self.assertEqual([call.args[0] for call in get_json.call_args_list], ["http://action.local/api/sonar", "http://camera.local/api/sonar"])
+
+    def test_front_distance_live_mode_uses_action_task_when_sonar_endpoint_missing(self) -> None:
+        def fake_get_json(url: str, timeout: float = 5) -> dict[str, Any]:
+            if url == "http://action.local/api/sonar":
+                raise RuntimeError("HTTP Error 404: Not Found")
+            if url == "http://action.local/api/tasks/task-1":
+                return {
+                    "task": {
+                        "id": "task-1",
+                        "status": "complete",
+                        "updated_at": 100.0,
+                        "output": "[INFO] front_distance_estimate_cm=19.4\n[INFO] raw_mm_samples=194,194,194\n[INFO] confidence=1.0",
+                    }
+                }
+            raise AssertionError(url)
+
+        envelope = DecisionEnvelope(device_id="unit", source="unit", transcript="前进", dispatch_mode="cloud_queue")
+        with patch("audio_recognition.tools.observation_executor._post_json", return_value={"task": {"id": "task-1", "status": "pending"}}) as post_json, patch(
+            "audio_recognition.tools.observation_executor._get_json",
+            side_effect=fake_get_json,
+        ):
+            observation = execute_observation_tool(
+                envelope,
+                ToolCall(tool="front_distance", args={"skill_id": "front_distance"}),
+                {"action_server": "http://action.local"},
+            )
+
+        self.assertEqual(observation["status"], "completed")
+        self.assertEqual(observation["data"]["front_distance_estimate_cm"], 19.4)
+        self.assertEqual(observation["data"]["source"], "action-move-front-distance-task")
+        self.assertEqual(post_json.call_args.args[0], "http://action.local/api/tasks")
 
     def test_observation_tool_writes_observation_and_continues(self) -> None:
         with patch(

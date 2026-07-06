@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-"""Lab model catalog + strict real-inference validation.
+"""Model Studio catalog + strict real-inference validation.
 
 Exposes the full registry of callable models with their live health and their
 interface paths (current + historical aliases), and a validation endpoint that
 runs a *real* inference against a model and returns the actual output + latency
-so the lab page can prove a model really works rather than displaying a
+so the model studio page can prove a model really works rather than displaying a
 hard-coded "online" badge.
 """
 
@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from common.settings import settings
 
 router = APIRouter()
-SELECTION_FILE = Path(settings.base_dir) / "data" / "lab_model_selection.json"
+SELECTION_FILE = Path(settings.base_dir) / "data" / "model_studio_selection.json"
 
 # Every model the platform can really call. `paths` lists the primary interface
 # first, then historical/alias paths that still route. `health` is a GET probe;
@@ -204,7 +204,7 @@ def load_selection() -> dict[str, Any]:
         "llm": _provider_choice("llm", str(llm.get("provider") or ""), str(llm.get("model") or "")),
         "vision": _provider_choice("vision", str(vision.get("provider") or ""), str(vision.get("model") or "")),
         "updated_at": data.get("updated_at") or 0,
-        "source": data.get("source") or "common_lab",
+        "source": "model_studio",
     }
 
 
@@ -213,7 +213,7 @@ def save_selection(payload: SelectionRequest) -> dict[str, Any]:
         "llm": _provider_choice("llm", payload.llm.provider, payload.llm.model),
         "vision": _provider_choice("vision", payload.vision.provider, payload.vision.model),
         "updated_at": time.time(),
-        "source": "common_lab",
+        "source": "model_studio",
     }
     SELECTION_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = SELECTION_FILE.with_suffix(".json.tmp")
@@ -222,7 +222,7 @@ def save_selection(payload: SelectionRequest) -> dict[str, Any]:
     return selected
 
 
-@router.get("/api/lab/catalog")
+@router.get("/api/model-studio/catalog")
 def catalog() -> dict[str, Any]:
     """Return the model registry (paths + historical aliases). Health/validation
     are probed by the browser against each model's own endpoint."""
@@ -232,17 +232,17 @@ def catalog() -> dict[str, Any]:
     }
 
 
-@router.get("/api/lab/selection")
+@router.get("/api/model-studio/selection")
 def get_selection() -> dict[str, Any]:
     return {"ok": True, "selection": load_selection()}
 
 
-@router.post("/api/lab/selection")
+@router.post("/api/model-studio/selection")
 def update_selection(payload: SelectionRequest) -> dict[str, Any]:
     return {"ok": True, "selection": save_selection(payload)}
 
 
-@router.post("/api/lab/validate")
+@router.post("/api/model-studio/validate")
 def validate(req: ValidateRequest) -> dict[str, Any]:
     """Run a real inference against one model and return the actual output +
     latency. Strict: a model is only "verified" if it returns a real response."""

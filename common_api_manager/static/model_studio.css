@@ -1,5 +1,5 @@
 @font-face {
-  font-family: "LabSerif";
+  font-family: "StudioSerif";
   src: local("Georgia");
 }
 
@@ -87,7 +87,7 @@ body {
 h1, h2 { margin: 0; }
 
 h1 {
-  font-family: LabSerif, Georgia, serif;
+  font-family: StudioSerif, Georgia, serif;
   font-size: clamp(44px, 8vw, 92px);
   line-height: 0.92;
   letter-spacing: -0.06em;
@@ -136,7 +136,7 @@ button:disabled { cursor: wait; filter: grayscale(0.8); transform: none; }
 .login-row button { padding: 0 26px; }
 .error-line { min-height: 22px; color: var(--danger); }
 
-.lab-shell {
+.model-studio-shell {
   width: min(1480px, calc(100% - 32px));
   margin: 0 auto;
   padding: 38px 0 72px;

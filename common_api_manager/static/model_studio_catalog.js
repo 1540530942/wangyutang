@@ -1,4 +1,4 @@
-// Model catalog + strict real-inference validation for the lab page.
+// Model catalog + strict real-inference validation for the Model Studio page.
 // Renders every callable model with its interface paths (current + historical
 // aliases), live-probes each model's /health, and can run a REAL inference to
 // prove the model works rather than showing a hard-coded badge.
@@ -32,7 +32,7 @@
     }
     cell.innerHTML = badge("真实推理中…", "warn");
     try {
-      const resp = await fetch("/common/api/lab/validate", {
+      const resp = await fetch("/common/api/model-studio/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model_id: model.id }),
@@ -62,7 +62,7 @@
   async function render() {
     let catalog;
     try {
-      catalog = await (await fetch("/common/api/lab/catalog", { cache: "no-store" })).json();
+      catalog = await (await fetch("/common/api/model-studio/catalog", { cache: "no-store" })).json();
     } catch (e) {
       body.innerHTML = `<tr><td colspan="6">目录加载失败: ${e.message}</td></tr>`;
       return;

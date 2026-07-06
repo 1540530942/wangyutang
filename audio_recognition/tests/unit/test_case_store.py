@@ -66,8 +66,8 @@ class OfflineSimulationApiTest(unittest.TestCase):
             self.assertEqual(load_cases(Path(tmp), limit=10), [])
 
 
-class LabModelSelectionTest(unittest.TestCase):
-    def test_router_and_cloud_config_follow_common_lab_lv_selection(self) -> None:
+class ModelStudioSelectionUsageTest(unittest.TestCase):
+    def test_router_and_cloud_config_follow_model_studio_lv_selection(self) -> None:
         selection = {
             "llm": {
                 "provider": "lv",
@@ -80,9 +80,9 @@ class LabModelSelectionTest(unittest.TestCase):
                 "model": "qwen25vl7b-q4km.gguf",
             },
         }
-        with patch("audio_recognition.web.server.fetch_lab_model_selection", return_value=selection):
+        with patch("audio_recognition.web.server.fetch_model_studio_selection", return_value=selection):
             router = server.build_router_config()
-            cloud = server.build_cloud_config(server.fetch_lab_model_selection())
+            cloud = server.build_cloud_config(server.fetch_model_studio_selection())
 
         llm = router["react_agent"]["llm"]
         self.assertEqual(llm["provider"], "lv")

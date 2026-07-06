@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TurboPi 原子技能中心</title>
+    <link rel="stylesheet" href="./static/robot_skills.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">WANGYUTANG / FUNCTION CENTER</p>
+          <h1>TurboPi 原子技能展示与验证</h1>
+        </div>
+        <div class="status-grid" aria-live="polite">
+          <div class="status-cell">
+            <span class="dot" id="actionDot"></span>
+            <div><strong id="actionStatus">动作服务</strong><small id="actionDetail">连接中</small></div>
+          </div>
+          <div class="status-cell">
+            <span class="dot" id="cameraDot"></span>
+            <div><strong id="cameraStatus">相机服务</strong><small id="cameraDetail">连接中</small></div>
+          </div>
+        </div>
+      </header>
+
+      <section class="toolbar">
+        <label class="search-box">
+          <span>筛选</span>
+          <input id="skillSearch" type="search" placeholder="输入技能 ID、类型或中文名称" />
+        </label>
+        <label class="search-box compact">
+          <span>分组</span>
+          <select id="groupFilter">
+            <option value="all">全部</option>
+            <option value="motion">底盘运动</option>
+            <option value="servo">摄像头舵机</option>
+            <option value="sensor">传感器/相机</option>
+            <option value="light">灯光</option>
+            <option value="system">停止/系统</option>
+          </select>
+        </label>
+        <button class="ghost" id="refreshHealth">刷新状态</button>
+        <button class="danger" id="emergencyStop">急停</button>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>技能总览</h2>
+            <p>定义来自 `action_move/atomic_skills.md` 和 `skill_catalog.json`；执行只通过真实 `/action` 与 `/camera` 服务。</p>
+          </div>
+          <span id="skillCount" class="count-pill">0 skills</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>原子能力</th>
+                <th>类型</th>
+                <th>定义/执行</th>
+                <th>云端任务指令</th>
+                <th>验证方式</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="skillRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="detail-grid">
+        <article class="panel detail-panel">
+          <div class="panel-head">
+            <div>
+              <h2 id="detailTitle">选择一个技能</h2>
+              <p id="detailSubtitle">查看定义、执行链路、指令形式和真实验证边界。</p>
+            </div>
+          </div>
+          <div id="detailBody" class="detail-body empty-state">左侧表格选择技能后显示详情。</div>
+        </article>
+
+        <article class="panel verify-panel">
+          <div class="panel-head">
+            <div>
+              <h2>实车验证</h2>
+              <p>点击验证会创建真实任务，抓取相机前后帧，并展示任务返回结果。</p>
+            </div>
+          </div>
+          <div class="verify-controls">
+            <label><input type="checkbox" id="safeMode" checked /> 安全验证参数：运动 1cm、转向 1deg、灵敏度 2.0</label>
+            <label><input type="checkbox" id="captureFrames" checked /> 验证前后抓拍</label>
+          </div>
+          <div class="frame-grid">
+            <figure>
+              <img id="beforeFrame" alt="验证前画面" />
+              <figcaption id="beforeMeta">验证前画面</figcaption>
+            </figure>
+            <figure>
+              <img id="afterFrame" alt="验证后画面" />
+              <figcaption id="afterMeta">验证后画面</figcaption>
+            </figure>
+          </div>
+          <pre id="verifyLog" class="log-box">等待验证...</pre>
+        </article>
+      </section>
+    </main>
+    <script src="./static/robot_skills.js"></script>
+  </body>
+</html>

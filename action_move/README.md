@@ -164,7 +164,7 @@ python3 action_move_executor.py turn_left
 ## ROS2 原子指令
 
 `edge_ros_controller.py` 内部使用的 ROS2 topic 也可在容器内直接用 `ros2 topic pub` 触发，无需启动任何服务。
-详见 [`function_center/ros2_command_examples.md`](../function_center/ros2_command_examples.md)。
+详见 [`atomic_skills.md`](atomic_skills.md) 中每个技能的最底层 ROS2 原子指令。
 
 ## Safety Rules
 

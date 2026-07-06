@@ -43,9 +43,12 @@ COMMON_ASR_URL = os.getenv("COMMON_ASR_URL", "https://www.wangyutang.cn/common/a
 VISION_ANALYZE_URL = os.getenv("AUDIO_VISION_ANALYZE_URL", "https://www.wangyutang.cn/common/api/vision/spark/analyze-json")
 VISION_LLM_MODEL = os.getenv("AUDIO_VISION_LLM_MODEL", "qwen3.6-35b-a3b-fp8")
 COMMON_API_PUBLIC_BASE = os.getenv("COMMON_API_PUBLIC_BASE", "https://www.wangyutang.cn").rstrip("/")
-COMMON_LAB_SELECTION_URL = os.getenv("AUDIO_COMMON_LAB_SELECTION_URL", f"{COMMON_API_PUBLIC_BASE}/common/api/lab/selection").strip()
-COMMON_LAB_SELECTION_TIMEOUT_SECONDS = float(os.getenv("AUDIO_COMMON_LAB_SELECTION_TIMEOUT_SECONDS", "1.5") or 1.5)
-COMMON_LAB_SELECTION_CACHE_TTL_SECONDS = float(os.getenv("AUDIO_COMMON_LAB_SELECTION_CACHE_TTL_SECONDS", "2") or 2)
+COMMON_MODEL_STUDIO_SELECTION_URL = os.getenv(
+    "AUDIO_COMMON_MODEL_STUDIO_SELECTION_URL",
+    f"{COMMON_API_PUBLIC_BASE}/common/api/model-studio/selection",
+).strip()
+COMMON_MODEL_STUDIO_SELECTION_TIMEOUT_SECONDS = float(os.getenv("AUDIO_COMMON_MODEL_STUDIO_SELECTION_TIMEOUT_SECONDS", "1.5") or 1.5)
+COMMON_MODEL_STUDIO_SELECTION_CACHE_TTL_SECONDS = float(os.getenv("AUDIO_COMMON_MODEL_STUDIO_SELECTION_CACHE_TTL_SECONDS", "2") or 2)
 MAX_RESULTS = 100
 MAX_EVENTS = 200
 MAX_DASHBOARD_RESULTS = 40
@@ -121,18 +124,18 @@ def _absolute_common_url(path_or_url: str) -> str:
     return value
 
 
-def fetch_lab_model_selection() -> dict[str, Any]:
-    if not COMMON_LAB_SELECTION_URL:
+def fetch_model_studio_selection() -> dict[str, Any]:
+    if not COMMON_MODEL_STUDIO_SELECTION_URL:
         return {}
     now = time.time()
     with MODEL_SELECTION_LOCK:
-        if now - float(MODEL_SELECTION_CACHE.get("ts") or 0) < COMMON_LAB_SELECTION_CACHE_TTL_SECONDS:
+        if now - float(MODEL_SELECTION_CACHE.get("ts") or 0) < COMMON_MODEL_STUDIO_SELECTION_CACHE_TTL_SECONDS:
             cached = MODEL_SELECTION_CACHE.get("selection")
             return dict(cached) if isinstance(cached, dict) else {}
     try:
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        request = urllib.request.Request(COMMON_LAB_SELECTION_URL, headers={"Accept": "application/json"})
-        with opener.open(request, timeout=COMMON_LAB_SELECTION_TIMEOUT_SECONDS) as response:
+        request = urllib.request.Request(COMMON_MODEL_STUDIO_SELECTION_URL, headers={"Accept": "application/json"})
+        with opener.open(request, timeout=COMMON_MODEL_STUDIO_SELECTION_TIMEOUT_SECONDS) as response:
             payload = json.loads(response.read().decode("utf-8"))
         selection = payload.get("selection") if isinstance(payload, dict) else {}
         selection = selection if isinstance(selection, dict) else {}
@@ -171,7 +174,7 @@ def selected_vision_config(selection: dict[str, Any] | None = None) -> dict[str,
 
 def build_cloud_config(selection: dict[str, Any] | None = None) -> dict[str, Any]:
     if selection is None:
-        selection = fetch_lab_model_selection()
+        selection = fetch_model_studio_selection()
     vision = selected_vision_config(selection)
     return {
         "face_server": FACE_SERVER,
@@ -185,13 +188,13 @@ def build_cloud_config(selection: dict[str, Any] | None = None) -> dict[str, Any
 
 
 def build_router_config() -> dict[str, Any]:
-    selection = fetch_lab_model_selection()
+    selection = fetch_model_studio_selection()
     llm_selection = selected_llm_config(selection)
     config: dict[str, Any] = {
         "skill_catalog": str(ACTION_CATALOG_PATH),
         "skill_registry": str(os.getenv("AUDIO_SKILL_REGISTRY", str(SKILL_REGISTRY_PATH))).strip(),
         "model_selection": {
-            "source_url": COMMON_LAB_SELECTION_URL,
+            "source_url": COMMON_MODEL_STUDIO_SELECTION_URL,
             "selection": selection,
             "selection_error": str(MODEL_SELECTION_CACHE.get("error") or ""),
         },

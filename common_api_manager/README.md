@@ -405,7 +405,7 @@ common_api_manager/
     dashscope_qwen_vision/    POST /api/vision/dashscope/analyze-json
     spark_qwen_chat/          POST /api/llm/qwen3.6-35b/chat
     spark_qwen_vision/        POST /api/vision/spark/analyze-json
-    lab_catalog/              GET /api/lab/catalog
+    model_studio_catalog/     GET /api/model-studio/catalog
   tests/
     test_smoke.py             部署后 smoke tests（15 个用例）
     vision_benchmark/         18 张图评测集，results.json 基准数据
@@ -415,9 +415,9 @@ common_api_manager/
 
 ---
 
-## 交互实验台（Lab）
+## 模型工作台（Model Studio）
 
-`https://www.wangyutang.cn/common/lab`
+`https://www.wangyutang.cn/common/model-studio`
 
 一页式 UI，可直接在浏览器体验所有接口：
 

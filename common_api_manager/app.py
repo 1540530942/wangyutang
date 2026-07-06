@@ -10,7 +10,7 @@ from modules.asr_transcribe import router as asr_transcribe_router
 from modules.dashscope_qwen_chat import router as dashscope_qwen_chat_router
 from modules.dashscope_qwen_vision import router as dashscope_qwen_vision_router
 from modules.health_check import router as health_check_router
-from modules.lab_catalog import router as lab_catalog_router
+from modules.model_studio_catalog import router as model_studio_catalog_router
 from modules.lv_qwen_asr import router as lv_qwen_asr_router
 from modules.lv_qwen_chat import router as lv_qwen_chat_router
 from modules.lv_qwen_tts import router as lv_qwen_tts_router
@@ -28,7 +28,7 @@ app.add_middleware(
 )
 app.mount("/static", StaticFiles(directory=settings.static_dir), name="static")
 app.include_router(health_check_router)
-app.include_router(lab_catalog_router)
+app.include_router(model_studio_catalog_router)
 app.include_router(asr_transcribe_router)
 app.include_router(lv_qwen_asr_router)
 app.include_router(lv_qwen_chat_router)
@@ -45,6 +45,11 @@ def index() -> FileResponse:
     return FileResponse(f"{settings.static_dir}/index.html")
 
 
-@app.get("/lab")
-def lab() -> FileResponse:
-    return FileResponse(f"{settings.static_dir}/lab.html")
+@app.get("/model-studio")
+def model_studio() -> FileResponse:
+    return FileResponse(f"{settings.static_dir}/model_studio.html")
+
+
+@app.get("/robot-skills")
+def robot_skills() -> FileResponse:
+    return FileResponse(f"{settings.static_dir}/robot_skills.html")

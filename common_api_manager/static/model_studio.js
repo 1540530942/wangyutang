@@ -24,7 +24,7 @@ async function requestJson(url, options = {}) {
   const response = await fetch(API_PREFIX + url, options);
   const text = await response.text();
   let data;
-  try { data = text ? JSON.parse(text) : {}; } catch { data = { text }; }
+  try { data = text ? JSON.parse(text) : {}; } catch (error) { data = { text }; }
   if (!response.ok) {
     const detail = data.detail || data.error || text || `HTTP ${response.status}`;
     throw new Error(typeof detail === 'string' ? detail : pretty(detail));
@@ -109,7 +109,7 @@ function applyAudioModelSelection(data) {
 
 async function loadAudioModelSelection() {
   try {
-    applyAudioModelSelection(await requestJson('/api/lab/selection'));
+    applyAudioModelSelection(await requestJson('/api/model-studio/selection'));
   } catch (error) {
     $('audioModelSelection').textContent = error.message;
   }
@@ -128,7 +128,7 @@ async function saveAudioModelSelection() {
   };
   setBusy($('applyAudioModels'), true, '应用中...');
   try {
-    const data = await requestJson('/api/lab/selection', {
+    const data = await requestJson('/api/model-studio/selection', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -308,7 +308,7 @@ $('loginForm').addEventListener('submit', (event) => {
     $('loginError').textContent = '验证码不正确。提示：12。';
     return;
   }
-  sessionStorage.setItem('common_api_lab_unlocked', '1');
+  sessionStorage.setItem('common_api_model_studio_unlocked', '1');
   $('gate').classList.add('hidden');
   $('app').classList.remove('hidden');
   loadHealth();
@@ -350,7 +350,7 @@ $('runAsr').addEventListener('click', runAsr);
 $('runVision').addEventListener('click', runVision);
 $('runLlm').addEventListener('click', runLlm);
 
-if (sessionStorage.getItem('common_api_lab_unlocked') === '1') {
+if (sessionStorage.getItem('common_api_model_studio_unlocked') === '1') {
   $('gate').classList.add('hidden');
   $('app').classList.remove('hidden');
   loadHealth();

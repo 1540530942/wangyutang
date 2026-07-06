@@ -133,28 +133,49 @@ EXACT_ACTION_ALIASES = {
     "\u5f80\u53f3\u8d70": "move_right",
 }
 EXACT_ACTION_SPLIT_RE = re.compile(r"(?:\s+|[\uff0c,;\uff1b\u3001]+|\u7136\u540e|\u518d|\u63a5\u7740|\u5e76\u4e14|\u540e)+")
+DISTANCE_ACTION_RE = re.compile(
+    r"^(?P<alias>forward|\u524d\u8fdb|\u5411\u524d|\u5411\u524d\u8d70|\u5f80\u524d\u8d70|\u5411\u524d\u79fb\u52a8|"
+    r"backward|\u540e\u9000|\u5411\u540e|\u5411\u540e\u8d70|\u5f80\u540e\u8d70|"
+    r"\u5de6\u79fb|\u5411\u5de6\u79fb|\u5f80\u5de6\u8d70|"
+    r"\u53f3\u79fb|\u5411\u53f3\u79fb|\u5f80\u53f3\u8d70)"
+    r"(?P<distance>\d+(?:\.\d+)?)(?:cm|\u5398\u7c73|\u516c\u5206)$",
+    re.IGNORECASE,
+)
 
 
 def _normalized_exact_text(text: str) -> str:
     return re.sub(r"[\s\u3002\uff01!\uff1f?]+", "", text.strip().casefold())
 
 
-def _exact_action_sequence(transcript: str) -> list[tuple[str, str]] | None:
+def _exact_action_sequence(transcript: str) -> list[tuple[str, str, dict[str, Any]]] | None:
     normalized = _normalized_exact_text(transcript)
     if not normalized:
         return None
     if normalized in EXACT_ACTION_ALIASES:
-        return [(EXACT_ACTION_ALIASES[normalized], transcript.strip())]
+        return [(EXACT_ACTION_ALIASES[normalized], transcript.strip(), {})]
     parts = [item for item in EXACT_ACTION_SPLIT_RE.split(transcript.strip()) if item.strip()]
     if len(parts) <= 1:
-        return None
-    sequence: list[tuple[str, str]] = []
+        match = DISTANCE_ACTION_RE.match(normalized)
+        if not match:
+            return None
+        alias = match.group("alias")
+        skill_id = EXACT_ACTION_ALIASES.get(alias)
+        if not skill_id:
+            return None
+        distance_cm = max(1.0, min(50.0, float(match.group("distance"))))
+        return [(skill_id, transcript.strip(), {"distance_cm": distance_cm})]
+    sequence: list[tuple[str, str, dict[str, Any]]] = []
     for part in parts:
         key = _normalized_exact_text(part)
+        match = DISTANCE_ACTION_RE.match(key)
+        extra_args: dict[str, Any] = {}
+        if match:
+            key = match.group("alias")
+            extra_args["distance_cm"] = max(1.0, min(50.0, float(match.group("distance"))))
         skill_id = EXACT_ACTION_ALIASES.get(key)
         if not skill_id:
             return None
-        sequence.append((skill_id, part.strip()))
+        sequence.append((skill_id, part.strip(), extra_args))
     return sequence or None
 
 
@@ -166,7 +187,7 @@ def _append_rejected_result(envelope: DecisionEnvelope, task: Any) -> dict[str, 
 
 def _run_exact_action_sequence(
     envelope: DecisionEnvelope,
-    sequence: list[tuple[str, str]],
+    sequence: list[tuple[str, str, dict[str, Any]]],
     *,
     registry_path: Path,
     catalog_path: Path,
@@ -175,7 +196,7 @@ def _run_exact_action_sequence(
     dispatch_mode: str,
 ) -> DecisionEnvelope:
     envelope.reasoning_summary = "Exact action alias matched before LLM."
-    for index, (skill_id, fragment) in enumerate(sequence, start=1):
+    for index, (skill_id, fragment, extra_args) in enumerate(sequence, start=1):
         if skill_id == "move_forward":
             observation_call = ToolCall(
                 tool="front_distance",
@@ -187,9 +208,11 @@ def _run_exact_action_sequence(
             observation["preflight"] = True
             envelope.react_turns[-1]["tool_result"] = {"ok": observation.get("status") != "failed", "observation": observation}
 
+        action_args = {"skill_id": skill_id, "order": index, "wait_until": "completed", "confidence": 1.0, "text": fragment}
+        action_args.update(extra_args)
         call = ToolCall(
             tool="dispatch_action",
-            args={"skill_id": skill_id, "order": index, "wait_until": "completed", "confidence": 1.0, "text": fragment},
+            args=action_args,
         )
         envelope.tool_calls.append(call)
         envelope.react_turns.append({"turn": len(envelope.react_turns), "assistant_tool_call": call.model_dump(), "preflight": True})
