@@ -1,0 +1,19 @@
+# module : pi5_robot
+# target : tests/
+# run at : 2026-07-07 03:11:09 CST
+# cwd    : pi5_robot
+----------------------------------------------------------------------
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/ubuntu/workspace/wangyutang/pi5_robot
+plugins: anyio-4.14.0
+collecting ... collected 5 items
+
+tests/test_harness_executor.py::HarnessExecutorTests::test_patrol_task_writes_trace_and_report PASSED [ 20%]
+tests/test_robot_safety.py::RobotSafetyTests::test_backward_distance_is_limited PASSED [ 40%]
+tests/test_robot_safety.py::RobotSafetyTests::test_forward_move_updates_pose PASSED [ 60%]
+tests/test_robot_safety.py::RobotSafetyTests::test_front_obstacle_blocks_forward_motion PASSED [ 80%]
+tests/test_robot_safety.py::RobotSafetyTests::test_rotate_is_limited PASSED [100%]
+
+============================== 5 passed in 0.03s ===============================

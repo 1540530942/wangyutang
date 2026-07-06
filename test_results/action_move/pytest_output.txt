@@ -1,0 +1,22 @@
+# module : action_move
+# target : tests/
+# run at : 2026-07-07 03:11:09 CST
+# cwd    : action_move
+----------------------------------------------------------------------
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/ubuntu/workspace/wangyutang/action_move
+plugins: anyio-4.14.0
+collecting ... collected 8 items
+
+tests/test_default_unit_distance.py::DefaultUnitDistanceTest::test_catalog_and_server_default_to_ten_cm PASSED [ 12%]
+tests/test_default_unit_distance.py::DefaultUnitDistanceTest::test_edge_controller_fallback_defaults_to_ten_cm SKIPPED [ 25%]
+tests/test_default_unit_distance.py::DefaultUnitDistanceTest::test_executor_fallback_defaults_to_ten_cm PASSED [ 37%]
+tests/test_slam_reporting.py::SlamReportingTest::test_imu_actual_distance_overrides_commanded PASSED [ 50%]
+tests/test_slam_reporting.py::SlamReportingTest::test_imu_actual_yaw_overrides_commanded PASSED [ 62%]
+tests/test_slam_reporting.py::SlamReportingTest::test_move_forward_reports_unit_distance_as_dx PASSED [ 75%]
+tests/test_slam_reporting.py::SlamReportingTest::test_parse_edge_actuals PASSED [ 87%]
+tests/test_slam_reporting.py::SlamReportingTest::test_turn_left_reports_turn_angle_as_positive_yaw PASSED [100%]
+
+========================= 7 passed, 1 skipped in 0.57s =========================

@@ -1,0 +1,31 @@
+# module : common_api_manager
+# target : tests/
+# run at : 2026-07-07 03:11:09 CST
+# cwd    : common_api_manager
+----------------------------------------------------------------------
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/ubuntu/workspace/wangyutang/common_api_manager
+plugins: anyio-4.14.0
+collecting ... collected 17 items
+
+tests/test_model_studio_selection.py::ModelStudioSelectionTest::test_lv_selection_is_saved_with_audio_recognition_paths PASSED [  5%]
+tests/test_model_studio_selection.py::ModelStudioSelectionTest::test_unknown_provider_falls_back_to_audio_defaults PASSED [ 11%]
+tests/test_smoke.py::test_api_health PASSED                              [ 17%]
+tests/test_smoke.py::test_asr_health PASSED                              [ 23%]
+tests/test_smoke.py::test_tts_health PASSED                              [ 29%]
+tests/test_smoke.py::test_chat_health PASSED                             [ 35%]
+tests/test_smoke.py::test_dashscope_llm_health PASSED                    [ 41%]
+tests/test_smoke.py::test_spark_llm_health PASSED                        [ 47%]
+tests/test_smoke.py::test_vision_lv_health PASSED                        [ 52%]
+tests/test_smoke.py::test_vision_spark_health PASSED                     [ 58%]
+tests/test_smoke.py::test_lv_chat_returns_text PASSED                    [ 64%]
+tests/test_smoke.py::test_dashscope_chat_returns_text PASSED             [ 70%]
+tests/test_smoke.py::test_vision_lv_analyze_json PASSED                  [ 76%]
+tests/test_smoke.py::test_vision_spark_analyze_json PASSED               [ 82%]
+tests/test_smoke.py::test_vision_dashscope_health PASSED                 [ 88%]
+tests/test_smoke.py::test_vision_dashscope_analyze_json PASSED           [ 94%]
+tests/test_smoke.py::test_spark_llm_returns_text PASSED                  [100%]
+
+============================= 17 passed in 14.46s ==============================

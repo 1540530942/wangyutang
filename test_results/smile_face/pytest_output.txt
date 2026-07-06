@@ -1,0 +1,42 @@
+# module : smile_face
+# target : tests/
+# run at : 2026-07-07 03:11:09 CST
+# cwd    : smile_face
+----------------------------------------------------------------------
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/ubuntu/workspace/wangyutang/smile_face
+plugins: anyio-4.14.0
+collecting ... collected 11 items
+
+tests/test_face_render.py::test_clamp_bounds PASSED                      [  9%]
+tests/test_face_render.py::test_mix_linear_interpolation PASSED          [ 18%]
+tests/test_face_render.py::test_blend_colors_endpoints_and_midpoint PASSED [ 27%]
+tests/test_face_render.py::test_blend_clamps_out_of_range_t PASSED       [ 36%]
+tests/test_face_render.py::test_star_points_count_is_double PASSED       [ 45%]
+tests/test_face_render.py::test_all_emotions_have_required_keys PASSED   [ 54%]
+tests/test_face_render.py::test_styles_have_palette_keys PASSED          [ 63%]
+tests/test_face_render.py::test_draw_face_returns_rgb_image_correct_size PASSED [ 72%]
+tests/test_face_render.py::test_different_emotions_render_different_pixels PASSED [ 81%]
+tests/test_face_render.py::test_unknown_emotion_falls_back_to_neutral PASSED [ 90%]
+tests/test_face_render.py::test_unknown_style_falls_back_to_mochi PASSED [100%]
+
+=============================== warnings summary ===============================
+tests/test_face_render.py::test_different_emotions_render_different_pixels
+tests/test_face_render.py::test_different_emotions_render_different_pixels
+  /home/ubuntu/workspace/wangyutang/smile_face/tests/test_face_render.py:88: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(happy.getdata()) != list(sad.getdata())
+
+tests/test_face_render.py::test_unknown_emotion_falls_back_to_neutral
+tests/test_face_render.py::test_unknown_emotion_falls_back_to_neutral
+  /home/ubuntu/workspace/wangyutang/smile_face/tests/test_face_render.py:95: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(unknown.getdata()) == list(neutral.getdata())
+
+tests/test_face_render.py::test_unknown_style_falls_back_to_mochi
+tests/test_face_render.py::test_unknown_style_falls_back_to_mochi
+  /home/ubuntu/workspace/wangyutang/smile_face/tests/test_face_render.py:101: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(unknown.getdata()) == list(mochi.getdata())
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 11 passed, 6 warnings in 2.29s ========================

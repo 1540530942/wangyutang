@@ -1,0 +1,25 @@
+# module : loop_engineering
+# target : tests/
+# run at : 2026-07-07 03:11:09 CST
+# cwd    : loop_engineering
+----------------------------------------------------------------------
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/ubuntu/workspace/wangyutang/loop_engineering
+plugins: anyio-4.14.0
+collecting ... collected 11 items
+
+tests/test_evaluator.py::test_correct_plan_only_scores_full PASSED       [  9%]
+tests/test_evaluator.py::test_wrong_route_fails_planning PASSED          [ 18%]
+tests/test_evaluator.py::test_wrong_skill_fails_planning PASSED          [ 27%]
+tests/test_evaluator.py::test_expected_no_action_passes_with_empty_skill PASSED [ 36%]
+tests/test_evaluator.py::test_execute_on_robot_success_adds_execution_score PASSED [ 45%]
+tests/test_evaluator.py::test_execute_on_robot_dispatch_failure_partial_score PASSED [ 54%]
+tests/test_evaluator.py::test_execute_on_robot_not_dispatched_no_execution_score PASSED [ 63%]
+tests/test_evaluator.py::test_apply_obs_computes_delta_and_pass PASSED   [ 72%]
+tests/test_evaluator.py::test_apply_obs_out_of_tolerance_fails_obs PASSED [ 81%]
+tests/test_evaluator.py::test_apply_obs_no_check_sets_none PASSED        [ 90%]
+tests/test_evaluator.py::test_min_sonar_floor_fails_when_too_close PASSED [100%]
+
+============================== 11 passed in 0.03s ==============================

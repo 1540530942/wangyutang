@@ -1,0 +1,29 @@
+# module : simulation
+# target : tests/
+# run at : 2026-07-07 03:11:09 CST
+# cwd    : simulation
+----------------------------------------------------------------------
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/ubuntu/workspace/wangyutang/simulation
+plugins: anyio-4.14.0
+collecting ... collected 15 items
+
+tests/test_state.py::test_turn_left_decrements_heading_modulo_360 PASSED [  6%]
+tests/test_state.py::test_turn_right_increments_heading_modulo_360 PASSED [ 13%]
+tests/test_state.py::test_move_forward_advances_along_heading PASSED     [ 20%]
+tests/test_state.py::test_move_backward_reverses_along_heading PASSED    [ 26%]
+tests/test_state.py::test_move_clamped_to_arena_bounds PASSED            [ 33%]
+tests/test_state.py::test_look_left_clamps_pan_at_minus_45 PASSED        [ 40%]
+tests/test_state.py::test_look_down_clamps_tilt_at_plus_30 PASSED        [ 46%]
+tests/test_state.py::test_rgb_on_sets_color_and_flag PASSED              [ 53%]
+tests/test_state.py::test_rgb_off_clears_flag PASSED                     [ 60%]
+tests/test_state.py::test_reset_pose_centers_gimbal PASSED               [ 66%]
+tests/test_state.py::test_emergency_stop_message PASSED                  [ 73%]
+tests/test_state.py::test_front_distance_hits_wall PASSED                [ 80%]
+tests/test_state.py::test_front_distance_capped_at_max PASSED            [ 86%]
+tests/test_state.py::test_apply_appends_trail_and_log_and_frame_id PASSED [ 93%]
+tests/test_state.py::test_to_dict_shape PASSED                           [100%]
+
+============================== 15 passed in 0.03s ==============================

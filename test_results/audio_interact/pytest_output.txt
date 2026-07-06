@@ -1,0 +1,19 @@
+# module : audio_interact
+# target : tests/
+# run at : 2026-07-07 03:11:09 CST
+# cwd    : audio_interact
+----------------------------------------------------------------------
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/ubuntu/workspace/wangyutang/audio_interact
+plugins: anyio-4.14.0
+collecting ... collected 5 items
+
+tests/test_wake_state.py::test_wake_word_accepts_homophones PASSED       [ 20%]
+tests/test_wake_state.py::test_sleeping_device_ignores_commands_until_wake PASSED [ 40%]
+tests/test_wake_state.py::test_wake_word_activates_and_routes_following_text PASSED [ 60%]
+tests/test_wake_state.py::test_wake_phrase_with_inline_command_routes_suffix PASSED [ 80%]
+tests/test_wake_state.py::test_dismiss_puts_device_back_to_sleep PASSED  [100%]
+
+============================== 5 passed in 0.02s ===============================

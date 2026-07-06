@@ -1,0 +1,77 @@
+# module : smoke
+# target : .
+# run at : 2026-07-07 03:11:09 CST
+# cwd    : smoke
+----------------------------------------------------------------------
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/ubuntu/workspace/wangyutang/smoke
+plugins: anyio-4.14.0
+collecting ... collected 56 items
+
+test_routing.py::TestExactAliasRouting::test_emergency_stop_chinese PASSED [  1%]
+test_routing.py::TestExactAliasRouting::test_emergency_stop_english PASSED [  3%]
+test_routing.py::TestExactAliasRouting::test_move_backward_exact PASSED  [  5%]
+test_routing.py::TestExactAliasRouting::test_move_forward_exact PASSED   [  7%]
+test_routing.py::TestExactAliasRouting::test_move_left_exact PASSED      [  8%]
+test_routing.py::TestExactAliasRouting::test_move_right_exact PASSED     [ 10%]
+test_routing.py::TestExactAliasRouting::test_turn_left_exact PASSED      [ 12%]
+test_routing.py::TestExactAliasRouting::test_turn_right_exact PASSED     [ 14%]
+test_routing.py::TestRegistryRouteSmoke::test_camera_snapshot_registered PASSED [ 16%]
+test_routing.py::TestRegistryRouteSmoke::test_emergency_stop_registered PASSED [ 17%]
+test_routing.py::TestRegistryRouteSmoke::test_front_distance_registered PASSED [ 19%]
+test_routing.py::TestRegistryRouteSmoke::test_inspect_scene_registered PASSED [ 21%]
+test_routing.py::TestRegistryRouteSmoke::test_look_down_registered PASSED [ 23%]
+test_routing.py::TestRegistryRouteSmoke::test_look_left_registered PASSED [ 25%]
+test_routing.py::TestRegistryRouteSmoke::test_look_right_registered PASSED [ 26%]
+test_routing.py::TestRegistryRouteSmoke::test_look_up_registered PASSED  [ 28%]
+test_routing.py::TestRegistryRouteSmoke::test_move_backward_registered PASSED [ 30%]
+test_routing.py::TestRegistryRouteSmoke::test_move_forward_registered PASSED [ 32%]
+test_routing.py::TestRegistryRouteSmoke::test_move_left_registered PASSED [ 33%]
+test_routing.py::TestRegistryRouteSmoke::test_move_right_registered PASSED [ 35%]
+test_routing.py::TestRegistryRouteSmoke::test_reset_pose_registered PASSED [ 37%]
+test_routing.py::TestRegistryRouteSmoke::test_rgb_off_registered PASSED  [ 39%]
+test_routing.py::TestRegistryRouteSmoke::test_rgb_on_registered PASSED   [ 41%]
+test_routing.py::TestRegistryRouteSmoke::test_turn_left_registered PASSED [ 42%]
+test_routing.py::TestRegistryRouteSmoke::test_turn_right_registered PASSED [ 44%]
+test_routing.py::TestDispatchEnvelopeFormat::test_camera_snapshot_observation PASSED [ 46%]
+test_routing.py::TestDispatchEnvelopeFormat::test_front_distance_observation PASSED [ 48%]
+test_routing.py::TestDispatchEnvelopeFormat::test_look_down_task PASSED  [ 50%]
+test_routing.py::TestDispatchEnvelopeFormat::test_look_left_task PASSED  [ 51%]
+test_routing.py::TestDispatchEnvelopeFormat::test_look_right_task PASSED [ 53%]
+test_routing.py::TestDispatchEnvelopeFormat::test_look_up_task PASSED    [ 55%]
+test_routing.py::TestDispatchEnvelopeFormat::test_reset_pose_task PASSED [ 57%]
+test_routing.py::TestDispatchEnvelopeFormat::test_rgb_off_task PASSED    [ 58%]
+test_routing.py::TestDispatchEnvelopeFormat::test_rgb_on_task PASSED     [ 60%]
+test_routing.py::TestToolValidatorSmoke::test_validator_accepts_look_down PASSED [ 62%]
+test_routing.py::TestToolValidatorSmoke::test_validator_accepts_look_left PASSED [ 64%]
+test_routing.py::TestToolValidatorSmoke::test_validator_accepts_look_right PASSED [ 66%]
+test_routing.py::TestToolValidatorSmoke::test_validator_accepts_look_up PASSED [ 67%]
+test_routing.py::TestToolValidatorSmoke::test_validator_accepts_move_backward PASSED [ 69%]
+test_routing.py::TestToolValidatorSmoke::test_validator_accepts_move_forward PASSED [ 71%]
+test_routing.py::TestToolValidatorSmoke::test_validator_accepts_move_left PASSED [ 73%]
+test_routing.py::TestToolValidatorSmoke::test_validator_accepts_move_right PASSED [ 75%]
+test_routing.py::TestToolValidatorSmoke::test_validator_accepts_reset_pose PASSED [ 76%]
+test_routing.py::TestToolValidatorSmoke::test_validator_accepts_rgb_off PASSED [ 78%]
+test_routing.py::TestToolValidatorSmoke::test_validator_accepts_rgb_on PASSED [ 80%]
+test_routing.py::TestToolValidatorSmoke::test_validator_accepts_turn_left PASSED [ 82%]
+test_routing.py::TestToolValidatorSmoke::test_validator_accepts_turn_right PASSED [ 83%]
+test_routing.py::TestToolValidatorSmoke::test_validator_clips_duration_over_limit PASSED [ 85%]
+test_schema.py::TestSkillRegistrySmoke::test_all_smoke_skills_present_in_registry PASSED [ 87%]
+test_schema.py::TestSkillRegistrySmoke::test_registry_loads_without_error PASSED [ 89%]
+test_schema.py::TestSkillRegistrySmoke::test_smoke_skill_routes_match_registry PASSED [ 91%]
+test_schema.py::TestSkillRegistrySmoke::test_smoke_skill_tools_match_registry PASSED [ 92%]
+test_schema.py::TestToolSchemaSmoke::test_dispatch_action_enum_contains_all_action_skills PASSED [ 94%]
+test_schema.py::TestToolSchemaSmoke::test_duration_limits_present_for_action_skills PASSED [ 96%]
+test_schema.py::TestToolSchemaSmoke::test_emergency_stop_not_in_dispatch_action_enum PASSED [ 98%]
+test_schema.py::TestToolSchemaSmoke::test_observation_tools_not_in_dispatch_action_enum PASSED [100%]
+
+=============================== warnings summary ===============================
+test_routing.py::TestExactAliasRouting::test_emergency_stop_chinese
+test_routing.py::TestExactAliasRouting::test_emergency_stop_english
+  /home/ubuntu/workspace/wangyutang/audio_recognition/tools/tool_validator.py:86: PydanticDeprecatedSince20: The `copy` method is deprecated; use `model_copy` instead. See the docstring of `BaseModel.copy` for details about how to handle `include` and `exclude`. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    normalized = call.copy(deep=True)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================= 56 passed, 2 warnings in 11.69s ========================
