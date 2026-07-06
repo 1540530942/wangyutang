@@ -1,20 +1,25 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import collections
 import io
 import json
 import os
+import secrets
 import struct
 import time
 import uuid
 import wave
 from dataclasses import dataclass, field
-from typing import Any
+from pathlib import Path
+from typing import Annotated, Any
 
 import requests
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 
+from settings import load_settings, save_settings
 from wake_state import WakeDecision, WakeStateStore
 
 
@@ -36,7 +41,13 @@ SILERO_END_FRAMES = int(os.getenv("SILERO_END_FRAMES", "20"))
 SILERO_PRE_FRAMES = int(os.getenv("SILERO_PRE_FRAMES", "8"))
 SILERO_MAX_SECONDS = float(os.getenv("SILERO_MAX_SECONDS", "12"))
 
-app = FastAPI(title="Audio Interact Service", version="0.2.0")
+# Audio file storage (P3)
+from settings import DATA_DIR as _SETTINGS_DATA_DIR
+AUDIO_DATA_DIR = Path(os.getenv("AUDIO_INTERACT_DATA_DIR", str(_SETTINGS_DATA_DIR)))
+SEGMENTS_DIR = AUDIO_DATA_DIR / "segments"
+SEGMENTS_DIR.mkdir(parents=True, exist_ok=True)
+
+app = FastAPI(title="Audio Interact Service", version="0.3.0")
 WAKE_STATES = WakeStateStore()
 SILERO_VAD_MODEL: Any | None = None
 SILERO_TORCH: Any | None = None
@@ -463,3 +474,208 @@ def wake_only_result(*, session_id: str, text: str, wake: WakeDecision, started:
 
 def elapsed_ms(started: float) -> int:
     return int((time.time() - started) * 1000)
+
+
+# ---------------------------------------------------------------------------
+# P2 — settings API
+# ---------------------------------------------------------------------------
+
+def _require_token(x_audio_token: str | None) -> None:
+    from settings import DATA_DIR as _dd
+    token_file = _dd / ".audio_token"
+    if not token_file.exists():
+        return
+    import secrets as _sec
+    expected = token_file.read_text(encoding="utf-8").strip()
+    if not expected:
+        return
+    if not x_audio_token or not _sec.compare_digest(x_audio_token, expected):
+        raise HTTPException(status_code=401, detail="invalid audio token")
+
+
+@app.get("/api/settings")
+def get_settings_route() -> dict[str, Any]:
+    return {"settings": load_settings()}
+
+
+@app.post("/api/settings")
+def update_settings_route(
+    payload: dict[str, Any],
+    x_audio_token: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    _require_token(x_audio_token)
+    settings = save_settings(payload)
+    return {"ok": True, "settings": settings}
+
+
+@app.post("/api/manual-recording/start")
+def start_manual_recording_route(x_audio_token: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+    _require_token(x_audio_token)
+    settings = save_settings({"manual_recording_enabled": True})
+    return {"ok": True, "settings": settings}
+
+
+@app.post("/api/manual-recording/stop")
+def stop_manual_recording_route(x_audio_token: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+    _require_token(x_audio_token)
+    settings = save_settings({"manual_recording_enabled": False})
+    return {"ok": True, "settings": settings}
+
+
+# ---------------------------------------------------------------------------
+# P3 — audio segment upload endpoint  (WonderEchoPro cloud convergence point)
+# ---------------------------------------------------------------------------
+
+def _store_segment(wav_bytes: bytes) -> tuple[str, str]:
+    """Persist a WAV segment and return (filename, audio_url)."""
+    name = f"seg-{int(time.time() * 1000)}-{secrets.token_hex(4)}.wav"
+    (SEGMENTS_DIR / name).write_bytes(wav_bytes)
+    return name, f"/api/audio/{name}"
+
+
+def _call_robot_sandbox(text: str, device_id: str, audio_url: str, asr_meta: dict[str, Any], wake_status: str) -> dict[str, Any]:
+    """Call robot_sandbox /api/command; returns command response dict."""
+    payload = {
+        "text": text,
+        "device_id": device_id,
+        "dispatch_mode": os.getenv("SANDBOX_DISPATCH_MODE", "cloud_queue"),
+        "context": {
+            "source": "audio_interact",
+            "audio_url": audio_url,
+            "asr": asr_meta,
+            "wake_status": wake_status,
+        },
+    }
+    resp = requests.post(
+        f"{AUDIO_RECOGNITION_URL}/api/command",
+        json=payload,
+        timeout=ROUTE_TIMEOUT,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+@app.post("/api/audio/segment")
+async def audio_segment(
+    file: UploadFile = File(...),
+    device_id: str = Form("turbopi-01"),
+    session_id: str = Form(""),
+) -> dict[str, Any]:
+    """Receive a WAV segment from WonderEchoPro Pi listener or web client.
+
+    Returns ASR text, wake status, command result, tts_text, and tts_audio_base64
+    so the Pi can play back the response locally without a separate TTS request.
+    """
+    started = time.time()
+    wav_bytes = await file.read()
+    if not wav_bytes:
+        raise HTTPException(status_code=400, detail="empty audio file")
+
+    sess = session_id or str(uuid.uuid4())[:12]
+
+    # Store audio and build URL for envelope reference
+    seg_name, audio_url = _store_segment(wav_bytes)
+
+    # ASR
+    try:
+        asr_resp = requests.post(
+            COMMON_ASR_URL,
+            files={"file": ("audio.wav", wav_bytes, "audio/wav")},
+            data={"language": "zh"},
+            timeout=ASR_TIMEOUT,
+        )
+        asr_resp.raise_for_status()
+        asr_payload = asr_resp.json()
+        text = str(asr_payload.get("text") or "").strip()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "session_id": sess,
+            "stage": "asr",
+            "message": str(exc),
+            "elapsed_ms": elapsed_ms(started),
+        }
+
+    if not text:
+        return {
+            "ok": True,
+            "session_id": sess,
+            "text": "",
+            "wake_status": "empty",
+            "command": None,
+            "tts_text": "",
+            "tts_audio_base64": None,
+            "audio_url": audio_url,
+            "elapsed_ms": elapsed_ms(started),
+        }
+
+    # Wake-state gate
+    wake = WAKE_STATES.decide(device_id, text)
+    if not wake.should_route:
+        return {
+            "ok": True,
+            "session_id": sess,
+            "text": text,
+            "wake_status": wake.status,
+            "command": None,
+            "tts_text": "",
+            "tts_audio_base64": None,
+            "audio_url": audio_url,
+            "elapsed_ms": elapsed_ms(started),
+        }
+
+    # robot_sandbox /api/command
+    try:
+        command = _call_robot_sandbox(
+            text=wake.route_text,
+            device_id=device_id,
+            audio_url=audio_url,
+            asr_meta=asr_payload,
+            wake_status=wake.status,
+        )
+    except Exception as exc:
+        return {
+            "ok": False,
+            "session_id": sess,
+            "text": text,
+            "wake_status": wake.status,
+            "command": None,
+            "tts_text": "",
+            "tts_audio_base64": None,
+            "audio_url": audio_url,
+            "message": str(exc),
+            "elapsed_ms": elapsed_ms(started),
+        }
+
+    tts_text = str(command.get("tts_text") or "")
+
+    # Fetch TTS audio for Pi local playback
+    tts_audio_b64: str | None = None
+    if tts_text and TTS_URL:
+        try:
+            audio_bytes = _fetch_tts_audio(tts_text)
+            tts_audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+        except Exception as exc:
+            print(f"[WARN] segment tts_failed: {exc}", flush=True)
+
+    return {
+        "ok": True,
+        "session_id": sess,
+        "text": text,
+        "wake_status": wake.status,
+        "command": command,
+        "tts_text": tts_text,
+        "tts_audio_base64": tts_audio_b64,
+        "audio_url": audio_url,
+        "elapsed_ms": elapsed_ms(started),
+    }
+
+
+@app.get("/api/audio/{name}")
+def get_segment_audio(name: str) -> FileResponse:
+    safe_name = Path(name).name
+    target = (SEGMENTS_DIR / safe_name).resolve()
+    if target.parent != SEGMENTS_DIR.resolve() or not target.exists():
+        raise HTTPException(status_code=404, detail="audio not found")
+    media_type = "audio/wav" if target.suffix.lower() == ".wav" else "application/octet-stream"
+    return FileResponse(target, media_type=media_type, filename=safe_name, headers={"Cache-Control": "no-store"})

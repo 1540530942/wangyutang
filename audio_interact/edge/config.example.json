@@ -1,0 +1,13 @@
+{
+  "server": "https://www.wangyutang.cn/interact",
+  "token": "",
+  "device_id": "turbopi-01",
+  "tts_device": "",
+  "recorder": {
+    "device": "plughw:CARD=Device,DEV=0",
+    "sample_rate": 16000,
+    "channels": 1,
+    "seconds": 4,
+    "output_dir": "/tmp/audio_interact"
+  }
+}

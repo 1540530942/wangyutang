@@ -74,6 +74,8 @@ services:
       - .env
     environment:
       AUDIO_FACE_SERVER: http://smile-face:8096
+      AUDIO_INTERACT_URL: http://audio-interact:8097
+      AUDIO_SENSOR_SERVER: http://100.118.92.117:8088
     ports:
       - "8095:8095"
     volumes:
@@ -99,8 +101,11 @@ services:
     environment:
       AUDIO_RECOGNITION_URL: http://audio-recognition:8095
       COMMON_ASR_URL: https://www.wangyutang.cn/common/api/asr/transcribe
+      AUDIO_INTERACT_DATA_DIR: /app/data
     ports:
       - "8097:8097"
+    volumes:
+      - audio_interact_data:/app/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8097/api/health', timeout=3).read()"]
       interval: 30s
@@ -177,4 +182,5 @@ volumes:
   camera_snapshot_data:
   action_move_data:
   audio_recognition_data:
+  audio_interact_data:
   pi5_robot_episodes:

@@ -19,3 +19,12 @@ class PlannedTask(BaseModel):
     @property
     def active(self) -> bool:
         return bool(self.skill_id) and self.route != "none"
+
+
+class CommandRequest(BaseModel):
+    """Incoming request for POST /api/command (robot_sandbox boundary)."""
+
+    text: str = Field(..., max_length=2000)
+    device_id: str = Field("turbopi-01", max_length=80)
+    dispatch_mode: Literal["dry_run", "cloud_queue", "local_first"] = "dry_run"
+    context: dict[str, Any] = Field(default_factory=dict)

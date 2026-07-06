@@ -55,10 +55,7 @@ _REJECT_TTS: dict[str, str] = {
 }
 
 
-def _build_tts_text(envelope: DecisionEnvelope) -> str:
-    if envelope.dispatch_mode == "dry_run":
-        return ""
-
+def build_tts_text(envelope: DecisionEnvelope) -> str:
     # LLM path: finish.message is natural language from the LLM
     if envelope.final_response and envelope.final_response not in _TTS_SKIP:
         return envelope.final_response
@@ -221,16 +218,21 @@ def _run_exact_action_sequence(
             result = {"ok": False, "error": "tool_call_rejected", "tool": call.tool}
             envelope.react_turns[-1]["tool_result"] = result
             continue
-        checked_task = run_safety_guard_for_task(envelope, task, registry_path=registry_path, catalog_path=catalog_path)
-        if checked_task.status == "rejected":
-            task.status = checked_task.status
-            task.error = checked_task.error
-            result = _append_rejected_result(envelope, task)
+        if dispatch_mode == "dry_run":
+            if not envelope.safety_result:
+                envelope.safety_result = {"allowed": True, "reason": "dry_run"}
         else:
-            if envelope.t_dispatch_start is None:
-                envelope.t_dispatch_start = time.time()
-            result = dispatch_task(envelope, task, cloud_config=cloud_config or {}, source=source, dispatch_mode=dispatch_mode)
-            envelope.t_dispatch_end = time.time()
+            checked_task = run_safety_guard_for_task(envelope, task, registry_path=registry_path, catalog_path=catalog_path)
+            if checked_task.status == "rejected":
+                task.status = checked_task.status
+                task.error = checked_task.error
+                result = _append_rejected_result(envelope, task)
+                envelope.react_turns[-1]["tool_result"] = result
+                break
+        if envelope.t_dispatch_start is None:
+            envelope.t_dispatch_start = time.time()
+        result = dispatch_task(envelope, task, cloud_config=cloud_config or {}, source=source, dispatch_mode=dispatch_mode)
+        envelope.t_dispatch_end = time.time()
         envelope.react_turns[-1]["tool_result"] = result
         if result.get("status") not in {"completed", "dry_run"}:
             break
@@ -348,7 +350,7 @@ def route_transcript(
         "observation": first_observation,
         "action_error": action_error,
         "face_error": face_error,
-        "tts_text": _build_tts_text(envelope),
+        "tts_text": build_tts_text(envelope),
         "envelope": envelope.model_dump(),
     }
 
@@ -512,15 +514,19 @@ def decide_transcript(
             messages.append(build_tool_result_message(call.call_id, call.tool, tool_result))
             envelope.react_turns[-1]["tool_result"] = tool_result
             continue
-        checked_task = run_safety_guard_for_task(envelope, task, registry_path=registry_path, catalog_path=catalog_path)
-        if checked_task.status == "rejected":
-            task.status = checked_task.status
-            task.error = checked_task.error
-            result = {"task_id": task.task_id, "skill_id": task.skill_id, "status": "rejected", "error": task.error}
-            envelope.dispatch_results.append(result)
-            messages.append(build_tool_result_message(call.call_id, call.tool, result))
-            envelope.react_turns[-1]["tool_result"] = result
-            continue
+        if dispatch_mode == "dry_run":
+            if not envelope.safety_result:
+                envelope.safety_result = {"allowed": True, "reason": "dry_run"}
+        else:
+            checked_task = run_safety_guard_for_task(envelope, task, registry_path=registry_path, catalog_path=catalog_path)
+            if checked_task.status == "rejected":
+                task.status = checked_task.status
+                task.error = checked_task.error
+                result = {"task_id": task.task_id, "skill_id": task.skill_id, "status": "rejected", "error": task.error}
+                envelope.dispatch_results.append(result)
+                messages.append(build_tool_result_message(call.call_id, call.tool, result))
+                envelope.react_turns[-1]["tool_result"] = result
+                continue
         if envelope.t_dispatch_start is None:
             envelope.t_dispatch_start = time.time()
         result = dispatch_task(envelope, task, cloud_config=cloud_config or {}, source=source, dispatch_mode=dispatch_mode)

@@ -385,7 +385,7 @@ class ReactPipelineTest(unittest.TestCase):
                 text="前进",
                 router_config=ROUTER_CONFIG,
                 cloud_config={},
-                dispatch_mode="dry_run",
+                dispatch_mode="cloud_queue",
                 source="unit",
             )
         self.assertEqual(envelope.tasks[0].skill_id, "move_forward")
@@ -403,7 +403,7 @@ class ReactPipelineTest(unittest.TestCase):
                 text="看一下前面然后前进",
                 router_config=ROUTER_CONFIG,
                 cloud_config={"camera_server": "http://camera.local"},
-                dispatch_mode="dry_run",
+                dispatch_mode="cloud_queue",
                 source="unit",
             )
         self.assertEqual(envelope.observations[0]["tool"], "camera_snapshot")
@@ -457,7 +457,7 @@ class ReactPipelineTest(unittest.TestCase):
                 text="front distance then forward",
                 router_config=ROUTER_CONFIG,
                 cloud_config={"sensor_server": "http://sensor.local"},
-                dispatch_mode="dry_run",
+                dispatch_mode="cloud_queue",
                 source="unit",
             )
         self.assertEqual(envelope.tasks[0].status, "rejected")
@@ -483,7 +483,7 @@ class ReactPipelineTest(unittest.TestCase):
                 text="front distance then forward",
                 router_config=ROUTER_CONFIG,
                 cloud_config={"sensor_server": "http://sensor.local"},
-                dispatch_mode="dry_run",
+                dispatch_mode="cloud_queue",
                 source="unit",
             )
         self.assertEqual(envelope.tasks[0].status, "rejected")
@@ -496,7 +496,7 @@ class ReactPipelineTest(unittest.TestCase):
                 text="不要左转",
                 router_config=ROUTER_CONFIG,
                 cloud_config={},
-                dispatch_mode="dry_run",
+                dispatch_mode="cloud_queue",
                 source="unit",
             )
         self.assertEqual(envelope.safety_result["reason"], "negative_instruction_detected")

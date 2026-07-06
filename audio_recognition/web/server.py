@@ -18,8 +18,9 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from audio_recognition.core.contracts import CommandRequest
 from audio_recognition.core.envelope import DecisionEnvelope
-from audio_recognition.harness.react_loop import route_transcript
+from audio_recognition.harness.react_loop import build_tts_text, decide_transcript, route_transcript
 from audio_recognition.storage.case_store import append_case, build_case_id, copy_audio_file, find_case, load_cases, write_audio_bytes
 from audio_recognition.storage.envelope_store import envelope_paths, list_envelopes, load_envelope, save_envelope
 from audio_recognition.storage.replay import replay_envelope
@@ -39,6 +40,8 @@ SKILL_REGISTRY_PATH = (PACKAGE_DIR / "skills/registry.yaml").resolve()
 ACTION_SERVER = os.getenv("AUDIO_ACTION_SERVER", "http://action-move:8094")
 FACE_SERVER = os.getenv("AUDIO_FACE_SERVER", "http://127.0.0.1:8096")
 CAMERA_SERVER = os.getenv("AUDIO_CAMERA_SERVER", "http://camera-snapshot:8099")
+SENSOR_SERVER = os.getenv("AUDIO_SENSOR_SERVER", "")
+AUDIO_INTERACT_URL = os.getenv("AUDIO_INTERACT_URL", "").rstrip("/")
 COMMON_ASR_URL = os.getenv("COMMON_ASR_URL", "https://www.wangyutang.cn/common/api/asr/transcribe")
 VISION_ANALYZE_URL = os.getenv("AUDIO_VISION_ANALYZE_URL", "https://www.wangyutang.cn/common/api/vision/spark/analyze-json")
 VISION_LLM_MODEL = os.getenv("AUDIO_VISION_LLM_MODEL", "qwen3.6-35b-a3b-fp8")
@@ -181,7 +184,7 @@ def build_cloud_config(selection: dict[str, Any] | None = None) -> dict[str, Any
         "face_enabled": True,
         "action_server": ACTION_SERVER,
         "action_enabled": True,
-        "sensor_server": CAMERA_SERVER,
+        "sensor_server": SENSOR_SERVER or CAMERA_SERVER,
         "camera_server": CAMERA_SERVER,
         **vision,
     }
@@ -569,61 +572,7 @@ def dashboard() -> dict[str, Any]:
     }
 
 
-@app.get("/api/settings")
-def get_settings() -> dict[str, Any]:
-    return {"settings": load_settings()}
-
-
-@app.post("/api/settings")
-def update_settings(payload: AudioSettings, x_audio_token: Annotated[str | None, Header()] = None) -> dict[str, Any]:
-    require_token(x_audio_token)
-    updates = payload.model_dump(exclude_unset=True) if hasattr(payload, "model_dump") else payload.dict(exclude_unset=True)
-    settings = save_settings(updates)
-    append_event(
-        {
-            "device_id": "cloud",
-            "stage": "input_mode",
-            "status": "ok",
-            "message": f"input mode updated to {settings['input_mode']}",
-            "details": settings,
-            "reported_at": time.time(),
-        }
-    )
-    return {"ok": True, "settings": settings}
-
-
-@app.post("/api/manual-recording/start")
-def start_manual_recording(x_audio_token: Annotated[str | None, Header()] = None) -> dict[str, Any]:
-    require_token(x_audio_token)
-    settings = save_settings({"manual_recording_enabled": True})
-    append_event(
-        {
-            "device_id": "cloud",
-            "stage": "manual_recording",
-            "status": "running",
-            "message": "manual WonderEchoPro recording started",
-            "details": settings,
-            "reported_at": time.time(),
-        }
-    )
-    return {"ok": True, "settings": settings}
-
-
-@app.post("/api/manual-recording/stop")
-def stop_manual_recording(x_audio_token: Annotated[str | None, Header()] = None) -> dict[str, Any]:
-    require_token(x_audio_token)
-    settings = save_settings({"manual_recording_enabled": False})
-    append_event(
-        {
-            "device_id": "cloud",
-            "stage": "manual_recording",
-            "status": "stopped",
-            "message": "manual WonderEchoPro recording stopped",
-            "details": settings,
-            "reported_at": time.time(),
-        }
-    )
-    return {"ok": True, "settings": settings}
+# settings routes moved to bottom of file (P2 proxy-aware versions)
 
 
 @app.post("/api/tasks/clear")
@@ -1093,3 +1042,119 @@ def recognize_text(payload: TextCommand, x_audio_token: Annotated[str | None, He
         "plan": plan,
         "tts_text": str(routed.get("tts_text") or ""),
     }
+
+
+# ---------------------------------------------------------------------------
+# P1 — robot_sandbox command contract  (POST /api/command)
+# ---------------------------------------------------------------------------
+
+def _proxy_audio_interact(path: str, method: str = "GET", body: dict[str, Any] | None = None, token: str | None = None) -> dict[str, Any] | None:
+    """Forward a request to audio-interact and return the parsed JSON, or None if unavailable."""
+    if not AUDIO_INTERACT_URL:
+        return None
+    headers: dict[str, str] = {"Accept": "application/json"}
+    if token:
+        headers["X-Audio-Token"] = token
+    data: bytes | None = None
+    if body is not None:
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(f"{AUDIO_INTERACT_URL}{path}", data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError, json.JSONDecodeError):
+        return None
+
+
+@app.post("/api/command")
+def run_command(payload: CommandRequest, x_audio_token: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+    require_token(x_audio_token)
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="empty command text")
+
+    raw = dict(payload.context)
+    raw.setdefault("received_at", time.time())
+
+    envelope = decide_transcript(
+        base_dir=PACKAGE_DIR,
+        text=text,
+        router_config=build_router_config(),
+        cloud_config=build_cloud_config(),
+        dispatch_mode=payload.dispatch_mode,
+        source=str(payload.context.get("source") or "robot_sandbox_api"),
+        device_id=payload.device_id,
+        raw=raw,
+    )
+    envelope.compute_latency()
+    save_envelope(DATA_DIR, envelope)
+
+    first_task = next((t for t in envelope.tasks if t.status != "rejected"), None) or (envelope.tasks[0] if envelope.tasks else None)
+    first_obs = envelope.observations[0] if envelope.observations else None
+    skill_id = (first_task.skill_id if first_task else str(first_obs.get("tool") or "") if first_obs else "")
+    has_rejected = any(t.status == "rejected" for t in envelope.tasks)
+    safety_status = "rejected" if (has_rejected and not first_task) else "passed"
+    planner = "exact_action_alias" if (envelope.react_turns and envelope.react_turns[0].get("preflight")) else "react_llm"
+
+    return {
+        "ok": True,
+        "command_id": envelope.envelope_id,
+        "skill_id": skill_id,
+        "tool_calls": [tc.model_dump() for tc in envelope.tool_calls],
+        "execution_results": envelope.dispatch_results,
+        "diagnostics": {
+            "planner": planner,
+            "safety": safety_status,
+            "errors": envelope.errors,
+            "latency_ms": envelope.latency_ms,
+        },
+        "tts_text": build_tts_text(envelope),
+        "envelope": envelope.model_dump(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# P2 — settings proxy shim  (forwards to audio-interact when available)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/settings")
+def get_settings(x_audio_token: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+    proxied = _proxy_audio_interact("/api/settings", token=x_audio_token)
+    if proxied is not None:
+        return proxied
+    return {"settings": load_settings()}
+
+
+@app.post("/api/settings")
+def update_settings(payload: AudioSettings, x_audio_token: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+    require_token(x_audio_token)
+    updates = payload.model_dump(exclude_unset=True) if hasattr(payload, "model_dump") else payload.dict(exclude_unset=True)
+    proxied = _proxy_audio_interact("/api/settings", method="POST", body=updates, token=x_audio_token)
+    if proxied is not None:
+        return proxied
+    settings = save_settings(updates)
+    append_event({"device_id": "cloud", "stage": "input_mode", "status": "ok", "message": f"input mode updated to {settings['input_mode']}", "details": settings, "reported_at": time.time()})
+    return {"ok": True, "settings": settings}
+
+
+@app.post("/api/manual-recording/start")
+def start_manual_recording(x_audio_token: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+    require_token(x_audio_token)
+    proxied = _proxy_audio_interact("/api/manual-recording/start", method="POST", token=x_audio_token)
+    if proxied is not None:
+        return proxied
+    settings = save_settings({"manual_recording_enabled": True})
+    append_event({"device_id": "cloud", "stage": "manual_recording", "status": "running", "message": "manual WonderEchoPro recording started", "details": settings, "reported_at": time.time()})
+    return {"ok": True, "settings": settings}
+
+
+@app.post("/api/manual-recording/stop")
+def stop_manual_recording(x_audio_token: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+    require_token(x_audio_token)
+    proxied = _proxy_audio_interact("/api/manual-recording/stop", method="POST", token=x_audio_token)
+    if proxied is not None:
+        return proxied
+    settings = save_settings({"manual_recording_enabled": False})
+    append_event({"device_id": "cloud", "stage": "manual_recording", "status": "stopped", "message": "manual WonderEchoPro recording stopped", "details": settings, "reported_at": time.time()})
+    return {"ok": True, "settings": settings}
