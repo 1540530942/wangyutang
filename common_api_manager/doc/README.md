@@ -32,8 +32,10 @@ Recommended extension rule:
 
 Related documents:
 
-- [architecture.md](architecture.md)
-- [model-studio.md](model-studio.md)
-- [robot-skills.md](robot-skills.md)
-- [function-center-migration.md](function-center-migration.md)
-- [verification-records.md](verification-records.md)
+- [architecture.md](architecture.md) — module layout and request flow
+- [model-studio.md](model-studio.md) — Model Studio page + validation
+- [robot-skills.md](robot-skills.md) — Robot Skills page (replaces function_center)
+- [api-unification.md](api-unification.md) — why common_api owns platform-wide audio (ASR/TTS)
+- [tencent-deployment.md](tencent-deployment.md) — Tencent Cloud deployment record
+- [function-center-migration.md](function-center-migration.md) — retirement of `/common/function_center`
+- [verification-records.md](verification-records.md) — verification history
