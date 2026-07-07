@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Audio Interact — 语音输入</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">audio_interact · 8097</p>
+      <h1>语音输入台</h1>
+      <p class="subtitle">
+        选择 <strong>WonderEchoPro</strong>（树莓派硬件麦克风/扬声器）或 <strong>浏览器麦克风/扬声器</strong>。
+        音频经 ASR + 唤醒词判断后进入 <code>robot_sandbox</code> 指令链路，结果通过 common_api TTS 播报。
+        纯文本指令请用 <a href="/robot_sandbox/" target="_blank">robot_sandbox 控制台</a>。
+      </p>
+    </div>
+    <div id="health" class="health">检测中…</div>
+  </header>
+
+  <div class="tabs">
+    <button id="modeWonderBtn" class="tab active" type="button">WonderEchoPro</button>
+    <button id="modeBrowserBtn" class="tab" type="button">浏览器麦克风/扬声器</button>
+    <button id="modeVadBtn" class="tab" type="button">VAD_ASR 测试</button>
+  </div>
+
+  <main>
+    <!-- WonderEchoPro -->
+    <section id="wonderSection" class="card">
+      <h2>WonderEchoPro（树莓派硬件）</h2>
+      <p class="note">
+        将输入模式设为 WonderEchoPro 后，树莓派上的 <code>wonderecho_listener</code> 定长录音并上传到
+        <code>/audio_interact/api/audio/segment</code>，返回的 TTS 由树莓派本地扬声器播放。
+      </p>
+      <div class="row">
+        <button id="applyWonderBtn" type="button">设为 WonderEchoPro 模式</button>
+        <button id="manualStartBtn" class="secondary" type="button">开始采集</button>
+        <button id="manualStopBtn" class="secondary" type="button" disabled>停止采集</button>
+      </div>
+      <div class="statusline" id="wonderStatus">当前输入模式：加载中…</div>
+    </section>
+
+    <!-- Browser mic/speaker -->
+    <section id="browserSection" class="card hidden">
+      <h2>浏览器麦克风 / 扬声器</h2>
+      <p class="note">
+        用当前浏览器的麦克风录一段（默认 4 秒）或上传 WAV，经 ASR→唤醒→指令后，
+        返回的 TTS 直接用浏览器扬声器播放。需说唤醒词（如“你好瓦力”）才会触发动作。
+      </p>
+      <div class="row">
+        <button id="recordBtn" type="button">🎙 录音并识别（4s）</button>
+        <label class="upload">
+          上传音频识别
+          <input id="uploadInput" type="file" accept="audio/*" hidden />
+        </label>
+      </div>
+      <audio id="ttsPlayer" controls class="player"></audio>
+    </section>
+
+    <!-- VAD_ASR -->
+    <section id="vadSection" class="card hidden">
+      <h2>VAD_ASR 实时测试</h2>
+      <p class="note">
+        点击开始后，浏览器持续发送 16k PCM 到云端；<code>audio_interact</code> 用 Silero VAD 流式切分语音片段，
+        片段结束调 ASR，final text 才进入唤醒词判断和动作路由。TTS 以二进制帧回推并自动播放。
+      </p>
+      <div class="row">
+        <button id="startVadBtn" type="button">开始持续接收</button>
+        <button id="stopVadBtn" class="secondary" type="button" disabled>停止</button>
+        <span id="vadState" class="badge">未启动</span>
+      </div>
+      <div class="meter"><span>VAD</span><div class="meter-track"><i id="vadBar"></i></div></div>
+    </section>
+
+    <!-- Result -->
+    <section class="card result-card">
+      <h2>识别与指令结果</h2>
+      <div class="result-grid">
+        <div><label>ASR 文本</label><div id="rText" class="out">—</div></div>
+        <div><label>唤醒状态</label><div id="rWake" class="out">—</div></div>
+        <div><label>命中技能</label><div id="rSkill" class="out">—</div></div>
+        <div><label>TTS 文本</label><div id="rTts" class="out">—</div></div>
+      </div>
+      <details><summary>原始响应 JSON</summary><pre id="rRaw">—</pre></details>
+    </section>
+  </main>
+
+  <footer id="status" class="statusbar">就绪</footer>
+  <script src="./app.js"></script>
+</body>
+</html>

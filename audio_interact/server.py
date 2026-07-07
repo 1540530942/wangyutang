@@ -18,9 +18,12 @@ from typing import Annotated, Any
 import requests
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from settings import load_settings, save_settings
 from wake_state import WakeDecision, WakeStateStore
+
+_STATIC_DIR = Path(__file__).resolve().parent / "web" / "static"
 
 
 # robot_sandbox was formerly named audio_recognition; accept the old env var as a fallback.
@@ -680,3 +683,10 @@ def get_segment_audio(name: str) -> FileResponse:
         raise HTTPException(status_code=404, detail="audio not found")
     media_type = "audio/wav" if target.suffix.lower() == ".wav" else "application/octet-stream"
     return FileResponse(target, media_type=media_type, filename=safe_name, headers={"Cache-Control": "no-store"})
+
+
+# Static web console (WonderEchoPro + browser mic/speaker + VAD_ASR).
+# Mounted last so all /api/* and /ws/* routes take precedence; html=True serves
+# index.html at the app root (behind the /audio_interact/ gateway prefix).
+if _STATIC_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=str(_STATIC_DIR), html=True), name="web")

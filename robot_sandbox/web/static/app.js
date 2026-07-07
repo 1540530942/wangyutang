@@ -291,7 +291,7 @@ function startManualTimer() {
   recordingStartedAt = performance.now();
   if (manualTimerHandle) window.clearInterval(manualTimerHandle);
   manualTimerHandle = window.setInterval(() => {
-    timerEl.textContent = formatElapsed(performance.now() - recordingStartedAt);
+    if (timerEl) timerEl.textContent = formatElapsed(performance.now() - recordingStartedAt);
   }, 100);
 }
 
@@ -653,7 +653,7 @@ function renderInputMode(mode) {
   webInputSection?.classList.toggle("hidden", !isWeb);
   wonderSection?.classList.toggle("hidden", !isWonder);
   vadSection?.classList.toggle("hidden", !isVad);
-  modeTextEl.textContent = isWeb ? "网页输入" : isVad ? "VAD_ASR" : "WonderEchoPro";
+  if (modeTextEl) modeTextEl.textContent = isWeb ? "网页输入" : isVad ? "VAD_ASR" : "WonderEchoPro";
   modeWebBtn?.classList.toggle("active", isWeb);
   modeWonderBtn?.classList.toggle("active", isWonder);
   modeVadBtn?.classList.toggle("active", isVad);
@@ -700,11 +700,11 @@ function renderDashboard(data) {
   }
   if (latestEvent) audioStateEl.textContent = statusText(latestEvent.status);
 
-  recordBtn.disabled = inputMode !== "wonderechopro" ? true : manualRecording;
-  stopBtn.disabled = inputMode !== "wonderechopro" ? true : !manualRecording;
+  if (recordBtn) recordBtn.disabled = inputMode !== "wonderechopro" ? true : manualRecording;
+  if (stopBtn) stopBtn.disabled = inputMode !== "wonderechopro" ? true : !manualRecording;
   if (manualRecording && !manualTimerHandle) startManualTimer();
   if (!manualRecording && manualTimerHandle) stopManualTimer();
-  if (!manualRecording) {
+  if (!manualRecording && timerEl) {
     const latestDuration = Number(latest?.audio_duration_seconds || 0);
     timerEl.textContent = latestDuration > 0 ? formatElapsed(latestDuration * 1000) : "00:00.0";
   }
@@ -889,7 +889,7 @@ closeCameraBtn.addEventListener("click", () => {
     });
 });
 
-recordBtn.addEventListener("click", () => {
+recordBtn?.addEventListener("click", () => {
   recordBtn.disabled = true;
   statusEl.textContent = "正在开启采集";
   postJson("./api/manual-recording/start")
@@ -900,7 +900,7 @@ recordBtn.addEventListener("click", () => {
     });
 });
 
-stopBtn.addEventListener("click", () => {
+stopBtn?.addEventListener("click", () => {
   stopBtn.disabled = true;
   statusEl.textContent = "正在停止采集";
   postJson("./api/manual-recording/stop")
@@ -911,7 +911,7 @@ stopBtn.addEventListener("click", () => {
     });
 });
 
-uploadBtn.addEventListener("click", () => {
+uploadBtn?.addEventListener("click", () => {
   const file = fileInput.files?.[0];
   if (!file) {
     statusEl.textContent = "请选择音频文件";

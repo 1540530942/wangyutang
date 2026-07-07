@@ -18,20 +18,17 @@
       </header>
 
       <section class="mode-strip">
-        <button id="modeWebBtn" class="tab active" type="button">网页输入</button>
-        <button id="modeWonderBtn" class="tab" type="button">WonderEchoPro</button>
-        <button id="modeVadBtn" class="tab" type="button">VAD_ASR</button>
+        <span class="tab active">文本指令输入</span>
+        <a class="tab" href="/audio_interact/" target="_blank">🎙 语音输入（WonderEchoPro / 浏览器麦克风 / VAD_ASR）→ audio_interact</a>
       </section>
 
       <section class="control-strip">
         <div class="toggle-card">
           <div>
-            <span>当前模式</span>
-            <strong id="modeText">网页输入</strong>
+            <span>本页职责</span>
+            <strong>文本 → 指令规划 → 安全 → 执行</strong>
           </div>
         </div>
-        <button id="recordBtn" type="button">开始采集</button>
-        <button id="stopBtn" class="secondary" type="button">停止采集</button>
         <button id="clearTasksBtn" class="danger" type="button">清零任务</button>
       </section>
 
@@ -69,66 +66,19 @@
             </div>
             <code id="latestSkill">未匹配</code>
           </div>
-          <p id="latestMeta">网页输入模式可直接输入文本或上传音频；WonderEchoPro 模式由“开始采集”触发录音；VAD_ASR 模式使用云端流式 Silero VAD + final ASR + 唤醒词链路。</p>
+          <p id="latestMeta">直接输入文本指令（如“前进”“左转”），进入指令规划 → 校验 → 安全 → 执行链路。语音输入请用 <a href="/audio_interact/" target="_blank">audio_interact 语音输入台</a>。</p>
 
           <div id="webInputSection">
             <label class="field">
-              <span>网页输入文本</span>
+              <span>文本指令</span>
               <textarea id="webTextInput" placeholder="例如：前进"></textarea>
             </label>
             <div class="upload-row">
               <button id="sendTextBtn" type="button">发送文本指令</button>
             </div>
-            <div class="upload-row">
-              <input id="fileInput" type="file" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a" />
-              <button id="uploadBtn" class="secondary" type="button">上传音频识别</button>
-            </div>
-            <label class="field">
-              <span>ASR API</span>
-              <input value="/common/api/asr/transcribe" readonly />
-            </label>
           </div>
 
-          <div id="wonderSection" class="hidden">
-            <div class="meter-row">
-              <span id="timer">00:00.0</span>
-              <canvas id="meter" width="640" height="64"></canvas>
-            </div>
-            <audio id="preview" controls></audio>
-          </div>
-
-          <div id="vadSection" class="hidden vad-section">
-            <div class="vad-actions">
-              <button id="startVadBtn" type="button">开始持续接收</button>
-              <button id="stopVadBtn" class="secondary" type="button" disabled>停止</button>
-              <span id="vadLiveState">未启动</span>
-            </div>
-            <div class="vad-grid">
-              <div>
-                <span>入口</span>
-                <strong>wss://www.wangyutang.cn/audio_interact/ws/audio</strong>
-              </div>
-              <div>
-                <span>健康检查</span>
-                <strong>https://www.wangyutang.cn/audio_interact/api/health</strong>
-              </div>
-              <div>
-                <span>唤醒词</span>
-                <strong>你好瓦力 / 同音字</strong>
-              </div>
-              <div>
-                <span>退出</span>
-                <strong>退下吧</strong>
-              </div>
-            </div>
-            <div class="vad-meter">
-              <span>VAD</span>
-              <div><i id="vadLevelBar"></i></div>
-            </div>
-            <p class="mode-note">点击开始后，浏览器会持续发送 16k PCM 音频到云端；audio_interact 使用 Silero VAD 流式切分语音片段，片段结束后调用 ASR，final text 才进入唤醒词判断和动作路由。</p>
-          </div>
-
-          <textarea id="asrResult" readonly placeholder="ASR 识别文本"></textarea>
+          <textarea id="asrResult" readonly placeholder="指令结果文本"></textarea>
           <div class="pre-wrap">
             <button id="copyRawBtn" class="copy-btn" type="button" title="复制">复制</button>
             <pre id="asrRaw">{}</pre>

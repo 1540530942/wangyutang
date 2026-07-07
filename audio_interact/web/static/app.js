@@ -1,0 +1,247 @@
+// audio_interact web console: WonderEchoPro + browser mic/speaker + VAD_ASR.
+// All audio endpoints are same-origin under /audio_interact/ (Caddy strips the
+// prefix). Recorded/uploaded audio goes to /api/audio/segment; VAD_ASR streams
+// 16k PCM over /ws/audio. The segment endpoint runs ASR -> wake gate ->
+// robot_sandbox /api/command server-side and returns the full result + TTS.
+
+const TARGET_RATE = 16000;
+const DEVICE_ID = "web-audio";
+const RECORD_SECONDS = 4;
+
+const $ = (id) => document.getElementById(id);
+const statusEl = $("status");
+const setStatus = (t) => { statusEl.textContent = t; };
+
+// ---- WS URL from current location (works behind the /audio_interact/ prefix) ----
+function wsUrl() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const base = location.pathname.replace(/\/[^/]*$/, "/"); // dir of current page
+  return `${proto}://${location.host}${base}ws/audio`;
+}
+
+// ---- health ----
+async function pollHealth() {
+  const el = $("health");
+  try {
+    const r = await fetch("./api/health", { cache: "no-store" });
+    const d = await r.json();
+    el.textContent = `● ${d.service || "audio-interact"} · VAD ${d.vad || "?"}`;
+    el.className = "health ok";
+  } catch {
+    el.textContent = "● 服务不可达";
+    el.className = "health err";
+  }
+}
+
+// ---- tabs ----
+const sections = {
+  wonder: $("wonderSection"),
+  browser: $("browserSection"),
+  vad: $("vadSection"),
+};
+function showMode(mode) {
+  sections.wonder.classList.toggle("hidden", mode !== "wonder");
+  sections.browser.classList.toggle("hidden", mode !== "browser");
+  sections.vad.classList.toggle("hidden", mode !== "vad");
+  $("modeWonderBtn").classList.toggle("active", mode === "wonder");
+  $("modeBrowserBtn").classList.toggle("active", mode === "browser");
+  $("modeVadBtn").classList.toggle("active", mode === "vad");
+  if (mode !== "vad") stopVad();
+}
+$("modeWonderBtn").onclick = () => showMode("wonder");
+$("modeBrowserBtn").onclick = () => showMode("browser");
+$("modeVadBtn").onclick = () => showMode("vad");
+
+// ---- result rendering ----
+function renderResult(d) {
+  const wake = d.wake_status || "—";
+  const skill = d.command && d.command.skill_id ? d.command.skill_id : (d.command ? "(无技能)" : "—");
+  $("rText").textContent = d.text || "（空）";
+  const wakeEl = $("rWake");
+  wakeEl.textContent = wake;
+  wakeEl.className = "out " + (wake === "awake" || wake === "woken" ? "ok" : wake === "asleep" ? "warn" : "");
+  $("rSkill").textContent = skill;
+  $("rSkill").className = "out " + (d.command && d.command.skill_id ? "ok" : "");
+  $("rTts").textContent = d.tts_text || "—";
+  $("rRaw").textContent = JSON.stringify(d, null, 2);
+  if (d.tts_audio_base64) playBase64Wav(d.tts_audio_base64);
+}
+function playBase64Wav(b64) {
+  try {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
+    const p = $("ttsPlayer");
+    p.src = url;
+    p.play().catch(() => {});
+  } catch (e) { console.error(e); }
+}
+
+// ---- WAV encode / downsample (ported from robot_sandbox dashboard) ----
+function downsample(samples, srcRate, dstRate) {
+  if (srcRate === dstRate) return samples;
+  const ratio = srcRate / dstRate;
+  const out = new Float32Array(Math.max(1, Math.round(samples.length / ratio)));
+  for (let i = 0; i < out.length; i += 1) {
+    const s = i * ratio, l = Math.floor(s), r = Math.min(l + 1, samples.length - 1);
+    out[i] = samples[l] * (1 - (s - l)) + samples[r] * (s - l);
+  }
+  return out;
+}
+function encodeWav(samples, rate) {
+  const buf = new ArrayBuffer(44 + samples.length * 2);
+  const v = new DataView(buf);
+  const w = (o, s) => { for (let i = 0; i < s.length; i += 1) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, "RIFF"); v.setUint32(4, 36 + samples.length * 2, true); w(8, "WAVE"); w(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  w(36, "data"); v.setUint32(40, samples.length * 2, true);
+  let o = 44;
+  for (const s of samples) { const x = Math.max(-1, Math.min(1, s)); v.setInt16(o, x < 0 ? x * 0x8000 : x * 0x7fff, true); o += 2; }
+  return new Blob([buf], { type: "audio/wav" });
+}
+function encodePcm16(samples) {
+  const buf = new ArrayBuffer(samples.length * 2);
+  const v = new DataView(buf);
+  let o = 0;
+  for (const s of samples) { const x = Math.max(-1, Math.min(1, s)); v.setInt16(o, x < 0 ? x * 0x8000 : x * 0x7fff, true); o += 2; }
+  return buf;
+}
+
+async function postSegment(wavBlob, filename = "web.wav") {
+  const form = new FormData();
+  form.append("file", wavBlob, filename);
+  form.append("device_id", DEVICE_ID);
+  const r = await fetch("./api/audio/segment", { method: "POST", body: form });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.detail ? JSON.stringify(d.detail) : "segment failed");
+  return d;
+}
+
+// ---- browser record (fixed seconds) ----
+$("recordBtn").onclick = async () => {
+  const btn = $("recordBtn");
+  if (!navigator.mediaDevices?.getUserMedia) { setStatus("此浏览器不支持麦克风采集"); return; }
+  btn.disabled = true;
+  try {
+    setStatus("录音中…");
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+    const ctx = new AudioContext();
+    const src = ctx.createMediaStreamSource(stream);
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    const frames = [];
+    proc.onaudioprocess = (e) => frames.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    src.connect(proc); proc.connect(ctx.destination);
+    await new Promise((res) => setTimeout(res, RECORD_SECONDS * 1000));
+    proc.disconnect(); src.disconnect(); stream.getTracks().forEach((t) => t.stop());
+    const srcRate = ctx.sampleRate; await ctx.close().catch(() => {});
+    const total = frames.reduce((n, f) => n + f.length, 0);
+    const merged = new Float32Array(total);
+    let off = 0; for (const f of frames) { merged.set(f, off); off += f.length; }
+    const wav = encodeWav(downsample(merged, srcRate, TARGET_RATE), TARGET_RATE);
+    setStatus("识别中…");
+    const d = await postSegment(wav, "record.wav");
+    renderResult(d);
+    setStatus(`识别完成：${d.text ? d.text : "（未检测到语音）"}`);
+  } catch (e) {
+    setStatus("录音失败：" + e.message);
+  } finally { btn.disabled = false; }
+};
+
+// ---- upload file ----
+$("uploadInput").onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    setStatus("上传识别中…");
+    const d = await postSegment(file, file.name || "upload.wav");
+    renderResult(d);
+    setStatus(`识别完成：${d.text || "（空）"}`);
+  } catch (err) { setStatus("上传失败：" + err.message); }
+  e.target.value = "";
+};
+
+// ---- WonderEchoPro settings ----
+async function loadSettings() {
+  try {
+    const d = await (await fetch("./api/settings", { cache: "no-store" })).json();
+    const s = d.settings || {};
+    $("wonderStatus").textContent = `当前输入模式：${s.input_mode || "?"} · 手动采集：${s.manual_recording_enabled ? "开" : "关"}`;
+    $("manualStartBtn").disabled = Boolean(s.manual_recording_enabled);
+    $("manualStopBtn").disabled = !s.manual_recording_enabled;
+  } catch { $("wonderStatus").textContent = "读取设置失败"; }
+}
+$("applyWonderBtn").onclick = async () => {
+  await fetch("./api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ input_mode: "wonderechopro" }) });
+  setStatus("已设为 WonderEchoPro 模式"); loadSettings();
+};
+$("manualStartBtn").onclick = async () => {
+  await fetch("./api/manual-recording/start", { method: "POST" });
+  setStatus("已开始采集"); loadSettings();
+};
+$("manualStopBtn").onclick = async () => {
+  await fetch("./api/manual-recording/stop", { method: "POST" });
+  setStatus("已停止采集"); loadSettings();
+};
+
+// ---- VAD_ASR streaming ----
+let vad = null;
+function setVadState(t, live) { $("vadState").textContent = t; $("vadState").style.color = live ? "var(--ok)" : "var(--muted)"; }
+function setVadBar(v) { $("vadBar").style.width = `${Math.min(100, Math.round(v * 100))}%`; }
+
+$("startVadBtn").onclick = async () => {
+  if (vad) return;
+  if (!navigator.mediaDevices?.getUserMedia) { setStatus("此浏览器不支持麦克风采集"); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    const ctx = new AudioContext();
+    await ctx.resume();
+    const src = ctx.createMediaStreamSource(stream);
+    const proc = ctx.createScriptProcessor(2048, 1, 1);
+    const socket = new WebSocket(wsUrl());
+    socket.binaryType = "arraybuffer";
+    vad = { ctx, src, proc, stream, socket, ready: false };
+    $("startVadBtn").disabled = true; $("stopVadBtn").disabled = false;
+
+    socket.onmessage = (ev) => {
+      if (ev.data instanceof ArrayBuffer && ev.data.byteLength > 0) {
+        const url = URL.createObjectURL(new Blob([ev.data], { type: "audio/wav" }));
+        const a = new Audio(url); a.onended = () => URL.revokeObjectURL(url); a.play().catch(() => {});
+        return;
+      }
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+      if (m.type === "stream_ready") { vad.ready = true; setVadState("流式接收中", true); setStatus("VAD_ASR 已连接"); }
+      else if (m.type === "vad") setVadBar(Number(m.probability || 0));
+      else if (m.type === "speech_start") setVadState("检测到语音", true);
+      else if (m.type === "speech_end" || m.type === "asr_started") setVadState("识别中…", true);
+      else if (m.type === "result" || m.type === "error") { renderResult(m); setStatus(`VAD_ASR: ${m.status || m.stage || "ok"}`); setVadState(vad ? "流式接收中" : "已停止", Boolean(vad)); }
+      else if (m.type === "stream_stopped") setVadState("已停止", false);
+    };
+
+    await new Promise((res, rej) => { socket.onopen = res; socket.onerror = () => rej(new Error("WebSocket 连接失败")); });
+    socket.send(JSON.stringify({ type: "start_stream", session_id: (crypto.randomUUID ? crypto.randomUUID().slice(0, 12) : String(Date.now())), device_id: DEVICE_ID, sample_rate: TARGET_RATE }));
+
+    proc.onaudioprocess = (e) => {
+      if (!vad || socket.readyState !== WebSocket.OPEN || !vad.ready) return;
+      const input = e.inputBuffer.getChannelData(0);
+      const frame = new Float32Array(input);
+      const rms = Math.sqrt(frame.reduce((s, x) => s + x * x, 0) / frame.length);
+      setVadBar(Math.min(1, rms * 6));
+      socket.send(encodePcm16(downsample(frame, ctx.sampleRate, TARGET_RATE)));
+    };
+    src.connect(proc); proc.connect(ctx.destination);
+    setVadState("连接云端 VAD…", true);
+  } catch (e) { setStatus("VAD_ASR 启动失败：" + e.message); stopVad(); }
+};
+$("stopVadBtn").onclick = () => stopVad();
+function stopVad() {
+  if (!vad) return;
+  const r = vad; vad = null;
+  try { if (r.socket.readyState === WebSocket.OPEN) { r.socket.send(JSON.stringify({ type: "stop_stream" })); setTimeout(() => r.socket.close(), 200); } } catch {}
+  try { r.proc.disconnect(); r.src.disconnect(); r.stream.getTracks().forEach((t) => t.stop()); r.ctx.close().catch(() => {}); } catch {}
+  setVadBar(0); setVadState("未启动", false);
+  $("startVadBtn").disabled = false; $("stopVadBtn").disabled = true;
+}
+
+// ---- init ----
+pollHealth(); loadSettings(); showMode("wonder");
+setInterval(pollHealth, 15000);
