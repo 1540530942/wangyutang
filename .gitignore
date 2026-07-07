@@ -14,6 +14,9 @@ control_platform/infra/caddy/Caddyfile.server
 *.err.log
 *.out.log
 data/
+# but keep per-module JSON test fixtures under tests/data/
+!**/tests/data/
+!**/tests/data/**
 dist/
 cloud_image_verify/
 movement_verify_local/

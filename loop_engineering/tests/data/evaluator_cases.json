@@ -1,0 +1,53 @@
+{
+  "description": "loop_engineering evaluator scoring cases. Verified against loop_engineering/audio/evaluator.py. Weights: planning 60% / execution 30% / observation 10%. case = LoopCase fields; result = CaseResult fields; expected = scored outputs.",
+  "cases": [
+    {
+      "name": "correct_plan_only_full_score",
+      "case": {"expected_skill_id": "move_forward", "expected_route": "action"},
+      "result": {"mode": "plan_only", "planned_skill_id": "move_forward", "planned_route": "action"},
+      "expected": {"planning_ok": true, "passed": true, "score": 1.0}
+    },
+    {
+      "name": "wrong_route_fails",
+      "case": {"expected_skill_id": "move_forward", "expected_route": "action"},
+      "result": {"mode": "plan_only", "planned_skill_id": "move_forward", "planned_route": "face"},
+      "expected": {"planning_ok": false, "passed": false, "note_contains": "路由期望"}
+    },
+    {
+      "name": "wrong_skill_fails",
+      "case": {"expected_skill_id": "move_forward", "expected_route": "action"},
+      "result": {"mode": "plan_only", "planned_skill_id": "turn_left", "planned_route": "action"},
+      "expected": {"planning_ok": false, "note_contains": "技能期望"}
+    },
+    {
+      "name": "execute_success_full_score",
+      "case": {"expected_skill_id": "move_forward", "expected_route": "action"},
+      "result": {"mode": "execute_on_robot", "planned_skill_id": "move_forward", "planned_route": "action", "action_dispatched": true, "action_ok": true},
+      "expected": {"score": 1.0, "note_contains": "执行成功"}
+    },
+    {
+      "name": "execute_dispatch_fail_partial",
+      "case": {"expected_skill_id": "move_forward", "expected_route": "action"},
+      "result": {"mode": "execute_on_robot", "planned_skill_id": "move_forward", "planned_route": "action", "action_dispatched": true, "action_ok": false, "action_error": "timeout"},
+      "expected": {"score": 0.8, "note_contains": "执行失败"}
+    },
+    {
+      "name": "execute_not_dispatched",
+      "case": {"expected_skill_id": "move_forward", "expected_route": "action"},
+      "result": {"mode": "execute_on_robot", "planned_skill_id": "move_forward", "planned_route": "action", "action_dispatched": false},
+      "expected": {"score": 0.7, "note_contains": "未下发"}
+    },
+    {
+      "name": "obs_sonar_delta_pass",
+      "case": {"expected_skill_id": "move_forward", "expected_route": "action", "obs_check": {"sonar_delta_cm": -10.0, "tolerance_cm": 3.0}},
+      "result": {"mode": "execute_on_robot", "planned_skill_id": "move_forward", "planned_route": "action", "action_dispatched": true, "action_ok": true, "pre_sonar_cm": 50.0, "post_sonar_cm": 40.0},
+      "expected": {"obs_passed": true, "score": 1.0, "passed": true}
+    },
+    {
+      "name": "obs_out_of_tolerance_fail",
+      "case": {"expected_skill_id": "move_forward", "expected_route": "action", "obs_check": {"sonar_delta_cm": -10.0, "tolerance_cm": 3.0}},
+      "result": {"mode": "execute_on_robot", "planned_skill_id": "move_forward", "planned_route": "action", "action_dispatched": true, "action_ok": true, "pre_sonar_cm": 50.0, "post_sonar_cm": 48.0},
+      "expected": {"obs_passed": false, "passed": false}
+    }
+  ]
+}

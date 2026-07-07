@@ -1,0 +1,35 @@
+{
+  "description": "PoseEstimator cases — IMU quaternion->yaw and cmd_vel dead-reckoning. Verified against pose_tracker/pose_estimator.py. cmd_vel cases inject dt via last_vel_dt (seconds) so integration is deterministic; a few microseconds of real wall-clock ride on top, so tolerances are sub-millimetre.",
+  "cases": [
+    {
+      "name": "imu_90deg_yaw",
+      "input": {"ops": [{"imu": [0.0, 0.0, 0.70710678, 0.70710678]}]},
+      "expected": {"yaw": 1.5707963, "yaw_tol": 1e-6, "imu_active": true}
+    },
+    {
+      "name": "imu_identity_zero_yaw",
+      "input": {"ops": [{"imu": [0.0, 0.0, 0.0, 1.0]}]},
+      "expected": {"yaw": 0.0, "yaw_tol": 1e-9, "imu_active": true}
+    },
+    {
+      "name": "cmd_vel_forward_integration",
+      "input": {"ops": [{"cmd_vel": [0.5, 0.0, 0.0]}, {"last_vel_dt": 0.2}, {"cmd_vel": [0.5, 0.0, 0.0]}]},
+      "expected": {"x": 0.1, "x_tol": 1e-3, "y": 0.0, "y_tol": 1e-6}
+    },
+    {
+      "name": "cmd_vel_angular_integrates_yaw",
+      "input": {"ops": [{"cmd_vel": [0.0, 0.0, 1.0]}, {"last_vel_dt": 0.3}, {"cmd_vel": [0.0, 0.0, 1.0]}]},
+      "expected": {"yaw": 0.3, "yaw_tol": 1e-3}
+    },
+    {
+      "name": "cmd_vel_dt_clamped_half_second",
+      "input": {"ops": [{"cmd_vel": [1.0, 0.0, 0.0]}, {"last_vel_dt": 5.0}, {"cmd_vel": [1.0, 0.0, 0.0]}]},
+      "expected": {"x": 0.5, "x_tol": 1e-6}
+    },
+    {
+      "name": "reset_clears_state",
+      "input": {"ops": [{"cmd_vel": [0.5, 0.0, 0.0]}, {"last_vel_dt": 0.2}, {"cmd_vel": [0.5, 0.0, 0.0]}, {"reset": true}]},
+      "expected": {"x": 0.0, "x_tol": 1e-9, "y": 0.0, "y_tol": 1e-9, "yaw": 0.0, "yaw_tol": 1e-9}
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "description": "pi5_monitor analyzer cases. Verified against pi5_monitor/analyzer/analyzer.py. snapshot cases feed analyze_shutdown_snapshot(dict); events cases feed _analyze_events(list); summary cases feed _event_summary(dict). Real Raspberry Pi kernel wording used (e.g. hyphenated 'Under-voltage').",
+  "snapshot_cases": [
+    {
+      "name": "sudo_shutdown_detected",
+      "input": {"auth_tail": "Jun 23 01:00:00 pi sudo: pi : TTY=pts/0 ; COMMAND=/usr/sbin/shutdown -h now\n", "who": ""},
+      "expected_contains": ["[sudo]", "shutdown", "无用户登录"]
+    },
+    {
+      "name": "undervoltage_in_journal",
+      "input": {"journal_recent": "kernel: hwmon hwmon1: Under-voltage detected! (0x00050005)", "who": "pi   pts/0   2026-06-23 00:59"},
+      "expected_contains": ["电压不足", "登录中的用户"]
+    },
+    {
+      "name": "empty_snapshot_who_hint",
+      "input": {},
+      "expected_contains": ["无用户登录"]
+    }
+  ],
+  "events_cases": [
+    {
+      "name": "shutdown_sudo_event",
+      "input": [{"event_type": "sudo_cmd", "is_shutdown_related": true, "user": "pi", "command": "poweroff", "received_at": 1000.0}],
+      "expected_contains": ["可能原因", "poweroff", "pi"]
+    },
+    {
+      "name": "oom_event",
+      "input": [{"event_type": "oom_kill", "journal_line": "Out of memory: Killed process", "received_at": 2000.0}],
+      "expected_contains": ["OOM"]
+    },
+    {
+      "name": "empty_events",
+      "input": [],
+      "expected_contains": ["无近期事件"]
+    },
+    {
+      "name": "multiple_network_down",
+      "input": [{"event_type": "network_change", "is_down": true, "received_at": 10.0}, {"event_type": "network_change", "is_down": true, "received_at": 11.0}],
+      "expected_contains": ["网络接口 DOWN"]
+    }
+  ],
+  "summary_cases": [
+    {
+      "name": "ssh_login_summary",
+      "input": {"event_type": "ssh_login", "user": "pi", "from_ip": "10.0.0.5"},
+      "expected_contains": ["SSH 登录", "pi", "10.0.0.5"]
+    },
+    {
+      "name": "sudo_summary",
+      "input": {"event_type": "sudo_cmd", "user": "root", "command": "reboot"},
+      "expected_contains": ["sudo", "reboot"]
+    }
+  ]
+}

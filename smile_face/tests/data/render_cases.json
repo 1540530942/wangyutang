@@ -1,0 +1,26 @@
+{
+  "description": "smile_face render primitive cases. Verified against smile_face/face_render.py pure helpers (clamp/mix/blend/star_points) + EMOTIONS/STYLES table shape. draw_face pixel behaviour is covered by test_face_render.py (real Pillow render).",
+  "clamp_cases": [
+    {"input": [-5, 0, 10], "expected": 0},
+    {"input": [15, 0, 10], "expected": 10},
+    {"input": [5, 0, 10], "expected": 5}
+  ],
+  "mix_cases": [
+    {"input": [0.0, 10.0, 0.0], "expected": 0.0},
+    {"input": [0.0, 10.0, 1.0], "expected": 10.0},
+    {"input": [0.0, 10.0, 0.5], "expected": 5.0}
+  ],
+  "blend_cases": [
+    {"input": [[0, 0, 0], [100, 200, 40], 0.0], "expected": [0, 0, 0]},
+    {"input": [[0, 0, 0], [100, 200, 40], 1.0], "expected": [100, 200, 40]},
+    {"input": [[0, 0, 0], [100, 200, 40], 0.5], "expected": [50, 100, 20]},
+    {"input": [[0, 0, 0], [100, 100, 100], 2.0], "expected": [100, 100, 100]},
+    {"input": [[0, 0, 0], [100, 100, 100], -1.0], "expected": [0, 0, 0]}
+  ],
+  "star_points_count_cases": [
+    {"input_points": 5, "expected_len": 10},
+    {"input_points": 6, "expected_len": 12}
+  ],
+  "emotion_required_keys": ["eye_open", "smile", "mouth_open", "brow", "blush", "sparkle", "wobble"],
+  "style_required_keys": ["bg1", "bg2", "bg3", "body", "ink", "cheek", "ears", "motif"]
+}

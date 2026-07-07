@@ -1,0 +1,60 @@
+{
+  "description": "TurboPi simulation RobotState.apply() cases — real deterministic physics/geometry. Each case: given initial state + action + settings, assert resulting fields. Verified against simulation/state.py.",
+  "cases": [
+    {
+      "name": "turn_left_wraps_modulo_360",
+      "input": {"initial": {"heading_deg": 10.0}, "action": "turn_left", "settings": {"turn_angle_deg": 30}},
+      "expected": {"heading_deg": 340.0}
+    },
+    {
+      "name": "turn_right_wraps_modulo_360",
+      "input": {"initial": {"heading_deg": 350.0}, "action": "turn_right", "settings": {"turn_angle_deg": 30}},
+      "expected": {"heading_deg": 20.0}
+    },
+    {
+      "name": "move_forward_along_heading_zero",
+      "input": {"initial": {"x": 400.0, "y": 400.0, "heading_deg": 0.0}, "action": "move_forward", "settings": {"unit_distance_cm": 5.0, "sensitivity": 1.0}},
+      "expected": {"x": 420.0, "y": 400.0}
+    },
+    {
+      "name": "move_backward_reverses",
+      "input": {"initial": {"x": 400.0, "y": 400.0, "heading_deg": 0.0}, "action": "move_backward", "settings": {"unit_distance_cm": 5.0, "sensitivity": 1.0}},
+      "expected": {"x": 380.0, "y": 400.0}
+    },
+    {
+      "name": "look_left_clamps_pan_min",
+      "input": {"initial": {"pan_deg": 0.0}, "action": "look_left", "settings": {}, "repeat": 10},
+      "expected": {"pan_deg": -45.0}
+    },
+    {
+      "name": "look_down_clamps_tilt_max",
+      "input": {"initial": {"tilt_deg": 0.0}, "action": "look_down", "settings": {}, "repeat": 10},
+      "expected": {"tilt_deg": 30.0}
+    },
+    {
+      "name": "rgb_on_sets_color_and_flag",
+      "input": {"initial": {}, "action": "rgb_on", "settings": {"rgb_red": 10, "rgb_green": 20, "rgb_blue": 30}},
+      "expected": {"rgb_r": 10, "rgb_g": 20, "rgb_b": 30, "rgb_on": true, "msg_contains": "开灯"}
+    },
+    {
+      "name": "rgb_off_clears_flag",
+      "input": {"initial": {"rgb_on": true}, "action": "rgb_off", "settings": {}},
+      "expected": {"rgb_on": false}
+    },
+    {
+      "name": "reset_pose_centers_gimbal",
+      "input": {"initial": {"pan_deg": 30.0, "tilt_deg": -20.0}, "action": "reset_pose", "settings": {}},
+      "expected": {"pan_deg": 0.0, "tilt_deg": 0.0}
+    },
+    {
+      "name": "emergency_stop_message",
+      "input": {"initial": {}, "action": "emergency_stop", "settings": {}},
+      "expected": {"msg_contains": "急停"}
+    },
+    {
+      "name": "move_clamped_to_right_wall",
+      "input": {"initial": {"x": 780.0, "y": 300.0, "heading_deg": 0.0}, "action": "move_forward", "settings": {"unit_distance_cm": 50.0, "sensitivity": 1.0}},
+      "expected": {"x_max": 780.0}
+    }
+  ]
+}

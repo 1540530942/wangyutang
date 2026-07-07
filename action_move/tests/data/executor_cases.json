@@ -1,0 +1,25 @@
+{
+  "description": "action_move_executor pure-function cases. Verified against action_move/action_move_executor.py. Covers clamp, unit_duration_ms (move/turn timing with sensitivity + bounds), velocity_scale, cmd_vel_topics dedup.",
+  "clamp_cases": [
+    {"input": [5.0, 0.0, 10.0], "expected": 5.0},
+    {"input": [-1.0, 0.0, 10.0], "expected": 0.0},
+    {"input": [99.0, 0.0, 10.0], "expected": 10.0}
+  ],
+  "unit_duration_cases": [
+    {"defaults": {}, "kind": "move", "expected": 1600, "why": "800*(10/5)/1.0"},
+    {"defaults": {}, "kind": "turn", "expected": 450, "why": "450*(5/5)/1.0"},
+    {"defaults": {"sensitivity": 0.5}, "kind": "move", "expected": 3000, "why": "800*2/0.5=3200 clamped to max 3000"},
+    {"defaults": {"turn_angle_deg": 90}, "kind": "turn", "expected": 2500, "why": "450*18=8100 clamped to max 2500"},
+    {"defaults": {"unit_distance_cm": 1.0}, "kind": "move", "expected": 180, "why": "800*(1/5)=160 clamped to min 180"}
+  ],
+  "velocity_scale_cases": [
+    {"defaults": {}, "expected": 1.0},
+    {"defaults": {"sensitivity": 0.1}, "expected": 0.25, "why": "clamped to min_velocity_scale 0.25"},
+    {"defaults": {"scale_velocity_by_sensitivity": false, "sensitivity": 0.1}, "expected": 1.0}
+  ],
+  "cmd_vel_topics_cases": [
+    {"defaults": {}, "expected": ["/cmd_vel"]},
+    {"defaults": {"cmd_vel_topics": ["/a", "/b", "/a"]}, "expected": ["/a", "/b"]},
+    {"defaults": {"cmd_vel_topic": "/controller/cmd_vel"}, "expected": ["/controller/cmd_vel"]}
+  ]
+}
