@@ -1,13 +1,13 @@
-# module : smoke
+﻿# module : smoke
 # target : .
-# run at : 2026-07-07 03:11:09 CST
+# run at : 2026-07-07 09:34:43 +08:00
 # cwd    : smoke
 ----------------------------------------------------------------------
-============================= test session starts ==============================
-platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
+============================= test session starts =============================
+platform win32 -- Python 3.13.12, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\Administrator\AppData\Local\Programs\Python\Python313\python.exe
 cachedir: .pytest_cache
-rootdir: /home/ubuntu/workspace/wangyutang/smoke
-plugins: anyio-4.14.0
+rootdir: C:\Users\Administrator\Desktop\Workspace\Project_Codex\wangyutang_platform\smoke
+plugins: anyio-4.12.1
 collecting ... collected 56 items
 
 test_routing.py::TestExactAliasRouting::test_emergency_stop_chinese PASSED [  1%]
@@ -67,11 +67,11 @@ test_schema.py::TestToolSchemaSmoke::test_duration_limits_present_for_action_ski
 test_schema.py::TestToolSchemaSmoke::test_emergency_stop_not_in_dispatch_action_enum PASSED [ 98%]
 test_schema.py::TestToolSchemaSmoke::test_observation_tools_not_in_dispatch_action_enum PASSED [100%]
 
-=============================== warnings summary ===============================
+============================== warnings summary ===============================
 test_routing.py::TestExactAliasRouting::test_emergency_stop_chinese
 test_routing.py::TestExactAliasRouting::test_emergency_stop_english
-  /home/ubuntu/workspace/wangyutang/audio_recognition/tools/tool_validator.py:86: PydanticDeprecatedSince20: The `copy` method is deprecated; use `model_copy` instead. See the docstring of `BaseModel.copy` for details about how to handle `include` and `exclude`. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+  C:\Users\Administrator\Desktop\Workspace\Project_Codex\wangyutang_platform\audio_recognition\tools\tool_validator.py:86: PydanticDeprecatedSince20: The `copy` method is deprecated; use `model_copy` instead. See the docstring of `BaseModel.copy` for details about how to handle `include` and `exclude`. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
     normalized = call.copy(deep=True)
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-======================= 56 passed, 2 warnings in 11.69s ========================
+======================= 56 passed, 2 warnings in 11.79s =======================

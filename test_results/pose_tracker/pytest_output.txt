@@ -1,13 +1,13 @@
-# module : pose_tracker
+﻿# module : pose_tracker
 # target : tests/
-# run at : 2026-07-07 03:11:09 CST
+# run at : 2026-07-07 09:34:43 +08:00
 # cwd    : pose_tracker
 ----------------------------------------------------------------------
-============================= test session starts ==============================
-platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
+============================= test session starts =============================
+platform win32 -- Python 3.13.12, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\Administrator\AppData\Local\Programs\Python\Python313\python.exe
 cachedir: .pytest_cache
-rootdir: /home/ubuntu/workspace/wangyutang/pose_tracker
-plugins: anyio-4.14.0
+rootdir: C:\Users\Administrator\Desktop\Workspace\Project_Codex\wangyutang_platform\pose_tracker
+plugins: anyio-4.12.1
 collecting ... collected 8 items
 
 tests/test_pose_estimator.py::test_imu_quaternion_90deg_yaw PASSED       [ 12%]
@@ -19,4 +19,4 @@ tests/test_pose_estimator.py::test_snapshot_distance_and_describe_at_origin PASS
 tests/test_pose_estimator.py::test_reset_clears_state_and_trail PASSED   [ 87%]
 tests/test_pose_estimator.py::test_trail_capped_at_max PASSED            [100%]
 
-============================== 8 passed in 0.02s ===============================
+============================== 8 passed in 0.07s ==============================

@@ -1,13 +1,13 @@
-# module : slam_mapping/2d_action
+﻿# module : slam_mapping/2d_action
 # target : tests/
-# run at : 2026-07-07 03:11:09 CST
+# run at : 2026-07-07 09:34:30 +08:00
 # cwd    : slam_mapping/2d_action
 ----------------------------------------------------------------------
-============================= test session starts ==============================
-platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
+============================= test session starts =============================
+platform win32 -- Python 3.13.12, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\Administrator\AppData\Local\Programs\Python\Python313\python.exe
 cachedir: .pytest_cache
-rootdir: /home/ubuntu/workspace/wangyutang/slam_mapping/2d_action
-plugins: anyio-4.14.0
+rootdir: C:\Users\Administrator\Desktop\Workspace\Project_Codex\wangyutang_platform\slam_mapping\2d_action
+plugins: anyio-4.12.1
 collecting ... collected 6 items
 
 tests/test_closed_loop.py::ClosedLoopTest::test_learns_scale_then_single_shot_feedforward PASSED [ 16%]
@@ -17,4 +17,4 @@ tests/test_closed_loop.py::ClosedLoopTest::test_scale_is_clamped_against_bad_sam
 tests/test_closed_loop.py::ClosedLoopTest::test_slam_pose_feedback_closes_loop PASSED [ 83%]
 tests/test_closed_loop.py::ClosedLoopTest::test_translate_converges_within_tolerance PASSED [100%]
 
-============================== 6 passed in 0.02s ===============================
+============================== 6 passed in 0.08s ==============================

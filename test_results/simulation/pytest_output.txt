@@ -1,13 +1,13 @@
-# module : simulation
+﻿# module : simulation
 # target : tests/
-# run at : 2026-07-07 03:11:09 CST
+# run at : 2026-07-07 09:34:44 +08:00
 # cwd    : simulation
 ----------------------------------------------------------------------
-============================= test session starts ==============================
-platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
+============================= test session starts =============================
+platform win32 -- Python 3.13.12, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\Administrator\AppData\Local\Programs\Python\Python313\python.exe
 cachedir: .pytest_cache
-rootdir: /home/ubuntu/workspace/wangyutang/simulation
-plugins: anyio-4.14.0
+rootdir: C:\Users\Administrator\Desktop\Workspace\Project_Codex\wangyutang_platform\simulation
+plugins: anyio-4.12.1
 collecting ... collected 15 items
 
 tests/test_state.py::test_turn_left_decrements_heading_modulo_360 PASSED [  6%]
@@ -26,4 +26,4 @@ tests/test_state.py::test_front_distance_capped_at_max PASSED            [ 86%]
 tests/test_state.py::test_apply_appends_trail_and_log_and_frame_id PASSED [ 93%]
 tests/test_state.py::test_to_dict_shape PASSED                           [100%]
 
-============================== 15 passed in 0.03s ==============================
+============================= 15 passed in 0.10s ==============================

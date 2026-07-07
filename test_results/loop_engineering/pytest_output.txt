@@ -1,13 +1,13 @@
-# module : loop_engineering
+﻿# module : loop_engineering
 # target : tests/
-# run at : 2026-07-07 03:11:09 CST
+# run at : 2026-07-07 09:34:45 +08:00
 # cwd    : loop_engineering
 ----------------------------------------------------------------------
-============================= test session starts ==============================
-platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
+============================= test session starts =============================
+platform win32 -- Python 3.13.12, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\Administrator\AppData\Local\Programs\Python\Python313\python.exe
 cachedir: .pytest_cache
-rootdir: /home/ubuntu/workspace/wangyutang/loop_engineering
-plugins: anyio-4.14.0
+rootdir: C:\Users\Administrator\Desktop\Workspace\Project_Codex\wangyutang_platform\loop_engineering
+plugins: anyio-4.12.1
 collecting ... collected 11 items
 
 tests/test_evaluator.py::test_correct_plan_only_scores_full PASSED       [  9%]
@@ -22,4 +22,4 @@ tests/test_evaluator.py::test_apply_obs_out_of_tolerance_fails_obs PASSED [ 81%]
 tests/test_evaluator.py::test_apply_obs_no_check_sets_none PASSED        [ 90%]
 tests/test_evaluator.py::test_min_sonar_floor_fails_when_too_close PASSED [100%]
 
-============================== 11 passed in 0.03s ==============================
+============================= 11 passed in 0.11s ==============================

@@ -1,17 +1,17 @@
-# module : slam_mapping
+﻿# module : slam_mapping
 # target : tests/
-# run at : 2026-07-07 03:11:09 CST
+# run at : 2026-07-07 09:34:29 +08:00
 # cwd    : slam_mapping
 ----------------------------------------------------------------------
-============================= test session starts ==============================
-platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
+============================= test session starts =============================
+platform win32 -- Python 3.13.12, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\Administrator\AppData\Local\Programs\Python\Python313\python.exe
 cachedir: .pytest_cache
-rootdir: /home/ubuntu/workspace/wangyutang/slam_mapping
-plugins: anyio-4.14.0
+rootdir: C:\Users\Administrator\Desktop\Workspace\Project_Codex\wangyutang_platform\slam_mapping
+plugins: anyio-4.12.1
 collecting ... collected 3 items
 
 tests/test_slam_core.py::SlamMapperTest::test_forward_20cm_reports_actual_pose_delta PASSED [ 33%]
 tests/test_slam_core.py::SlamMapperTest::test_front_80cm_scan_marks_occupancy_grid_obstacle PASSED [ 66%]
 tests/test_slam_core.py::SlamMapperTest::test_turn_left_90deg_then_forward_changes_coordinate_axis PASSED [100%]
 
-============================== 3 passed in 0.02s ===============================
+============================== 3 passed in 0.05s ==============================
