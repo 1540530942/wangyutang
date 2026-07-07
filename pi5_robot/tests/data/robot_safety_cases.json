@@ -1,0 +1,35 @@
+{
+  "description": "pi5_robot RobotController safety cases. Verified against pi5_robot/services/robotd/simulator.py. ops run in order; expected either success (pose.x / last_command) or raises=true (last op must raise RobotCommandError). Limits probed live: backward 1..30cm, rotate -90..90deg, front obstacle inside stop distance blocks forward.",
+  "cases": [
+    {
+      "name": "forward_20cm_updates_pose",
+      "ops": [{"move": ["forward", 20]}],
+      "expected": {"x": 0.2, "x_tol": 1e-6, "last_command": "move_forward_20cm"}
+    },
+    {
+      "name": "backward_10cm_ok",
+      "ops": [{"move": ["backward", 10]}],
+      "expected": {"x": -0.1, "x_tol": 1e-6, "last_command": "move_backward_10cm"}
+    },
+    {
+      "name": "backward_40cm_exceeds_limit",
+      "ops": [{"move": ["backward", 40]}],
+      "expected": {"raises": true}
+    },
+    {
+      "name": "front_obstacle_blocks_forward",
+      "ops": [{"set_obstacle": {"front_cm": 20}}, {"move": ["forward", 10]}],
+      "expected": {"raises": true}
+    },
+    {
+      "name": "rotate_30deg_ok",
+      "ops": [{"rotate": 30}],
+      "expected": {"no_raise": true}
+    },
+    {
+      "name": "rotate_120deg_exceeds_limit",
+      "ops": [{"rotate": 120}],
+      "expected": {"raises": true}
+    }
+  ]
+}
