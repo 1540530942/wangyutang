@@ -33,7 +33,7 @@ elapsed_ms=353
 output=5
 ```
 
-## audio_recognition integration
+## robot_sandbox integration
 
 Health check confirmed that audio routing reads model selection from the new
 Model Studio API:
@@ -250,7 +250,7 @@ The raw pytest output for this audit is archived under `test_results/*/pytest_ou
 Command:
 
 ```bash
-python -m unittest common_api_manager.tests.test_model_studio_selection audio_recognition.tests.unit.test_case_store -v
+python -m unittest common_api_manager.tests.test_model_studio_selection robot_sandbox.tests.unit.test_case_store -v
 ```
 
 Observed result:

@@ -39,6 +39,6 @@ def test_topology_diagram_lists_core_services():
     """The ASCII overview in the README must still mention the gateway routes,
     so the doc stays in sync with the deployed service set."""
     text = _readme_text()
-    for token in ("camera-snapshot", "action-move", "audio-recognition",
+    for token in ("camera-snapshot", "action-move", "robot-sandbox",
                   "smile-face", "pi5-robot"):
         assert token in text, f"topology overview dropped {token}"

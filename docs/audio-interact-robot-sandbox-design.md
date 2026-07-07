@@ -67,7 +67,7 @@ Web page selects WonderEchoPro
 -> Raspberry Pi edge listener polls settings
 -> arecord records a fixed WAV segment from plughw:CARD=Device,DEV=0
 -> common_api ASR returns text
--> text is routed to audio_recognition
+-> text is routed to robot_sandbox
 ```
 
 Target WonderEchoPro behavior:
@@ -185,11 +185,11 @@ The sandbox response should make debugging and real-car verification explicit:
 
 ## Existing Code To Move
 
-Move from `audio_recognition` to `audio_interact`:
+Move from `robot_sandbox` to `audio_interact`:
 
-- `audio_recognition/transport/edge_listener.py`
+- `robot_sandbox/transport/edge_listener.py`
   - Target: `audio_interact/edge/wonderecho_listener.py`
-- `audio_recognition/transport/recorder.py`
+- `robot_sandbox/transport/recorder.py`
   - Target: `audio_interact/edge/recorder.py`
 - WonderEchoPro `input_mode` and manual recording settings
   - Target: `audio_interact/settings.py`
@@ -200,16 +200,16 @@ Move from `audio_recognition` to `audio_interact`:
 
 Keep in `robot_sandbox`:
 
-- `audio_recognition/harness/react_loop.py`
-- `audio_recognition/agent/react_agent.py`
-- `audio_recognition/tools/*`
-- `audio_recognition/safety/*`
-- `audio_recognition/skills/*`
-- `audio_recognition/storage/envelope_store.py`
-- `audio_recognition/storage/replay.py`
-- `audio_recognition/storage/case_store.py`
+- `robot_sandbox/harness/react_loop.py`
+- `robot_sandbox/agent/react_agent.py`
+- `robot_sandbox/tools/*`
+- `robot_sandbox/safety/*`
+- `robot_sandbox/skills/*`
+- `robot_sandbox/storage/envelope_store.py`
+- `robot_sandbox/storage/replay.py`
+- `robot_sandbox/storage/case_store.py`
 
-The current directory may stay as `audio_recognition` during migration, but its service role should become `robot_sandbox`.
+The current directory may stay as `robot_sandbox` during migration, but its service role should become `robot_sandbox`.
 
 ## Related Modules
 
@@ -237,7 +237,7 @@ The current directory may stay as `audio_recognition` during migration, but its 
 
 ## Migration Plan
 
-1. Add `robot_sandbox` API semantics while keeping the current `audio_recognition` package path for compatibility.
+1. Add `robot_sandbox` API semantics while keeping the current `robot_sandbox` package path for compatibility.
 2. Add WonderEchoPro support to `audio_interact` by moving the edge listener and recorder there.
 3. Route WonderEchoPro as:
 
@@ -248,12 +248,12 @@ Pi -> audio_interact -> robot_sandbox
 instead of:
 
 ```text
-Pi -> audio_recognition /api/results
+Pi -> robot_sandbox /api/results
 ```
 
 4. Move TTS synthesis and playback to `audio_interact`.
 5. Make `robot_sandbox` return `tool_calls`, `execution_results`, `diagnostics`, `envelope`, and `tts_text`.
-6. Move input-mode UI/API from `audio_recognition` to `audio_interact`.
+6. Move input-mode UI/API from `robot_sandbox` to `audio_interact`.
 7. Add compatibility shims for old `/audio/api/*` routes during rollout.
 8. Rename the package or service only after the API boundary is stable.
 

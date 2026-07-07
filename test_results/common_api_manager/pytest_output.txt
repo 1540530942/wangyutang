@@ -1,16 +1,16 @@
-﻿# module : common_api_manager
+# module : common_api_manager
 # target : tests/
-# run at : 2026-07-07 09:34:28 +08:00
+# run at : 2026-07-07 23:16:45 CST
 # cwd    : common_api_manager
 ----------------------------------------------------------------------
-============================= test session starts =============================
-platform win32 -- Python 3.13.12, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\Administrator\AppData\Local\Programs\Python\Python313\python.exe
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
 cachedir: .pytest_cache
-rootdir: C:\Users\Administrator\Desktop\Workspace\Project_Codex\wangyutang_platform\common_api_manager
-plugins: anyio-4.12.1
+rootdir: /home/ubuntu/workspace/wangyutang/common_api_manager
+plugins: anyio-4.14.0
 collecting ... collected 17 items
 
-tests/test_model_studio_selection.py::ModelStudioSelectionTest::test_lv_selection_is_saved_with_audio_recognition_paths PASSED [  5%]
+tests/test_model_studio_selection.py::ModelStudioSelectionTest::test_lv_selection_is_saved_with_robot_sandbox_paths PASSED [  5%]
 tests/test_model_studio_selection.py::ModelStudioSelectionTest::test_unknown_provider_falls_back_to_audio_defaults PASSED [ 11%]
 tests/test_smoke.py::test_api_health PASSED                              [ 17%]
 tests/test_smoke.py::test_asr_health PASSED                              [ 23%]
@@ -28,4 +28,4 @@ tests/test_smoke.py::test_vision_dashscope_health PASSED                 [ 88%]
 tests/test_smoke.py::test_vision_dashscope_analyze_json PASSED           [ 94%]
 tests/test_smoke.py::test_spark_llm_returns_text PASSED                  [100%]
 
-============================= 17 passed in 37.24s =============================
+============================= 17 passed in 28.52s ==============================

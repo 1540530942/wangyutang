@@ -1,7 +1,7 @@
 # docs
 
 Cross-cutting documentation that does not belong to a single service. Per-module
-docs live under each module (e.g. `audio_recognition/docs/`, `pi5_robot/docs/`,
+docs live under each module (e.g. `robot_sandbox/docs/`, `pi5_robot/docs/`,
 `common_api_manager/doc/`).
 
 ## Design & plans

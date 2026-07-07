@@ -62,14 +62,14 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  audio-recognition:
-    image: ${AUDIO_RECOGNITION_IMAGE:-audio-recognition:local}
+  robot-sandbox:
+    image: ${ROBOT_SANDBOX_IMAGE:-robot-sandbox:local}
     build:
-      context: ./audio_recognition
+      context: ./robot_sandbox
       args:
         PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.12-slim}
         PIP_INDEX_URL: ${PIP_INDEX_URL:-}
-    container_name: audio-recognition
+    container_name: robot-sandbox
     env_file:
       - .env
     environment:
@@ -79,7 +79,7 @@ services:
     ports:
       - "8095:8095"
     volumes:
-      - audio_recognition_data:/app/audio_recognition/data
+      - robot_sandbox_data:/app/robot_sandbox/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8095/api/health', timeout=3).read()"]
       interval: 30s
@@ -99,7 +99,7 @@ services:
     env_file:
       - .env
     environment:
-      AUDIO_RECOGNITION_URL: http://audio-recognition:8095
+      ROBOT_SANDBOX_URL: http://robot-sandbox:8095
       COMMON_ASR_URL: https://www.wangyutang.cn/common/api/asr/transcribe
       AUDIO_INTERACT_DATA_DIR: /app/data
     ports:
@@ -181,6 +181,6 @@ volumes:
   robot_gateway_config:
   camera_snapshot_data:
   action_move_data:
-  audio_recognition_data:
+  robot_sandbox_data:
   audio_interact_data:
   pi5_robot_episodes:

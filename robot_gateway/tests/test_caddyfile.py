@@ -18,7 +18,7 @@ CADDYFILE = os.path.join(HERE, "Caddyfile")
 EXPECTED_ROUTES = {
     "/camera/*": "camera-snapshot:8099",
     "/action/*": "action-move:8094",
-    "/audio/*": "audio-recognition:8095",
+    "/audio/*": "robot-sandbox:8095",
     "/interact/*": "audio-interact:8097",
     "/common/*": "host.docker.internal:8101",
     "/robot/*": "pi5-robot:8093",

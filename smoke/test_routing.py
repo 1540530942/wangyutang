@@ -13,14 +13,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from audio_recognition.core.envelope import DecisionEnvelope, ToolCall
-from audio_recognition.harness.react_loop import decide_transcript
-from audio_recognition.skills.registry import load_skill_registry
-from audio_recognition.tools.tool_validator import validate_tool_call
+from robot_sandbox.core.envelope import DecisionEnvelope, ToolCall
+from robot_sandbox.harness.react_loop import decide_transcript
+from robot_sandbox.skills.registry import load_skill_registry
+from robot_sandbox.tools.tool_validator import validate_tool_call
 
 from smoke.cases import SKILL_CASES, UNIQUE_SKILL_CASES, SkillCase
 
-_BASE = Path(__file__).resolve().parents[1] / "audio_recognition"
+_BASE = Path(__file__).resolve().parents[1] / "robot_sandbox"
 _REGISTRY_PATH = str(_BASE / "skills" / "registry.yaml")
 _CATALOG_PATH = str(_BASE / "tests" / "fixtures" / "skill_catalog.fixture.json")
 
@@ -39,8 +39,8 @@ _FRONT_CLEAR = {
     "confidence": 0.95,
 }
 
-_LLM_PATCH = "audio_recognition.agent.react_agent.requests.post"
-_OBS_PATCH = "audio_recognition.tools.observation_executor._get_json"
+_LLM_PATCH = "robot_sandbox.agent.react_agent.requests.post"
+_OBS_PATCH = "robot_sandbox.tools.observation_executor._get_json"
 
 
 def _action_llm(skill_id: str, *, order: int = 1, duration_ms: int = 800) -> Mock:
@@ -349,7 +349,7 @@ class TestDispatchEnvelopeFormat(unittest.TestCase):
         with (
             patch(_LLM_PATCH, side_effect=[_obs_llm("camera_snapshot"), _finish_llm()]),
             patch(
-                "audio_recognition.tools.observation_executor._post_json",
+                "robot_sandbox.tools.observation_executor._post_json",
                 return_value={"image_url": "http://cam.local/snap.jpg", "captured_at": 1.0},
             ),
         ):

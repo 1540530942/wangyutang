@@ -23,7 +23,8 @@ from settings import load_settings, save_settings
 from wake_state import WakeDecision, WakeStateStore
 
 
-AUDIO_RECOGNITION_URL = os.getenv("AUDIO_RECOGNITION_URL", "http://audio-recognition:8095")
+# robot_sandbox was formerly named audio_recognition; accept the old env var as a fallback.
+ROBOT_SANDBOX_URL = os.getenv("ROBOT_SANDBOX_URL") or os.getenv("AUDIO_RECOGNITION_URL", "http://robot-sandbox:8095")
 COMMON_ASR_URL = os.getenv("COMMON_ASR_URL", "https://www.wangyutang.cn/common/api/asr/transcribe")
 TTS_URL = os.getenv("AUDIO_TTS_URL", "https://www.wangyutang.cn/common/api/tts/speech")
 TTS_MODEL = os.getenv("AUDIO_TTS_MODEL", "qwen3-tts-12hz-1.7b-customvoice")
@@ -410,7 +411,7 @@ def _process(wav_bytes: bytes, device_id: str, session_id: str) -> dict[str, Any
 
     try:
         resp = requests.post(
-            f"{AUDIO_RECOGNITION_URL}/api/recognize-text",
+            f"{ROBOT_SANDBOX_URL}/api/recognize-text",
             json={
                 "device_id": device_id,
                 "text": wake.route_text,
@@ -547,7 +548,7 @@ def _call_robot_sandbox(text: str, device_id: str, audio_url: str, asr_meta: dic
         },
     }
     resp = requests.post(
-        f"{AUDIO_RECOGNITION_URL}/api/command",
+        f"{ROBOT_SANDBOX_URL}/api/command",
         json=payload,
         timeout=ROUTE_TIMEOUT,
     )

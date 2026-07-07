@@ -13,7 +13,7 @@ model_studio_router = import_module("modules.model_studio_catalog.router")
 
 
 class ModelStudioSelectionTest(unittest.TestCase):
-    def test_lv_selection_is_saved_with_audio_recognition_paths(self) -> None:
+    def test_lv_selection_is_saved_with_robot_sandbox_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch.object(model_studio_router, "SELECTION_FILE", Path(tmp) / "selection.json"):
             saved = model_studio_router.save_selection(
                 model_studio_router.SelectionRequest(

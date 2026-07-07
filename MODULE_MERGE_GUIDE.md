@@ -93,7 +93,7 @@ docker compose config --quiet
 Python 模块检查：
 
 ```powershell
-python -m compileall -q .\camera_snapshot .\action_move .\audio_recognition .\pi5_robot .\remote_control_cloud
+python -m compileall -q .\camera_snapshot .\action_move .\robot_sandbox .\pi5_robot .\remote_control_cloud
 ```
 
 服务器检查示例：

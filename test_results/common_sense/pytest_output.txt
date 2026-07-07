@@ -1,13 +1,13 @@
-﻿# module : common_sense
+# module : common_sense
 # target : tests/
-# run at : 2026-07-07 09:34:50 +08:00
+# run at : 2026-07-07 23:16:45 CST
 # cwd    : common_sense
 ----------------------------------------------------------------------
-============================= test session starts =============================
-platform win32 -- Python 3.13.12, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\Administrator\AppData\Local\Programs\Python\Python313\python.exe
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
 cachedir: .pytest_cache
-rootdir: C:\Users\Administrator\Desktop\Workspace\Project_Codex\wangyutang_platform\common_sense
-plugins: anyio-4.12.1
+rootdir: /home/ubuntu/workspace/wangyutang/common_sense
+plugins: anyio-4.14.0
 collecting ... collected 4 items
 
 tests/test_docs_integrity.py::test_readme_exists PASSED                  [ 25%]
@@ -15,4 +15,4 @@ tests/test_docs_integrity.py::test_referenced_files_exist PASSED         [ 50%]
 tests/test_docs_integrity.py::test_topology_html_nonempty PASSED         [ 75%]
 tests/test_docs_integrity.py::test_topology_diagram_lists_core_services PASSED [100%]
 
-============================== 4 passed in 0.04s ==============================
+============================== 4 passed in 0.02s ===============================

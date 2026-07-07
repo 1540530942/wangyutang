@@ -18,7 +18,7 @@
   │ robot_gateway (Caddy)  反向代理
   ├─ /camera/*  → camera-snapshot:8099
   ├─ /action/*  → action-move:8094
-  ├─ /audio/*   → audio-recognition:8095
+  ├─ /audio/*   → robot-sandbox:8095
   ├─ /common/*  → common_api_manager:8101
   ├─ /robot/*   → pi5-robot:8093
   └─ /face/*    → smile-face:8096

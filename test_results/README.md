@@ -20,7 +20,7 @@ handles the correct CWD per module.
 |---|---|---|---|---|
 | `action_move` | PASS | 7 (+1 skip) | Default unit distance = 10 cm, SLAM pose reporting | Motion API keeps calibrated step size + telemetry |
 | `audio_interact` | PASS | 5 | Wake-state machine (sleep/wake/timeout) | Voice front-end only acts when actually woken |
-| `audio_recognition` | PASS | 65 (+33 sub) | ReAct pipeline, safety guard, legacy planners, case store, regression suite | robot_sandbox plans/executes/rejects correctly |
+| `robot_sandbox` | PASS | 65 (+33 sub) | ReAct pipeline, safety guard, legacy planners, case store, regression suite | robot_sandbox plans/executes/rejects correctly |
 | `camera_snapshot` | PASS | 15 | Capture/latest/control smoke paths | Camera service contract stays stable |
 | `common_api_manager` | PASS | 17 | Model Studio selection + smoke | Public workbench + ASR/TTS API stay wired |
 | `pi5_robot` | PASS | 5 | Harness executor + robot safety | Patrol MVP won't dispatch unsafe actions |

@@ -4,7 +4,7 @@ $checks = @(
   @{ Name = "robot-gateway"; Url = "http://127.0.0.1/api/health" },
   @{ Name = "camera-snapshot"; Url = "http://127.0.0.1:8099/api/health" },
   @{ Name = "action-move"; Url = "http://127.0.0.1:8094/api/health" },
-  @{ Name = "audio-recognition"; Url = "http://127.0.0.1:8095/api/health" },
+  @{ Name = "robot-sandbox"; Url = "http://127.0.0.1:8095/api/health" },
   @{ Name = "pi5-robot"; Url = "http://127.0.0.1:8093/api/health" },
   @{ Name = "slam-mapping"; Url = "http://127.0.0.1:8301/api/health" },
   @{ Name = "smile-face"; Url = "http://127.0.0.1:8096/api/health" }

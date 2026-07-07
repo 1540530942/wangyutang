@@ -51,7 +51,7 @@ $DocsDir = Join-Path $ReleaseDir "docs"
 $Images = @(
   @{ Name = "camera-snapshot:local"; File = "camera-snapshot_local.tar" },
   @{ Name = "action-move:local"; File = "action-move_local.tar" },
-  @{ Name = "audio-recognition:local"; File = "audio-recognition_local.tar" },
+  @{ Name = "robot-sandbox:local"; File = "robot-sandbox_local.tar" },
   @{ Name = "audio-interact:local"; File = "audio-interact_local.tar" },
   @{ Name = "pi5-robot:local"; File = "pi5-robot_local.tar" },
   @{ Name = "slam-mapping:local"; File = "slam-mapping_local.tar" }
@@ -67,7 +67,7 @@ if ($GitStatus -and -not $AllowDirty) {
 }
 
 Write-Step "Running local checks"
-Invoke-Checked "python" @("-m", "compileall", "-q", "camera_snapshot", "action_move", "audio_recognition", "audio_interact", "pi5_robot", "slam_mapping")
+Invoke-Checked "python" @("-m", "compileall", "-q", "camera_snapshot", "action_move", "robot_sandbox", "audio_interact", "pi5_robot", "slam_mapping")
 Invoke-Checked "docker" @("compose", "config", "--quiet")
 
 if (-not $SkipBuild) {

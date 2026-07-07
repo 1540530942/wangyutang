@@ -19,7 +19,7 @@
 | `robot_gateway/` | 根 README 已说明 | `/api/health` | 已配置 | 符合 |
 | `camera_snapshot/` | 已有 | `/api/health` | 已配置 | 符合 |
 | `action_move/` | 已有 | `/api/health` | 已配置 | 符合 |
-| `audio_recognition/` | 已有 | `/api/health` | 已配置 | 符合 |
+| `robot_sandbox/` | 已有 | `/api/health` | 已配置 | 符合 |
 | `pi5_robot/` | 已有 | `/api/health` | 已配置 | 符合 |
 | `smile_face/` | 已有 | `/api/health` | 已配置 | 符合 |
 | `common_api_manager/` | 已有 | 本地/systemd 运行说明 | 未纳入根 Compose | 例外记录 |

@@ -12,7 +12,7 @@ Pi microphone
   -> WebSocket /interact/ws/audio
   -> common ASR
   -> wake-state gate
-  -> audio_recognition /api/recognize-text
+  -> robot_sandbox /api/recognize-text
 ```
 
 ## Wake State

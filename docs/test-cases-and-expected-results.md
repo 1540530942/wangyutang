@@ -4,13 +4,13 @@
 
 本文档从当前仓库测试文件整理，列出主要测试语料、输入场景和预期结果。它不是测试运行报告，而是测试用例目录，便于人工复核和补齐质量门禁。
 
-## 1. audio_recognition 语音控制与 ReAct 路由
+## 1. robot_sandbox 语音控制与 ReAct 路由
 
 来源：
 
-- `audio_recognition/tests/unit/test_react_pipeline.py`
-- `audio_recognition/tests/integration/test_regression_suite.py`
-- `audio_recognition/tests/fixtures/audio_cases.json`
+- `robot_sandbox/tests/unit/test_react_pipeline.py`
+- `robot_sandbox/tests/integration/test_regression_suite.py`
+- `robot_sandbox/tests/fixtures/audio_cases.json`
 - `smoke/cases.py`
 - `smoke/test_routing.py`
 
@@ -94,7 +94,7 @@
 | `今天上海天气怎么样` | 不生成机器人动作，`skill_id=""`，route 为 `none` |
 | ASR/文本为空 | envelope reason 为 empty transcript，不生成动作 |
 
-注意：当前完整 `audio_recognition.tests.unit.test_react_pipeline` 中前方距离相关测试存在实现/测试预期不一致，实际运行时仍需先修复这组用例。
+注意：当前完整 `robot_sandbox.tests.unit.test_react_pipeline` 中前方距离相关测试存在实现/测试预期不一致，实际运行时仍需先修复这组用例。
 
 ## 2. audio_interact 唤醒词状态机
 
@@ -250,7 +250,7 @@
 | `PYTHONPATH=slam_mapping/2d_action python3 -m unittest discover -s slam_mapping/2d_action/tests -q` | 6 passed |
 | `.venv/bin/python -m pytest audio_interact/tests/test_wake_state.py -q` | 5 passed |
 | `PYTHONPATH=pi5_robot .venv/bin/python -m unittest pi5_robot.tests.test_harness_executor pi5_robot.tests.test_robot_safety -q` | 5 passed |
-| `.venv/bin/python -m unittest audio_recognition.tests.unit.test_react_pipeline` | 49 tests 中 6 个失败，集中在 front_distance 预期 |
+| `.venv/bin/python -m unittest robot_sandbox.tests.unit.test_react_pipeline` | 49 tests 中 6 个失败，集中在 front_distance 预期 |
 | `PYTHONPATH=action_move python3 -m unittest discover -s action_move/tests -q` | 5 tests 中 1 个失败，集中在 parse_edge_actuals 返回结构 |
 
 建议优先修复：

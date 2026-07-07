@@ -6,7 +6,7 @@
 
 `common_api` 是平台级公共能力层，不只负责语音转文字，后续文本转语音也应该放在这里统一提供。
 
-`audio_recognition` 是业务模块，负责语音控制链路：
+`robot_sandbox` 是业务模块，负责语音控制链路：
 
 ```text
 录音 / 上传音频
@@ -17,7 +17,7 @@
 -> 树莓派 / TurboPi 执行动作
 ```
 
-因此 `audio_recognition` 不再维护 `dashscope_third_party`、`local_qwen3` 这类 ASR 方式切换。具体使用哪个模型、哪个第三方服务，由 `common_api` 内部管理。
+因此 `robot_sandbox` 不再维护 `dashscope_third_party`、`local_qwen3` 这类 ASR 方式切换。具体使用哪个模型、哪个第三方服务，由 `common_api` 内部管理。
 
 ## 当前接口
 
@@ -121,7 +121,7 @@ console.log(data.text);
 }
 ```
 
-`audio_recognition` 旧入口也可以继续调用：
+`robot_sandbox` 旧入口也可以继续调用：
 
 ```bash
 curl -fsS --max-time 120 \
@@ -149,7 +149,7 @@ https://www.wangyutang.cn/audio/
 
 ```text
 WonderEchoPro / USB 麦克风
--> /home/pi/audio_recognition/edge_audio_listener.py
+-> /home/pi/robot_sandbox/edge_audio_listener.py
 -> POST https://www.wangyutang.cn/common/api/asr/transcribe
 -> POST https://www.wangyutang.cn/audio/api/results
 -> POST https://www.wangyutang.cn/action/api/tasks
@@ -166,7 +166,7 @@ POST https://www.wangyutang.cn/common/api/tts/synthesize
 业务模块只调用公共 TTS，不直接绑定某个模型或供应商：
 
 ```text
-action_move / audio_recognition / 其他业务
+action_move / robot_sandbox / 其他业务
 -> common_api TTS
 -> 返回音频文件或音频流
 -> 树莓派播放

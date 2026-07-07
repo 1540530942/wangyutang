@@ -1,7 +1,9 @@
 # audio_interact / robot_sandbox 拆分落地方案（可实现、可验收版）
 
-更新时间：2026-07-06
+更新时间：2026-07-07
 设计背景见 `docs/audio-interact-robot-sandbox-design.md`。本文档只回答三个问题：**改什么文件、暴露什么契约、怎么验收**。每个阶段独立交付、独立验收、可独立回滚，按 P1 → P5 顺序执行。
+
+> **状态更新（2026-07-07）**：P1–P4 已全部实现并实车验收通过。原计划延后的包/容器重命名（见 §13、§6、§8）已执行完成——`audio_recognition` 包/容器/卷已更名为 `robot_sandbox`，公网 `/audio/*` 路由保留作兼容别名。下文保留原始计划表述以供追溯。
 
 ## 0. 目标边界（一句话版）
 
@@ -10,7 +12,7 @@ audio_interact (8097)：音频 -> ASR 文本；tts_text -> TTS 音频 -> 播放�
 robot_sandbox  (8095)：文本 -> tool_calls -> 校验 -> 安全 -> 执行 -> diagnostics -> tts_text。不碰音频。
 ```
 
-过渡期 `robot_sandbox` 继续使用 `audio_recognition` 包名和容器名，只增加新语义接口，不重命名。
+过渡期 `robot_sandbox` 曾继续使用 `audio_recognition` 包名和容器名，只增加新语义接口。**（2026-07-07 已完成重命名为 `robot_sandbox`。）**
 
 ## 1. 现状基线（已核实，落地前提）
 
@@ -241,9 +243,9 @@ python3 wonderecho_listener.py --config config.json --once
 
 ## 6. P5 — 收尾（UI 迁移与观测面）
 
-- 输入模式 UI 从 `audio_recognition/web/static` 迁到 audio_interact（或改调 8097 API），保留 `/audio/api/*` nginx 兼容路由。
-- 事件观测面**暂不拆**：audio_interact / 新 Pi 监听器继续把 stage 事件投递到 audio_recognition `POST /api/events`，dashboard 单点可见。
-- `robot_sandbox` 包/容器重命名：P1–P4 全部验收通过且稳定运行 ≥1 周后另行提案，本方案不含。
+- 输入模式 UI 从 `robot_sandbox/web/static` 迁到 audio_interact（或改调 8097 API），保留 `/audio/api/*` nginx 兼容路由。
+- 事件观测面**暂不拆**：audio_interact / 新 Pi 监听器继续把 stage 事件投递到 robot_sandbox `POST /api/events`，dashboard 单点可见。
+- `robot_sandbox` 包/容器重命名：原计划 P1–P4 验收通过后另行提案。**（2026-07-07 已执行：`audio_recognition` → `robot_sandbox`，公网 `/audio/*` 保留兼容别名。）**
 
 验收标准：web 页三种 input_mode 切换后，`GET :8097/api/settings` 值一致；dashboard 事件流中能看到来自 audio_interact 的 recording/model_asr/text_display 事件。
 
@@ -268,7 +270,7 @@ python3 wonderecho_listener.py --config config.json --once
 
 ## 8. 明确不做（本方案范围外）
 
-- 不重命名 `audio_recognition` 包/容器/卷。
+- ~~不重命名 `audio_recognition` 包/容器/卷。~~ **（已于 2026-07-07 完成重命名为 `robot_sandbox`；公网 `/audio/*` 路由保留兼容。）**
 - 不修改 `/api/recognize-text`、`/api/results` 的请求/响应字段。
 - 不拆分事件/dashboard 观测面。
 - 不改动 action_move、camera_snapshot、slam_mapping 的任何接口。

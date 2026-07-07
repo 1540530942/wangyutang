@@ -64,7 +64,7 @@ curl -X POST https://www.wangyutang.cn/common/api/model-studio/validate \
 
 Downstream dependency:
 
-`audio_recognition` reads the selected model from:
+`robot_sandbox` reads the selected model from:
 
 ```text
 https://www.wangyutang.cn/common/api/model-studio/selection

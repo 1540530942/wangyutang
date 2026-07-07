@@ -108,7 +108,7 @@ console.log(data.text);
 POST https://www.wangyutang.cn/audio/api/asr/transcribe
 ```
 
-该入口由 `audio_recognition` 提供，只负责转发到 common API。新业务建议直接调用 `/common/api/asr/transcribe`。
+该入口由 `robot_sandbox` 提供，只负责转发到 common API。新业务建议直接调用 `/common/api/asr/transcribe`。
 
 已验证返回文本：
 

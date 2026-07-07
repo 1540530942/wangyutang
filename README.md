@@ -13,15 +13,15 @@ These build and run as containers and are reachable through the Caddy gateway.
 | `robot_gateway/` | Caddy gateway + lightweight public homepage | `/` | 80/443 |
 | `camera_snapshot/` | TurboPi / Raspberry Pi camera + screenshot snapshot service | `/camera/` | 8099 |
 | `action_move/` | Robot motion API and TurboPi chassis/servo control wrapper | `/action/` | 8094 |
-| `audio_recognition/` | robot_sandbox: text → tool_calls → validation → safety → execution → tts_text | `/audio/` | 8095 |
+| `robot_sandbox/` | robot_sandbox: text → tool_calls → validation → safety → execution → tts_text | `/audio/` | 8095 |
 | `audio_interact/` | Audio I/O adapter: VAD/ASR/wake-state/TTS, settings, `/api/audio/segment` | `/interact/` | 8097 |
 | `pi5_robot/` | Raspberry Pi 5 patrol robot console + simulation robotd/visiond/harnessd | `/robot/` | 8093 |
 | `slam_mapping/` | Pose and occupancy-grid module for SLAM-style motion feedback | `/slam/` | 8301 |
 | `smile_face/` | Wall-E-like synchronized robot expression screen (web + Pi LCD kiosk) | `/face/` | 8096 |
 
-`audio_interact` and `audio_recognition` are the two halves of the voice pipeline:
+`audio_interact` and `robot_sandbox` are the two halves of the voice pipeline:
 audio I/O lives in `audio_interact`, robot command planning/execution in
-`audio_recognition`. See
+`robot_sandbox`. See
 [docs/audio-interact-robot-sandbox-design.md](docs/audio-interact-robot-sandbox-design.md).
 
 ## Host service (on the gateway, not in compose)
@@ -84,7 +84,7 @@ http://127.0.0.1/camera/            camera through gateway
 http://127.0.0.1/action/            action through gateway
 http://127.0.0.1:8099/              camera snapshot service
 http://127.0.0.1:8094/              action move service
-http://127.0.0.1:8095/              audio recognition (robot_sandbox) service
+http://127.0.0.1:8095/              robot_sandbox service (text→tool_calls→execute)
 http://127.0.0.1:8097/              audio interact service
 http://127.0.0.1:8093/              Pi5 robot console
 http://127.0.0.1:8301/              SLAM mapping service

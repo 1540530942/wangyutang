@@ -1,13 +1,13 @@
-﻿# module : pi5_monitor
+# module : pi5_monitor
 # target : tests/
-# run at : 2026-07-07 09:34:46 +08:00
+# run at : 2026-07-07 23:16:45 CST
 # cwd    : pi5_monitor
 ----------------------------------------------------------------------
-============================= test session starts =============================
-platform win32 -- Python 3.13.12, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\Administrator\AppData\Local\Programs\Python\Python313\python.exe
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
 cachedir: .pytest_cache
-rootdir: C:\Users\Administrator\Desktop\Workspace\Project_Codex\wangyutang_platform\pi5_monitor
-plugins: anyio-4.12.1
+rootdir: /home/ubuntu/workspace/wangyutang/pi5_monitor
+plugins: anyio-4.14.0
 collecting ... collected 12 items
 
 tests/test_analyzer.py::test_snapshot_detects_sudo_shutdown_command PASSED [  8%]
@@ -23,4 +23,4 @@ tests/test_analyzer.py::test_event_summary_sudo PASSED                   [ 83%]
 tests/test_analyzer.py::test_quick_analyze_prefers_snapshot PASSED       [ 91%]
 tests/test_analyzer.py::test_quick_analyze_falls_back_to_events PASSED   [100%]
 
-============================= 12 passed in 0.07s ==============================
+============================== 12 passed in 0.02s ==============================

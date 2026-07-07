@@ -1,6 +1,6 @@
 # loop_engineering
 
-Loop 评估框架，用于对 audio_recognition 语音识别 → 技能路由 → 机器人执行的完整链路做自动化质量评估。
+Loop 评估框架，用于对 robot_sandbox 语音识别 → 技能路由 → 机器人执行的完整链路做自动化质量评估。
 
 ## 结构
 

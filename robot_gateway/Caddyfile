@@ -22,7 +22,7 @@
 	}
 
 	handle_path /audio/* {
-		reverse_proxy {$AUDIO_UPSTREAM:audio-recognition:8095}
+		reverse_proxy {$AUDIO_UPSTREAM:robot-sandbox:8095}
 	}
 
 	handle_path /interact/* {

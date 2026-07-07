@@ -71,6 +71,7 @@ for name in \
   camera-snapshot \
   action-move \
   audio-recognition \
+  robot-sandbox \
   audio-interact \
   pi5-robot \
   slam-mapping \

@@ -1,13 +1,13 @@
-﻿# module : action_move
+# module : action_move
 # target : tests/
-# run at : 2026-07-07 09:33:40 +08:00
+# run at : 2026-07-07 23:16:45 CST
 # cwd    : action_move
 ----------------------------------------------------------------------
-============================= test session starts =============================
-platform win32 -- Python 3.13.12, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\Administrator\AppData\Local\Programs\Python\Python313\python.exe
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
 cachedir: .pytest_cache
-rootdir: C:\Users\Administrator\Desktop\Workspace\Project_Codex\wangyutang_platform\action_move
-plugins: anyio-4.12.1
+rootdir: /home/ubuntu/workspace/wangyutang/action_move
+plugins: anyio-4.14.0
 collecting ... collected 8 items
 
 tests/test_default_unit_distance.py::DefaultUnitDistanceTest::test_catalog_and_server_default_to_ten_cm PASSED [ 12%]
@@ -19,4 +19,4 @@ tests/test_slam_reporting.py::SlamReportingTest::test_move_forward_reports_unit_
 tests/test_slam_reporting.py::SlamReportingTest::test_parse_edge_actuals PASSED [ 87%]
 tests/test_slam_reporting.py::SlamReportingTest::test_turn_left_reports_turn_angle_as_positive_yaw PASSED [100%]
 
-======================== 7 passed, 1 skipped in 0.74s =========================
+========================= 7 passed, 1 skipped in 0.46s =========================

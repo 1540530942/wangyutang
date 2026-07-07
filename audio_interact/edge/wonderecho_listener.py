@@ -7,7 +7,7 @@ Flow:
   -> POST /api/audio/segment to audio_interact
   -> play tts_audio_base64 locally via aplay/paplay
 
-No audio_recognition package dependency.  Requires only stdlib + recorder.
+No robot_sandbox package dependency.  Requires only stdlib + recorder.
 
 Run:
   python3 wonderecho_listener.py --config config.json

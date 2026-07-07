@@ -17,7 +17,7 @@ source "$VENV" 2>/dev/null
 MODULES=(
   "action_move|tests/"
   "audio_interact|tests/"
-  "audio_recognition|tests/"
+  "robot_sandbox|tests/"
   "camera_snapshot|tests/"
   "common_api_manager|tests/"
   "pi5_robot|tests/"

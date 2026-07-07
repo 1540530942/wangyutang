@@ -14,7 +14,7 @@ on:
       - "robot_gateway/**"
       - "camera_snapshot/**"
       - "action_move/**"
-      - "audio_recognition/**"
+      - "robot_sandbox/**"
       - "audio_interact/**"
       - "pi5_robot/**"
       - "slam_mapping/**"
@@ -33,7 +33,7 @@ on:
           - robot_gateway
           - camera_snapshot
           - action_move
-          - audio_recognition
+          - robot_sandbox
           - audio_interact
           - pi5_robot
           - slam_mapping
@@ -75,7 +75,7 @@ jobs:
           declare -A build_services=(
             [camera_snapshot]="camera-snapshot"
             [action_move]="action-move"
-            [audio_recognition]="audio-recognition"
+            [robot_sandbox]="robot-sandbox"
             [audio_interact]="audio-interact"
             [pi5_robot]="pi5-robot"
             [slam_mapping]="slam-mapping"
@@ -85,14 +85,14 @@ jobs:
             [robot_gateway]="robot-gateway"
             [camera_snapshot]="camera-snapshot"
             [action_move]="action-move"
-            [audio_recognition]="audio-recognition"
+            [robot_sandbox]="robot-sandbox"
             [audio_interact]="audio-interact"
             [pi5_robot]="pi5-robot"
             [slam_mapping]="slam-mapping"
             [smile_face]="smile-face"
           )
 
-          all_modules=(robot_gateway camera_snapshot action_move audio_recognition audio_interact pi5_robot slam_mapping smile_face)
+          all_modules=(robot_gateway camera_snapshot action_move robot_sandbox audio_interact pi5_robot slam_mapping smile_face)
           selected=()
 
           add_module() {
@@ -125,7 +125,7 @@ jobs:
               selected=("${all_modules[@]}")
             else
               echo "$changed" | grep -Eq '^robot_gateway/' && add_module robot_gateway || true
-              echo "$changed" | grep -Eq '^audio_recognition/' && add_module audio_recognition || true
+              echo "$changed" | grep -Eq '^robot_sandbox/' && add_module robot_sandbox || true
               echo "$changed" | grep -Eq '^audio_interact/' && add_module audio_interact || true
               echo "$changed" | grep -Eq '^pi5_robot/' && add_module pi5_robot || true
               echo "$changed" | grep -Eq '^slam_mapping/' && add_module slam_mapping || true
@@ -165,7 +165,7 @@ jobs:
           set -euo pipefail
           cp .env.example .env
           docker compose --env-file .env -f docker-compose.yml config --quiet
-          python -m compileall -q camera_snapshot action_move audio_recognition audio_interact pi5_robot slam_mapping smile_face
+          python -m compileall -q camera_snapshot action_move robot_sandbox audio_interact pi5_robot slam_mapping smile_face
 
       - name: Create source release archive
         if: steps.scope.outputs.up_services != ''
@@ -185,7 +185,7 @@ jobs:
             robot_gateway \
             camera_snapshot \
             action_move \
-            audio_recognition \
+            robot_sandbox \
             audio_interact \
             pi5_robot \
             slam_mapping \
@@ -271,6 +271,11 @@ jobs:
             docker compose --env-file .env -f docker-compose.yml build $BUILD_SERVICES
           fi
 
+          # One-time cleanup: the service formerly named audio-recognition was
+          # renamed to robot-sandbox. Remove the stale container/volume so the
+          # renamed service can bind port 8095 instead of colliding with it.
+          docker rm -f audio-recognition >/dev/null 2>&1 || true
+
           docker compose --env-file .env -f docker-compose.yml up -d --no-deps --force-recreate $UP_SERVICES
 
           # Keep compatibility with older containers that were attached to infra_default.
@@ -298,7 +303,7 @@ jobs:
               robot-gateway) check_url robot-gateway http://127.0.0.1/api/health ;;
               camera-snapshot) check_url camera-snapshot http://127.0.0.1:8099/api/health ;;
               action-move) check_url action-move http://127.0.0.1:8094/api/health ;;
-              audio-recognition) check_url audio-recognition http://127.0.0.1:8095/api/health ;;
+              robot-sandbox) check_url robot-sandbox http://127.0.0.1:8095/api/health ;;
               audio-interact) check_url audio-interact http://127.0.0.1:8097/api/health ;;
               pi5-robot) check_url pi5-robot http://127.0.0.1:8093/api/health ;;
               slam-mapping) check_url slam-mapping http://127.0.0.1:8301/api/health ;;
@@ -346,11 +351,11 @@ jobs:
 
           modules = (os.environ.get("MODULES") or "").split()
           # A health check only proves the container is up, not that the new
-          # code shipped. For audio_recognition we assert a schema marker that
+          # code shipped. For robot_sandbox we assert a schema marker that
           # only the new DecisionEnvelope model emits (latency_ms), so a
           # stale-image deploy fails loudly instead of reporting success.
-          if "audio_recognition" not in modules:
-              print("audio_recognition not in scope; skipping revision assertion")
+          if "robot_sandbox" not in modules:
+              print("robot_sandbox not in scope; skipping revision assertion")
               raise SystemExit(0)
 
           base = "https://www.wangyutang.cn"
@@ -376,7 +381,7 @@ jobs:
               env = json.loads(r.read()).get("envelope") or {}
           if "latency_ms" not in env:
               raise SystemExit(
-                  "Revision assertion FAILED: deployed audio-recognition envelope "
+                  "Revision assertion FAILED: deployed robot-sandbox envelope "
                   "has no latency_ms field -> stale image is still live despite a "
                   "successful build/health-check. Investigate image reuse on host."
               )

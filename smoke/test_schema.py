@@ -11,12 +11,12 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from audio_recognition.skills.registry import load_skill_registry
-from audio_recognition.tools.tool_schema import build_react_tools_schema, tool_skill_groups
+from robot_sandbox.skills.registry import load_skill_registry
+from robot_sandbox.tools.tool_schema import build_react_tools_schema, tool_skill_groups
 
 from smoke.cases import UNIQUE_SKILL_CASES
 
-_BASE = Path(__file__).resolve().parents[1] / "audio_recognition"
+_BASE = Path(__file__).resolve().parents[1] / "robot_sandbox"
 _REGISTRY_PATH = _BASE / "skills" / "registry.yaml"
 _CATALOG_PATH = _BASE / "tests" / "fixtures" / "skill_catalog.fixture.json"
 

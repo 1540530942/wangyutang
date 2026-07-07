@@ -1,0 +1,90 @@
+# module : robot_sandbox
+# target : tests/
+# run at : 2026-07-07 23:16:45 CST
+# cwd    : robot_sandbox
+----------------------------------------------------------------------
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/workspace/wangyutang/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/ubuntu/workspace/wangyutang/robot_sandbox
+plugins: anyio-4.14.0
+collecting ... collected 65 items
+
+tests/integration/test_regression_suite.py::AudioRegressionSuite::test_api_recognize_text_exposes_plan_and_skill PASSED [  1%]
+tests/integration/test_regression_suite.py::AudioRegressionSuite::test_audio_cases_return_real_asr_without_legacy_planner 
+tests/integration/test_regression_suite.py::AudioRegressionSuite::test_audio_cases_return_real_asr_without_legacy_planner PASSED [  3%]
+tests/integration/test_regression_suite.py::AudioRegressionSuite::test_case_count_is_20_plus PASSED [  4%]
+tests/integration/test_regression_suite.py::AudioRegressionSuite::test_execute_planned_task_routes_action PASSED [  6%]
+tests/integration/test_regression_suite.py::AudioRegressionSuite::test_execute_planned_task_routes_face PASSED [  7%]
+tests/integration/test_regression_suite.py::AudioRegressionSuite::test_route_transcript_returns_none_for_unknown_text PASSED [  9%]
+tests/integration/test_regression_suite.py::AudioRegressionSuite::test_rule_planner_builds_expected_plan PASSED [ 10%]
+tests/unit/test_case_store.py::IntermediateStoreTest::test_audio_bytes_and_case_are_persisted_for_replay PASSED [ 12%]
+tests/unit/test_case_store.py::OfflineSimulationApiTest::test_simulate_text_does_not_persist_synthetic_case PASSED [ 13%]
+tests/unit/test_case_store.py::ModelStudioSelectionUsageTest::test_router_and_cloud_config_follow_model_studio_lv_selection PASSED [ 15%]
+tests/unit/test_legacy_planner_modes.py::PlannerModesTest::test_hybrid_planner_falls_back_to_rule PASSED [ 16%]
+tests/unit/test_legacy_planner_modes.py::PlannerModesTest::test_llm_planner_parses_openai_style_json_content PASSED [ 18%]
+tests/unit/test_legacy_planner_modes.py::PlannerModesTest::test_llm_planner_rejects_unsupported_skill PASSED [ 20%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_ask_confirmation_records_pending_observation PASSED [ 21%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_camera_snapshot_accepts_0524_fields PASSED [ 23%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_camera_snapshot_records_failed_capture_metadata PASSED [ 24%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_camera_snapshot_waits_for_matching_latest_frame PASSED [ 26%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_cloud_dispatch_accepted_does_not_wait_for_completion PASSED [ 27%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_cloud_dispatch_uses_executor_once PASSED [ 29%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_create_action_task_reports_http_detail PASSED [ 30%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_default_llm_config_targets_qwen32_common_api PASSED [ 32%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_emergency_stop_preflight_bypasses_llm PASSED [ 33%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_envelope_store_and_replay_from_text PASSED [ 35%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_exact_compound_action_aliases_bypass_llm PASSED [ 36%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_exact_forward_alias_observes_distance_before_dispatch PASSED [ 38%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_exact_forward_distance_uses_action_path_with_distance_override PASSED [ 40%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_exact_observation_alias_bypasses_llm PASSED [ 41%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_finish_accepts_message_field PASSED [ 43%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_front_distance_falls_back_to_camera_sonar_when_action_sonar_missing PASSED [ 44%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_front_distance_live_mode_uses_action_task_when_sonar_endpoint_missing PASSED [ 46%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_front_distance_low_confidence_rejects_forward_motion PASSED [ 47%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_front_distance_observation_reads_sonar_endpoint PASSED [ 49%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_front_distance_old_reported_at_rejects_forward_motion PASSED [ 50%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_invalid_native_tool_arguments_records_agent_error PASSED [ 52%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_left_turn_then_backward_10cm_uses_llm_not_rule_path PASSED [ 53%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_left_turn_with_negated_look_up_only_executes_turn PASSED [ 55%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_llm_react_agent_generates_sequence_without_rule_fallback PASSED [ 56%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_local_first_dispatch_posts_to_edge_controller PASSED [ 58%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_move_forward_allows_when_front_distance_clear PASSED [ 60%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_move_forward_rejects_when_front_distance_too_close PASSED [ 61%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_move_forward_requires_recent_front_distance_observation PASSED [ 63%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_multiple_native_tool_calls_are_executed_in_order_from_deferred_queue PASSED [ 64%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_native_tool_call_is_normalized_to_internal_tool_call PASSED [ 66%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_negative_instruction_is_rejected_by_safety PASSED [ 67%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_observation_failure_is_recorded_and_loop_can_finish PASSED [ 69%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_observation_tool_writes_observation_and_continues PASSED [ 70%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_obstacle_then_forward_15cm_uses_llm_not_rule_path PASSED [ 72%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_registry_reads_safety_metadata PASSED [ 73%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_route_transcript_keeps_legacy_shape_with_envelope PASSED [ 75%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_route_transcript_reports_observation_plan PASSED [ 76%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_route_transcript_reports_rejected_forward_action PASSED [ 78%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_sequence_command_generates_ordered_tasks PASSED [ 80%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_sequence_forward_then_look_up_uses_real_rules PASSED [ 81%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_simple_command_generates_envelope_tool_task_and_dry_run PASSED [ 83%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_tool_schema_and_validator_share_registry_duration_limits PASSED [ 84%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_tool_schema_excludes_catalog_skills_outside_voice_allowlist PASSED [ 86%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_tool_schema_is_generated_from_skill_catalog PASSED [ 87%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_tool_schema_uses_catalog_fallback_when_registry_is_missing PASSED [ 89%]
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_validator_rejects_unknown_tool_and_clips_duration PASSED [ 90%]
+tests/unit/test_react_pipeline.py::LatencyTraceabilityTest::test_agent_and_dispatch_timestamps_set_for_non_llm_path PASSED [ 92%]
+tests/unit/test_react_pipeline.py::LatencyTraceabilityTest::test_capture_and_transcribe_timestamps_forwarded_from_raw PASSED [ 93%]
+tests/unit/test_react_pipeline.py::LatencyTraceabilityTest::test_latency_breakdown_survives_save_load_round_trip PASSED [ 95%]
+tests/unit/test_react_pipeline.py::VehicleLatencyTest::test_no_vehicle_execution_leaves_latency_clean PASSED [ 96%]
+tests/unit/test_react_pipeline.py::VehicleLatencyTest::test_vehicle_execution_extracted_from_action_task PASSED [ 98%]
+tests/unit/test_react_pipeline.py::VehicleLatencyTest::test_vehicle_stages_fold_into_latency_breakdown PASSED [100%]
+
+=============================== warnings summary ===============================
+../.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /home/ubuntu/workspace/wangyutang/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/unit/test_react_pipeline.py::ReactPipelineTest::test_emergency_stop_preflight_bypasses_llm
+  /home/ubuntu/workspace/wangyutang/robot_sandbox/tools/tool_validator.py:86: PydanticDeprecatedSince20: The `copy` method is deprecated; use `model_copy` instead. See the docstring of `BaseModel.copy` for details about how to handle `include` and `exclude`. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    normalized = call.copy(deep=True)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+============== 65 passed, 2 warnings, 33 subtests passed in 2.26s ==============

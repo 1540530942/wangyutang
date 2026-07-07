@@ -25,7 +25,7 @@ The key boundary is:
 ```text
 common_api_manager = public workspace, API adapter, UI entry
 action_move        = robot atomic skill definition and execution
-audio_recognition  = voice recognition and intent routing
+robot_sandbox  = voice recognition and intent routing
 camera service     = image capture and frame metadata
 ```
 
@@ -35,7 +35,7 @@ APIs. The actual atomic skills remain defined and executed by `action_move`.
 
 For Model Studio, `common_api_manager` owns both the page and the backend
 selection/catalog APIs because model selection is a common platform concern used
-by other modules such as `audio_recognition`.
+by other modules such as `robot_sandbox`.
 
 Naming convention:
 

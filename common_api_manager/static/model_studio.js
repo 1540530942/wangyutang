@@ -134,7 +134,7 @@ async function saveAudioModelSelection() {
       body: JSON.stringify(payload),
     });
     applyAudioModelSelection(data);
-    toast('audio_recognition 模型选择已更新');
+    toast('robot_sandbox 模型选择已更新');
   } catch (error) {
     $('audioModelSelection').textContent = error.message;
     toast(error.message, true);

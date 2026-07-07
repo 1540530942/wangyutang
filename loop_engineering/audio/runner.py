@@ -24,8 +24,8 @@ from .observer import RobotObserver
 
 PlannerMode = Literal["rule", "llm"]
 
-# 路径到 audio_recognition 包根目录
-_AUDIO_PKG = Path(__file__).resolve().parents[2] / "audio_recognition"
+# 路径到 robot_sandbox 包根目录
+_AUDIO_PKG = Path(__file__).resolve().parents[2] / "robot_sandbox"
 _CATALOG = _AUDIO_PKG.parent / "action_move" / "skill_catalog.json"
 if not _CATALOG.exists():
     _CATALOG = _AUDIO_PKG / "skills" / "skill_catalog.json"
@@ -38,8 +38,8 @@ def _route_rule(transcript: str) -> tuple[str, str, float]:
     if pkg_parent not in sys.path:
         sys.path.insert(0, pkg_parent)
 
-    from audio_recognition.legacy.planner import RuleBasedTaskPlanner
-    from audio_recognition.skills.face_router import is_face_skill
+    from robot_sandbox.legacy.planner import RuleBasedTaskPlanner
+    from robot_sandbox.skills.face_router import is_face_skill
 
     t0 = time.monotonic()
     planner = RuleBasedTaskPlanner(_CATALOG)
@@ -63,7 +63,7 @@ def _route_llm(
     if pkg_parent not in sys.path:
         sys.path.insert(0, pkg_parent)
 
-    from audio_recognition.harness.react_loop import route_transcript
+    from robot_sandbox.harness.react_loop import route_transcript
 
     t0 = time.monotonic()
     result = route_transcript(
