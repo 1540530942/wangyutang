@@ -1,0 +1,16 @@
+{
+  "description": "robot_gateway Caddyfile route contract. input=public path prefix, expected=default upstream that must appear in the reverse_proxy line. Verified against robot_gateway/Caddyfile. The /audio and /interact routes were retired 2026-07-08 (see docs/migration-robot_sandbox-routes.md).",
+  "route_cases": [
+    {"path": "/camera/*", "upstream": "camera-snapshot:8099"},
+    {"path": "/action/*", "upstream": "action-move:8094"},
+    {"path": "/robot_sandbox/*", "upstream": "robot-sandbox:8095"},
+    {"path": "/audio_interact/*", "upstream": "audio-interact:8097"},
+    {"path": "/common/*", "upstream": "host.docker.internal:8101"},
+    {"path": "/robot/*", "upstream": "pi5-robot:8093"},
+    {"path": "/slam/*", "upstream": "slam-mapping:8301"},
+    {"path": "/face/*", "upstream": "smile-face:8096"}
+  ],
+  "retired_routes": ["/audio/*", "/interact/*"],
+  "health_route": "handle /api/health",
+  "static_files": ["site/index.html", "site/styles.css"]
+}

@@ -1,0 +1,5 @@
+{
+  "description": "common_sense doc-integrity contract. common_sense holds reference docs (no service code), so 'test data' is the set of files/tokens the README must keep in sync. Verified against common_sense/README.md and referenced HTML.",
+  "referenced_files_min_size": {"network_topology_remote_access.html": 100},
+  "readme_must_mention": ["camera-snapshot", "action-move", "robot-sandbox", "smile-face", "pi5-robot"]
+}
