@@ -55,13 +55,18 @@ $("modeVadBtn").onclick = () => showMode("vad");
 // ---- result rendering ----
 function renderResult(d) {
   const wake = d.wake_status || "—";
-  const skill = d.command && d.command.skill_id ? d.command.skill_id : (d.command ? "(无技能)" : "—");
+  // segment (/api/audio/segment) nests the skill under command.skill_id;
+  // the VAD_ASR streaming path (/ws/audio -> _process) returns it top-level
+  // as skill_id. Accept both shapes so all three modes display consistently.
+  const skillId = (d.command && d.command.skill_id) || d.skill_id || "";
+  const hasText = Boolean(d.text);
+  const skill = skillId || (hasText ? "(无技能)" : "—");
   $("rText").textContent = d.text || "（空）";
   const wakeEl = $("rWake");
   wakeEl.textContent = wake;
   wakeEl.className = "out " + (wake === "awake" || wake === "woken" ? "ok" : wake === "asleep" ? "warn" : "");
   $("rSkill").textContent = skill;
-  $("rSkill").className = "out " + (d.command && d.command.skill_id ? "ok" : "");
+  $("rSkill").className = "out " + (skillId ? "ok" : "");
   $("rTts").textContent = d.tts_text || "—";
   $("rRaw").textContent = JSON.stringify(d, null, 2);
   if (d.tts_audio_base64) playBase64Wav(d.tts_audio_base64);
