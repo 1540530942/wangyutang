@@ -21,11 +21,11 @@
 		reverse_proxy {$ACTION_UPSTREAM:action-move:8094}
 	}
 
-	handle_path /audio/* {
-		reverse_proxy {$AUDIO_UPSTREAM:robot-sandbox:8095}
+	handle_path /robot_sandbox/* {
+		reverse_proxy {$ROBOT_SANDBOX_UPSTREAM:robot-sandbox:8095}
 	}
 
-	handle_path /interact/* {
+	handle_path /audio_interact/* {
 		reverse_proxy {$AUDIO_INTERACT_UPSTREAM:audio-interact:8097}
 	}
 

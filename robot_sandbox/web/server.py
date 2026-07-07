@@ -347,13 +347,13 @@ def save_embedded_audio(payload: dict[str, Any]) -> tuple[str, float]:
 
     payload["audio_base64"] = ""
     payload["audio_filename"] = filename
-    payload["audio_url"] = f"/audio/api/audio/{stored_name}"
+    payload["audio_url"] = f"/robot_sandbox/api/audio/{stored_name}"
     payload["audio_duration_seconds"] = duration
     return payload["audio_url"], duration
 
 
 def local_audio_path_from_url(audio_url: str) -> Path | None:
-    prefix = "/audio/api/audio/"
+    prefix = "/robot_sandbox/api/audio/"
     if not audio_url.startswith(prefix):
         return None
     target = (UPLOADS_DIR / Path(audio_url.removeprefix(prefix)).name).resolve()

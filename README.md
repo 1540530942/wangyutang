@@ -13,8 +13,8 @@ These build and run as containers and are reachable through the Caddy gateway.
 | `robot_gateway/` | Caddy gateway + lightweight public homepage | `/` | 80/443 |
 | `camera_snapshot/` | TurboPi / Raspberry Pi camera + screenshot snapshot service | `/camera/` | 8099 |
 | `action_move/` | Robot motion API and TurboPi chassis/servo control wrapper | `/action/` | 8094 |
-| `robot_sandbox/` | robot_sandbox: text → tool_calls → validation → safety → execution → tts_text | `/audio/` | 8095 |
-| `audio_interact/` | Audio I/O adapter: VAD/ASR/wake-state/TTS, settings, `/api/audio/segment` | `/interact/` | 8097 |
+| `robot_sandbox/` | robot_sandbox: text → tool_calls → validation → safety → execution → tts_text | `/robot_sandbox/` | 8095 |
+| `audio_interact/` | Audio I/O adapter: VAD/ASR/wake-state/TTS, settings, `/api/audio/segment` | `/audio_interact/` | 8097 |
 | `pi5_robot/` | Raspberry Pi 5 patrol robot console + simulation robotd/visiond/harnessd | `/robot/` | 8093 |
 | `slam_mapping/` | Pose and occupancy-grid module for SLAM-style motion feedback | `/slam/` | 8301 |
 | `smile_face/` | Wall-E-like synchronized robot expression screen (web + Pi LCD kiosk) | `/face/` | 8096 |

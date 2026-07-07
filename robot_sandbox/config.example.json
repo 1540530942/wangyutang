@@ -28,7 +28,7 @@
     ]
   },
   "cloud": {
-    "audio_server": "https://www.wangyutang.cn/audio",
+    "audio_server": "https://www.wangyutang.cn/robot_sandbox",
     "audio_token": "",
     "action_server": "https://www.wangyutang.cn/action",
     "action_enabled": true,

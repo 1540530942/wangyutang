@@ -68,7 +68,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "pre_speech_chunks": 10,
     "max_speech_seconds": 12,
     "energy_threshold": 400,
-    "ws_url": "wss://www.wangyutang.cn/interact/ws/audio",
+    "ws_url": "wss://www.wangyutang.cn/audio_interact/ws/audio",
     "device_id": "turbopi-01",
     "ws_timeout": 15,
     "result_timeout": 120,

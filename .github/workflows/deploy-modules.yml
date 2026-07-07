@@ -323,7 +323,7 @@ jobs:
 
           checks = {
               "gateway": "https://www.wangyutang.cn/api/health",
-              "interact": "https://www.wangyutang.cn/interact/api/health",
+              "interact": "https://www.wangyutang.cn/audio_interact/api/health",
               "face": "https://www.wangyutang.cn/face/api/state",
           }
           for name, url in checks.items():
@@ -361,7 +361,7 @@ jobs:
           base = "https://www.wangyutang.cn"
           cap = time.time()
           req = urllib.request.Request(
-              base + "/audio/api/recognize-text",
+              base + "/robot_sandbox/api/recognize-text",
               data=json.dumps({
                   "device_id": "deploy-assert",
                   "text": "左转",
@@ -377,7 +377,7 @@ jobs:
           # NOTE: /api/envelopes is an index summary (envelope_id/source/
           # transcript/t_created only) and never carries latency_ms. Use
           # /api/envelopes/latest, which returns the full serialized envelope.
-          with urllib.request.urlopen(base + "/audio/api/envelopes/latest", timeout=20) as r:
+          with urllib.request.urlopen(base + "/robot_sandbox/api/envelopes/latest", timeout=20) as r:
               env = json.loads(r.read()).get("envelope") or {}
           if "latency_ms" not in env:
               raise SystemExit(

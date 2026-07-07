@@ -47,7 +47,7 @@ const vadLiveStateEl = $("#vadLiveState");
 const vadLevelBar = $("#vadLevelBar");
 
 const REQUEST_TIMEOUT_MS = 90000;
-const VAD_WS_URL = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/interact/ws/audio`;
+const VAD_WS_URL = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/audio_interact/ws/audio`;
 const VAD_DEVICE_ID = "web-vad-asr";
 const VAD_TARGET_RATE = 16000;
 const VAD_THRESHOLD = 0.018;
@@ -736,7 +736,7 @@ function renderDashboard(data) {
   } else if (inputMode === "vad_asr") {
     latestTextEl.textContent = "等待 VAD_ASR 唤醒";
     latestSkillEl.textContent = "你好瓦力";
-    latestMetaEl.textContent = "Pi 端 Silero VAD 分段上传到 /interact/ws/audio；唤醒后识别结果会展示在这里。";
+    latestMetaEl.textContent = "Pi 端 Silero VAD 分段上传到 /audio_interact/ws/audio；唤醒后识别结果会展示在这里。";
     setPreviewSource("");
     renderVadRealtimeResult();
   } else {

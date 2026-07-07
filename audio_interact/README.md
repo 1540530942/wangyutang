@@ -9,7 +9,7 @@ Pi microphone
   -> edge_streamer.py
   -> Silero VAD speech segment
   -> 16 kHz WAV
-  -> WebSocket /interact/ws/audio
+  -> WebSocket /audio_interact/ws/audio
   -> common ASR
   -> wake-state gate
   -> robot_sandbox /api/recognize-text
@@ -51,6 +51,6 @@ python3 edge_streamer.py --vad-mode energy --energy-threshold 5000
 The cloud service is deployed as the `audio-interact` Compose service and exposed by the gateway at:
 
 ```text
-wss://www.wangyutang.cn/interact/ws/audio
-https://www.wangyutang.cn/interact/api/health
+wss://www.wangyutang.cn/audio_interact/ws/audio
+https://www.wangyutang.cn/audio_interact/api/health
 ```
