@@ -1,6 +1,6 @@
 # module : robot_gateway
 # target : tests/
-# run at : 2026-07-07 23:16:45 CST
+# run at : 2026-07-08 06:42:20 CST
 # cwd    : robot_gateway
 ----------------------------------------------------------------------
 ============================= test session starts ==============================
@@ -8,12 +8,22 @@ platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/work
 cachedir: .pytest_cache
 rootdir: /home/ubuntu/workspace/wangyutang/robot_gateway
 plugins: anyio-4.14.0
-collecting ... collected 5 items
+collecting ... collected 15 items
 
-tests/test_caddyfile.py::test_caddyfile_exists_and_nonempty PASSED       [ 20%]
-tests/test_caddyfile.py::test_every_service_route_present PASSED         [ 40%]
-tests/test_caddyfile.py::test_every_route_points_to_correct_upstream PASSED [ 60%]
-tests/test_caddyfile.py::test_health_endpoint_defined PASSED             [ 80%]
-tests/test_caddyfile.py::test_static_site_files_exist PASSED             [100%]
+tests/test_caddyfile.py::test_caddyfile_exists_and_nonempty PASSED       [  6%]
+tests/test_caddyfile.py::test_every_service_route_present PASSED         [ 13%]
+tests/test_caddyfile.py::test_every_route_points_to_correct_upstream PASSED [ 20%]
+tests/test_caddyfile.py::test_health_endpoint_defined PASSED             [ 26%]
+tests/test_caddyfile.py::test_static_site_files_exist PASSED             [ 33%]
+tests/test_route_cases.py::test_route_present_and_upstream[/camera/*] PASSED [ 40%]
+tests/test_route_cases.py::test_route_present_and_upstream[/action/*] PASSED [ 46%]
+tests/test_route_cases.py::test_route_present_and_upstream[/robot_sandbox/*] PASSED [ 53%]
+tests/test_route_cases.py::test_route_present_and_upstream[/audio_interact/*] PASSED [ 60%]
+tests/test_route_cases.py::test_route_present_and_upstream[/common/*] PASSED [ 66%]
+tests/test_route_cases.py::test_route_present_and_upstream[/robot/*] PASSED [ 73%]
+tests/test_route_cases.py::test_route_present_and_upstream[/slam/*] PASSED [ 80%]
+tests/test_route_cases.py::test_route_present_and_upstream[/face/*] PASSED [ 86%]
+tests/test_route_cases.py::test_retired_routes_absent PASSED             [ 93%]
+tests/test_route_cases.py::test_health_and_static PASSED                 [100%]
 
-============================== 5 passed in 0.01s ===============================
+============================== 15 passed in 0.03s ==============================

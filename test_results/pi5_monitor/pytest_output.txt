@@ -1,6 +1,6 @@
 # module : pi5_monitor
 # target : tests/
-# run at : 2026-07-07 23:16:45 CST
+# run at : 2026-07-08 06:42:20 CST
 # cwd    : pi5_monitor
 ----------------------------------------------------------------------
 ============================= test session starts ==============================
@@ -8,19 +8,28 @@ platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/work
 cachedir: .pytest_cache
 rootdir: /home/ubuntu/workspace/wangyutang/pi5_monitor
 plugins: anyio-4.14.0
-collecting ... collected 12 items
+collecting ... collected 21 items
 
-tests/test_analyzer.py::test_snapshot_detects_sudo_shutdown_command PASSED [  8%]
-tests/test_analyzer.py::test_snapshot_detects_undervoltage_in_journal PASSED [ 16%]
-tests/test_analyzer.py::test_snapshot_empty_returns_unknown PASSED       [ 25%]
-tests/test_analyzer.py::test_snapshot_all_blank_strings_returns_fallback PASSED [ 33%]
-tests/test_analyzer.py::test_analyze_events_flags_shutdown_sudo PASSED   [ 41%]
-tests/test_analyzer.py::test_analyze_events_flags_oom PASSED             [ 50%]
-tests/test_analyzer.py::test_analyze_events_empty_returns_no_record PASSED [ 58%]
-tests/test_analyzer.py::test_analyze_events_multiple_network_down PASSED [ 66%]
-tests/test_analyzer.py::test_event_summary_ssh_login PASSED              [ 75%]
-tests/test_analyzer.py::test_event_summary_sudo PASSED                   [ 83%]
-tests/test_analyzer.py::test_quick_analyze_prefers_snapshot PASSED       [ 91%]
-tests/test_analyzer.py::test_quick_analyze_falls_back_to_events PASSED   [100%]
+tests/test_analyzer.py::test_snapshot_detects_sudo_shutdown_command PASSED [  4%]
+tests/test_analyzer.py::test_snapshot_detects_undervoltage_in_journal PASSED [  9%]
+tests/test_analyzer.py::test_snapshot_empty_returns_unknown PASSED       [ 14%]
+tests/test_analyzer.py::test_snapshot_all_blank_strings_returns_fallback PASSED [ 19%]
+tests/test_analyzer.py::test_analyze_events_flags_shutdown_sudo PASSED   [ 23%]
+tests/test_analyzer.py::test_analyze_events_flags_oom PASSED             [ 28%]
+tests/test_analyzer.py::test_analyze_events_empty_returns_no_record PASSED [ 33%]
+tests/test_analyzer.py::test_analyze_events_multiple_network_down PASSED [ 38%]
+tests/test_analyzer.py::test_event_summary_ssh_login PASSED              [ 42%]
+tests/test_analyzer.py::test_event_summary_sudo PASSED                   [ 47%]
+tests/test_analyzer.py::test_quick_analyze_prefers_snapshot PASSED       [ 52%]
+tests/test_analyzer.py::test_quick_analyze_falls_back_to_events PASSED   [ 57%]
+tests/test_analyzer_cases.py::test_snapshot_case[sudo_shutdown_detected] PASSED [ 61%]
+tests/test_analyzer_cases.py::test_snapshot_case[undervoltage_in_journal] PASSED [ 66%]
+tests/test_analyzer_cases.py::test_snapshot_case[empty_snapshot_who_hint] PASSED [ 71%]
+tests/test_analyzer_cases.py::test_events_case[shutdown_sudo_event] PASSED [ 76%]
+tests/test_analyzer_cases.py::test_events_case[oom_event] PASSED         [ 80%]
+tests/test_analyzer_cases.py::test_events_case[empty_events] PASSED      [ 85%]
+tests/test_analyzer_cases.py::test_events_case[multiple_network_down] PASSED [ 90%]
+tests/test_analyzer_cases.py::test_summary_case[ssh_login_summary] PASSED [ 95%]
+tests/test_analyzer_cases.py::test_summary_case[sudo_summary] PASSED     [100%]
 
-============================== 12 passed in 0.02s ==============================
+============================== 21 passed in 0.04s ==============================

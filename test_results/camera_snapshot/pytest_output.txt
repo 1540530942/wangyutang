@@ -1,6 +1,6 @@
 # module : camera_snapshot
 # target : tests/
-# run at : 2026-07-07 23:16:45 CST
+# run at : 2026-07-08 06:42:20 CST
 # cwd    : camera_snapshot
 ----------------------------------------------------------------------
 ============================= test session starts ==============================
@@ -8,22 +8,50 @@ platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/work
 cachedir: .pytest_cache
 rootdir: /home/ubuntu/workspace/wangyutang/camera_snapshot
 plugins: anyio-4.14.0
-collecting ... collected 15 items
+collecting ... collected 43 items
 
-tests/test_smoke.py::CameraSnapshotSmokeTests::test_control_and_stop_are_kind_scoped PASSED [  6%]
-tests/test_smoke.py::CameraSnapshotSmokeTests::test_inspection_api_stores_cpu_and_memory_metrics PASSED [ 13%]
-tests/test_smoke.py::CameraSnapshotSmokeTests::test_inspection_diagnoses_power_undervoltage PASSED [ 20%]
-tests/test_smoke.py::CameraSnapshotSmokeTests::test_legacy_mode_mapping_and_frame_kind_inference PASSED [ 26%]
-tests/test_smoke.py::CameraSnapshotSmokeTests::test_parse_cpu_usage_uses_proc_stat_deltas PASSED [ 33%]
-tests/test_smoke.py::CameraSnapshotSmokeTests::test_ros_web_video_backend_reports_missing_usb_camera_device PASSED [ 40%]
-tests/test_smoke.py::CameraSnapshotSmokeTests::test_sender_does_not_fallback_to_screenshot_when_camera_capture_fails PASSED [ 46%]
-tests/test_smoke.py::CameraSnapshotSmokeTests::test_sender_reports_inspection_before_screen_capture PASSED [ 53%]
-tests/test_smoke.py::CameraSnapshotSmokeTests::test_sender_reports_real_camera_source_when_camera_capture_works PASSED [ 60%]
-tests/test_smoke.py::CameraSnapshotSmokeTests::test_sender_upload_frame_sends_capture_kind_header PASSED [ 66%]
-tests/test_smoke.py::CameraSnapshotSmokeTests::test_sender_upload_task_status_reports_failure PASSED [ 73%]
-tests/test_smoke.py::CameraSnapshotSmokeTests::test_server_stores_latest_frames_per_kind_without_overwrite PASSED [ 80%]
-tests/test_smoke.py::CameraSnapshotSmokeTests::test_smile_face_render_endpoint_returns_jpeg PASSED [ 86%]
-tests/test_smoke.py::CameraSnapshotSmokeTests::test_static_page_exposes_independent_capture_cards PASSED [ 93%]
+tests/test_server_pure_cases.py::test_normalize_kind[camera] PASSED      [  2%]
+tests/test_server_pure_cases.py::test_normalize_kind[screenshot] PASSED  [  4%]
+tests/test_server_pure_cases.py::test_normalize_kind[SCREEN] PASSED      [  6%]
+tests/test_server_pure_cases.py::test_normalize_kind[None] PASSED        [  9%]
+tests/test_server_pure_cases.py::test_normalize_kind[face] PASSED        [ 11%]
+tests/test_server_pure_cases.py::test_normalize_kind[bogus] PASSED       [ 13%]
+tests/test_server_pure_cases.py::test_infer_kind[face] PASSED            [ 16%]
+tests/test_server_pure_cases.py::test_infer_kind[smile-face-render] PASSED [ 18%]
+tests/test_server_pure_cases.py::test_infer_kind[screenshot] PASSED      [ 20%]
+tests/test_server_pure_cases.py::test_infer_kind[inspect] PASSED         [ 23%]
+tests/test_server_pure_cases.py::test_infer_kind[whatever] PASSED        [ 25%]
+tests/test_server_pure_cases.py::test_mode_to_kind_and_mode[screenshot/None] PASSED [ 27%]
+tests/test_server_pure_cases.py::test_mode_to_kind_and_mode[face/None] PASSED [ 30%]
+tests/test_server_pure_cases.py::test_mode_to_kind_and_mode[inspect/None] PASSED [ 32%]
+tests/test_server_pure_cases.py::test_mode_to_kind_and_mode[single/camera] PASSED [ 34%]
+tests/test_server_pure_cases.py::test_mode_to_kind_and_mode[continuous/camera] PASSED [ 37%]
+tests/test_server_pure_cases.py::test_mode_to_kind_and_mode[continuous/screen] PASSED [ 39%]
+tests/test_server_pure_cases.py::test_mode_to_kind_and_mode[bogus/camera] PASSED [ 41%]
+tests/test_server_pure_cases.py::test_normalize_gpio[26] PASSED          [ 44%]
+tests/test_server_pure_cases.py::test_normalize_gpio[17] PASSED          [ 46%]
+tests/test_server_pure_cases.py::test_normalize_gpio[abc] PASSED         [ 48%]
+tests/test_server_pure_cases.py::test_normalize_gpio[0] PASSED           [ 51%]
+tests/test_server_pure_cases.py::test_normalize_gpio[99] PASSED          [ 53%]
+tests/test_server_pure_cases.py::test_throttled_flags[throttled=0x50000] PASSED [ 55%]
+tests/test_server_pure_cases.py::test_throttled_flags[0x0] PASSED        [ 58%]
+tests/test_server_pure_cases.py::test_throttled_flags[no hex here] PASSED [ 60%]
+tests/test_server_pure_cases.py::test_throttled_flags[0x1] PASSED        [ 62%]
+tests/test_server_pure_cases.py::test_throttled_flags[0x5] PASSED        [ 65%]
+tests/test_smoke.py::CameraSnapshotSmokeTests::test_control_and_stop_are_kind_scoped PASSED [ 67%]
+tests/test_smoke.py::CameraSnapshotSmokeTests::test_inspection_api_stores_cpu_and_memory_metrics PASSED [ 69%]
+tests/test_smoke.py::CameraSnapshotSmokeTests::test_inspection_diagnoses_power_undervoltage PASSED [ 72%]
+tests/test_smoke.py::CameraSnapshotSmokeTests::test_legacy_mode_mapping_and_frame_kind_inference PASSED [ 74%]
+tests/test_smoke.py::CameraSnapshotSmokeTests::test_parse_cpu_usage_uses_proc_stat_deltas PASSED [ 76%]
+tests/test_smoke.py::CameraSnapshotSmokeTests::test_ros_web_video_backend_reports_missing_usb_camera_device PASSED [ 79%]
+tests/test_smoke.py::CameraSnapshotSmokeTests::test_sender_does_not_fallback_to_screenshot_when_camera_capture_fails PASSED [ 81%]
+tests/test_smoke.py::CameraSnapshotSmokeTests::test_sender_reports_inspection_before_screen_capture PASSED [ 83%]
+tests/test_smoke.py::CameraSnapshotSmokeTests::test_sender_reports_real_camera_source_when_camera_capture_works PASSED [ 86%]
+tests/test_smoke.py::CameraSnapshotSmokeTests::test_sender_upload_frame_sends_capture_kind_header PASSED [ 88%]
+tests/test_smoke.py::CameraSnapshotSmokeTests::test_sender_upload_task_status_reports_failure PASSED [ 90%]
+tests/test_smoke.py::CameraSnapshotSmokeTests::test_server_stores_latest_frames_per_kind_without_overwrite PASSED [ 93%]
+tests/test_smoke.py::CameraSnapshotSmokeTests::test_smile_face_render_endpoint_returns_jpeg PASSED [ 95%]
+tests/test_smoke.py::CameraSnapshotSmokeTests::test_static_page_exposes_independent_capture_cards PASSED [ 97%]
 tests/test_smoke.py::CameraSnapshotSmokeTests::test_task_status_failure_is_kind_scoped_and_records_error PASSED [100%]
 
 =============================== warnings summary ===============================
@@ -32,4 +60,4 @@ tests/test_smoke.py::CameraSnapshotSmokeTests::test_task_status_failure_is_kind_
     from starlette.testclient import TestClient as TestClient  # noqa
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-======================== 15 passed, 1 warning in 1.17s =========================
+======================== 43 passed, 1 warning in 1.21s =========================

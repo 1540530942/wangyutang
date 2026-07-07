@@ -1,6 +1,6 @@
 # module : common_sense
 # target : tests/
-# run at : 2026-07-07 23:16:45 CST
+# run at : 2026-07-08 06:42:20 CST
 # cwd    : common_sense
 ----------------------------------------------------------------------
 ============================= test session starts ==============================
@@ -8,11 +8,17 @@ platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/work
 cachedir: .pytest_cache
 rootdir: /home/ubuntu/workspace/wangyutang/common_sense
 plugins: anyio-4.14.0
-collecting ... collected 4 items
+collecting ... collected 10 items
 
-tests/test_docs_integrity.py::test_readme_exists PASSED                  [ 25%]
-tests/test_docs_integrity.py::test_referenced_files_exist PASSED         [ 50%]
-tests/test_docs_integrity.py::test_topology_html_nonempty PASSED         [ 75%]
+tests/test_doc_cases.py::test_referenced_file_exists_and_nonempty[network_topology_remote_access.html] PASSED [ 10%]
+tests/test_doc_cases.py::test_readme_mentions_service[camera-snapshot] PASSED [ 20%]
+tests/test_doc_cases.py::test_readme_mentions_service[action-move] PASSED [ 30%]
+tests/test_doc_cases.py::test_readme_mentions_service[robot-sandbox] PASSED [ 40%]
+tests/test_doc_cases.py::test_readme_mentions_service[smile-face] PASSED [ 50%]
+tests/test_doc_cases.py::test_readme_mentions_service[pi5-robot] PASSED  [ 60%]
+tests/test_docs_integrity.py::test_readme_exists PASSED                  [ 70%]
+tests/test_docs_integrity.py::test_referenced_files_exist PASSED         [ 80%]
+tests/test_docs_integrity.py::test_topology_html_nonempty PASSED         [ 90%]
 tests/test_docs_integrity.py::test_topology_diagram_lists_core_services PASSED [100%]
 
-============================== 4 passed in 0.02s ===============================
+============================== 10 passed in 0.02s ==============================

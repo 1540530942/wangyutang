@@ -1,6 +1,6 @@
 # module : action_move
 # target : tests/
-# run at : 2026-07-07 23:16:45 CST
+# run at : 2026-07-08 06:42:20 CST
 # cwd    : action_move
 ----------------------------------------------------------------------
 ============================= test session starts ==============================
@@ -8,15 +8,29 @@ platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/work
 cachedir: .pytest_cache
 rootdir: /home/ubuntu/workspace/wangyutang/action_move
 plugins: anyio-4.14.0
-collecting ... collected 8 items
+collecting ... collected 22 items
 
-tests/test_default_unit_distance.py::DefaultUnitDistanceTest::test_catalog_and_server_default_to_ten_cm PASSED [ 12%]
-tests/test_default_unit_distance.py::DefaultUnitDistanceTest::test_edge_controller_fallback_defaults_to_ten_cm SKIPPED [ 25%]
-tests/test_default_unit_distance.py::DefaultUnitDistanceTest::test_executor_fallback_defaults_to_ten_cm PASSED [ 37%]
-tests/test_slam_reporting.py::SlamReportingTest::test_imu_actual_distance_overrides_commanded PASSED [ 50%]
-tests/test_slam_reporting.py::SlamReportingTest::test_imu_actual_yaw_overrides_commanded PASSED [ 62%]
-tests/test_slam_reporting.py::SlamReportingTest::test_move_forward_reports_unit_distance_as_dx PASSED [ 75%]
-tests/test_slam_reporting.py::SlamReportingTest::test_parse_edge_actuals PASSED [ 87%]
+tests/test_default_unit_distance.py::DefaultUnitDistanceTest::test_catalog_and_server_default_to_ten_cm PASSED [  4%]
+tests/test_default_unit_distance.py::DefaultUnitDistanceTest::test_edge_controller_fallback_defaults_to_ten_cm SKIPPED [  9%]
+tests/test_default_unit_distance.py::DefaultUnitDistanceTest::test_executor_fallback_defaults_to_ten_cm PASSED [ 13%]
+tests/test_executor_cases.py::test_clamp[clamp[5.0, 0.0, 10.0]] PASSED   [ 18%]
+tests/test_executor_cases.py::test_clamp[clamp[-1.0, 0.0, 10.0]] PASSED  [ 22%]
+tests/test_executor_cases.py::test_clamp[clamp[99.0, 0.0, 10.0]] PASSED  [ 27%]
+tests/test_executor_cases.py::test_unit_duration[move_1600] PASSED       [ 31%]
+tests/test_executor_cases.py::test_unit_duration[turn_450] PASSED        [ 36%]
+tests/test_executor_cases.py::test_unit_duration[move_3000] PASSED       [ 40%]
+tests/test_executor_cases.py::test_unit_duration[turn_2500] PASSED       [ 45%]
+tests/test_executor_cases.py::test_unit_duration[move_180] PASSED        [ 50%]
+tests/test_executor_cases.py::test_velocity_scale[1.0_0] PASSED          [ 54%]
+tests/test_executor_cases.py::test_velocity_scale[0.25] PASSED           [ 59%]
+tests/test_executor_cases.py::test_velocity_scale[1.0_1] PASSED          [ 63%]
+tests/test_executor_cases.py::test_cmd_vel_topics[/cmd_vel] PASSED       [ 68%]
+tests/test_executor_cases.py::test_cmd_vel_topics[/a,/b] PASSED          [ 72%]
+tests/test_executor_cases.py::test_cmd_vel_topics[/controller/cmd_vel] PASSED [ 77%]
+tests/test_slam_reporting.py::SlamReportingTest::test_imu_actual_distance_overrides_commanded PASSED [ 81%]
+tests/test_slam_reporting.py::SlamReportingTest::test_imu_actual_yaw_overrides_commanded PASSED [ 86%]
+tests/test_slam_reporting.py::SlamReportingTest::test_move_forward_reports_unit_distance_as_dx PASSED [ 90%]
+tests/test_slam_reporting.py::SlamReportingTest::test_parse_edge_actuals PASSED [ 95%]
 tests/test_slam_reporting.py::SlamReportingTest::test_turn_left_reports_turn_angle_as_positive_yaw PASSED [100%]
 
-========================= 7 passed, 1 skipped in 0.46s =========================
+======================== 21 passed, 1 skipped in 0.45s =========================

@@ -14,28 +14,32 @@ Tests run from **each module's own directory** because the suites import
 sibling modules by bare name (e.g. `import action_move_executor`). The runner
 handles the correct CWD per module.
 
-## Latest run — 2026-07-07 (all green)
+## Latest run — 2026-07-08 (all green)
 
-| Module | Result | Cases | What it verifies | Benefit |
+Cases now include per-module JSON-driven data (`tests/data/*.json`, recording
+input + expected output) added across every module.
+
+| Module | Result | Cases | JSON data | What it verifies |
 |---|---|---|---|---|
-| `action_move` | PASS | 7 (+1 skip) | Default unit distance = 10 cm, SLAM pose reporting | Motion API keeps calibrated step size + telemetry |
-| `audio_interact` | PASS | 5 | Wake-state machine (sleep/wake/timeout) | Voice front-end only acts when actually woken |
-| `robot_sandbox` | PASS | 65 (+33 sub) | ReAct pipeline, safety guard, legacy planners, case store, regression suite | robot_sandbox plans/executes/rejects correctly |
-| `camera_snapshot` | PASS | 15 | Capture/latest/control smoke paths | Camera service contract stays stable |
-| `common_api_manager` | PASS | 17 | Model Studio selection + smoke | Public workbench + ASR/TTS API stay wired |
-| `pi5_robot` | PASS | 5 | Harness executor + robot safety | Patrol MVP won't dispatch unsafe actions |
-| `slam_mapping` | PASS | 3 | SLAM core pose/grid math | Mapping feedback stays correct |
-| `slam_mapping/2d_action` | PASS | 6 | Closed-loop 2D action control | Move→observe→correct loop holds |
-| `smoke` | PASS | 56 | Skill routing + schema, no LLM | Core routing regressions caught cheaply/offline |
-| `pose_tracker` | PASS | 8 | IMU quaternion→yaw, cmd_vel dead-reckoning, dt clamp, reset/trail | Pose estimate math is provably correct |
-| `simulation` | PASS | 15 | RobotState physics: turn/move/clamp/gimbal/RGB/ray-cast | HW-free sim faithfully mirrors robot behaviour |
-| `loop_engineering` | PASS | 11 | Evaluator scoring weights (plan/exec/obs) + sonar obs check | Eval harness scores runs honestly |
-| `pi5_monitor` | PASS | 12 | Shutdown-snapshot + event analysis (sudo/OOM/undervoltage/network) | Disconnect forensics identify the real cause |
-| `smile_face` | PASS | 11 | Render math + real Pillow draw; emotion/style fallback | Expression frames actually reflect emotion |
-| `robot_gateway` | PASS | 5 | Caddyfile has every service route→upstream; static site present | A bad gateway edit fails CI, not prod |
-| `common_sense` | PASS | 4 | Referenced docs exist; topology lists core services | Reference docs can't silently rot |
+| `action_move` | PASS | 21 (+1 skip) | executor_cases.json (14) | clamp, unit_duration timing, velocity_scale, cmd_vel topics + defaults |
+| `audio_interact` | PASS | 13 | wake_cases.json (8) | wake-state machine + wake-word homophones |
+| `robot_sandbox` | PASS | 65 (+33 sub) | (inline) | ReAct pipeline, safety guard, planners, case store, regression |
+| `camera_snapshot` | PASS | 43 | server_pure_cases.json (28) | kind/mode/gpio normalization, throttle bitmask, capture smoke |
+| `common_api_manager` | PASS | 17 | (selection json) | Model Studio selection + smoke |
+| `pi5_robot` | PASS | 11 | robot_safety_cases.json (6) | move/rotate limits, obstacle-blocks-forward |
+| `slam_mapping` | PASS | 7 | slam_cases.json (4) | dead-reckoning pose + occupancy-grid scan |
+| `slam_mapping/2d_action` | PASS | 6 | (inline) | closed-loop 2D action control |
+| `smoke` | PASS | 76 | skill_routing_cases.json (19) | skill routing + schema, registry drift, no LLM |
+| `pose_tracker` | PASS | 14 | pose_cases.json (6) | IMU yaw, cmd_vel dead-reckoning, dt clamp, reset |
+| `simulation` | PASS | 26 | state_cases.json (11) | RobotState physics: turn/move/clamp/gimbal/RGB/ray-cast |
+| `loop_engineering` | PASS | 19 | evaluator_cases.json (8) | evaluator scoring weights + sonar obs check |
+| `pi5_monitor` | PASS | 21 | analyzer_cases.json (9) | shutdown-snapshot + event/summary analysis |
+| `smile_face` | PASS | 26 | render_cases.json (15) | render math + real Pillow draw; emotion/style |
+| `robot_gateway` | PASS | 15 | route_cases.json (10) | route→upstream contract, retired routes absent |
+| `common_sense` | PASS | 10 | doc_cases.json (6) | referenced-doc integrity + README service tokens |
 
-**Total: 245 passed, 1 skipped, 33 subtests across 16 suites.**
+**Total: 390 passed, 1 skipped, 33 subtests across 16 suites (~148 of them
+JSON data-driven cases).**
 
 ## Honesty notes
 

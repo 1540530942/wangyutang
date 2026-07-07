@@ -1,6 +1,6 @@
 # module : loop_engineering
 # target : tests/
-# run at : 2026-07-07 23:16:45 CST
+# run at : 2026-07-08 06:42:20 CST
 # cwd    : loop_engineering
 ----------------------------------------------------------------------
 ============================= test session starts ==============================
@@ -8,18 +8,26 @@ platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/work
 cachedir: .pytest_cache
 rootdir: /home/ubuntu/workspace/wangyutang/loop_engineering
 plugins: anyio-4.14.0
-collecting ... collected 11 items
+collecting ... collected 19 items
 
-tests/test_evaluator.py::test_correct_plan_only_scores_full PASSED       [  9%]
-tests/test_evaluator.py::test_wrong_route_fails_planning PASSED          [ 18%]
-tests/test_evaluator.py::test_wrong_skill_fails_planning PASSED          [ 27%]
-tests/test_evaluator.py::test_expected_no_action_passes_with_empty_skill PASSED [ 36%]
-tests/test_evaluator.py::test_execute_on_robot_success_adds_execution_score PASSED [ 45%]
-tests/test_evaluator.py::test_execute_on_robot_dispatch_failure_partial_score PASSED [ 54%]
-tests/test_evaluator.py::test_execute_on_robot_not_dispatched_no_execution_score PASSED [ 63%]
-tests/test_evaluator.py::test_apply_obs_computes_delta_and_pass PASSED   [ 72%]
-tests/test_evaluator.py::test_apply_obs_out_of_tolerance_fails_obs PASSED [ 81%]
-tests/test_evaluator.py::test_apply_obs_no_check_sets_none PASSED        [ 90%]
-tests/test_evaluator.py::test_min_sonar_floor_fails_when_too_close PASSED [100%]
+tests/test_evaluator.py::test_correct_plan_only_scores_full PASSED       [  5%]
+tests/test_evaluator.py::test_wrong_route_fails_planning PASSED          [ 10%]
+tests/test_evaluator.py::test_wrong_skill_fails_planning PASSED          [ 15%]
+tests/test_evaluator.py::test_expected_no_action_passes_with_empty_skill PASSED [ 21%]
+tests/test_evaluator.py::test_execute_on_robot_success_adds_execution_score PASSED [ 26%]
+tests/test_evaluator.py::test_execute_on_robot_dispatch_failure_partial_score PASSED [ 31%]
+tests/test_evaluator.py::test_execute_on_robot_not_dispatched_no_execution_score PASSED [ 36%]
+tests/test_evaluator.py::test_apply_obs_computes_delta_and_pass PASSED   [ 42%]
+tests/test_evaluator.py::test_apply_obs_out_of_tolerance_fails_obs PASSED [ 47%]
+tests/test_evaluator.py::test_apply_obs_no_check_sets_none PASSED        [ 52%]
+tests/test_evaluator.py::test_min_sonar_floor_fails_when_too_close PASSED [ 57%]
+tests/test_evaluator_cases.py::test_evaluator_case[correct_plan_only_full_score] PASSED [ 63%]
+tests/test_evaluator_cases.py::test_evaluator_case[wrong_route_fails] PASSED [ 68%]
+tests/test_evaluator_cases.py::test_evaluator_case[wrong_skill_fails] PASSED [ 73%]
+tests/test_evaluator_cases.py::test_evaluator_case[execute_success_full_score] PASSED [ 78%]
+tests/test_evaluator_cases.py::test_evaluator_case[execute_dispatch_fail_partial] PASSED [ 84%]
+tests/test_evaluator_cases.py::test_evaluator_case[execute_not_dispatched] PASSED [ 89%]
+tests/test_evaluator_cases.py::test_evaluator_case[obs_sonar_delta_pass] PASSED [ 94%]
+tests/test_evaluator_cases.py::test_evaluator_case[obs_out_of_tolerance_fail] PASSED [100%]
 
-============================== 11 passed in 0.03s ==============================
+============================== 19 passed in 0.05s ==============================

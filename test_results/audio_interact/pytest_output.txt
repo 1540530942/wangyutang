@@ -1,6 +1,6 @@
 # module : audio_interact
 # target : tests/
-# run at : 2026-07-07 23:16:45 CST
+# run at : 2026-07-08 06:42:20 CST
 # cwd    : audio_interact
 ----------------------------------------------------------------------
 ============================= test session starts ==============================
@@ -8,12 +8,20 @@ platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/work
 cachedir: .pytest_cache
 rootdir: /home/ubuntu/workspace/wangyutang/audio_interact
 plugins: anyio-4.14.0
-collecting ... collected 5 items
+collecting ... collected 13 items
 
-tests/test_wake_state.py::test_wake_word_accepts_homophones PASSED       [ 20%]
-tests/test_wake_state.py::test_sleeping_device_ignores_commands_until_wake PASSED [ 40%]
-tests/test_wake_state.py::test_wake_word_activates_and_routes_following_text PASSED [ 60%]
-tests/test_wake_state.py::test_wake_phrase_with_inline_command_routes_suffix PASSED [ 80%]
+tests/test_wake_cases.py::test_wake_word[\u4f60\u597d\uff0c\u74e6\u529b] PASSED [  7%]
+tests/test_wake_cases.py::test_wake_word[\u4f60\u597d \u54c7\u529b] PASSED [ 15%]
+tests/test_wake_cases.py::test_wake_word[\u4f60\u597d walle] PASSED      [ 23%]
+tests/test_wake_cases.py::test_wake_word[\u524d\u8fdb] PASSED            [ 30%]
+tests/test_wake_cases.py::test_wake_sequence[sleeping_ignores_commands] PASSED [ 38%]
+tests/test_wake_cases.py::test_wake_sequence[wake_then_command_routes] PASSED [ 46%]
+tests/test_wake_cases.py::test_wake_sequence[inline_wake_plus_command] PASSED [ 53%]
+tests/test_wake_cases.py::test_wake_sequence[dismiss_back_to_sleep] PASSED [ 61%]
+tests/test_wake_state.py::test_wake_word_accepts_homophones PASSED       [ 69%]
+tests/test_wake_state.py::test_sleeping_device_ignores_commands_until_wake PASSED [ 76%]
+tests/test_wake_state.py::test_wake_word_activates_and_routes_following_text PASSED [ 84%]
+tests/test_wake_state.py::test_wake_phrase_with_inline_command_routes_suffix PASSED [ 92%]
 tests/test_wake_state.py::test_dismiss_puts_device_back_to_sleep PASSED  [100%]
 
-============================== 5 passed in 0.02s ===============================
+============================== 13 passed in 0.03s ==============================

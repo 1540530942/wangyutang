@@ -1,6 +1,6 @@
 # module : common_api_manager
 # target : tests/
-# run at : 2026-07-07 23:16:45 CST
+# run at : 2026-07-08 06:42:20 CST
 # cwd    : common_api_manager
 ----------------------------------------------------------------------
 ============================= test session starts ==============================
@@ -28,4 +28,4 @@ tests/test_smoke.py::test_vision_dashscope_health PASSED                 [ 88%]
 tests/test_smoke.py::test_vision_dashscope_analyze_json PASSED           [ 94%]
 tests/test_smoke.py::test_spark_llm_returns_text PASSED                  [100%]
 
-============================= 17 passed in 28.52s ==============================
+============================= 17 passed in 12.13s ==============================

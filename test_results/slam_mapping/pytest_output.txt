@@ -1,6 +1,6 @@
 # module : slam_mapping
 # target : tests/
-# run at : 2026-07-07 23:16:45 CST
+# run at : 2026-07-08 06:42:20 CST
 # cwd    : slam_mapping
 ----------------------------------------------------------------------
 ============================= test session starts ==============================
@@ -8,10 +8,14 @@ platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/work
 cachedir: .pytest_cache
 rootdir: /home/ubuntu/workspace/wangyutang/slam_mapping
 plugins: anyio-4.14.0
-collecting ... collected 3 items
+collecting ... collected 7 items
 
-tests/test_slam_core.py::SlamMapperTest::test_forward_20cm_reports_actual_pose_delta PASSED [ 33%]
-tests/test_slam_core.py::SlamMapperTest::test_front_80cm_scan_marks_occupancy_grid_obstacle PASSED [ 66%]
+tests/test_slam_cases.py::test_slam_case[forward_20cm_pose_delta] PASSED [ 14%]
+tests/test_slam_cases.py::test_slam_case[turn_left_90_then_forward_axis_change] PASSED [ 28%]
+tests/test_slam_cases.py::test_slam_case[forward_accumulates_distance] PASSED [ 42%]
+tests/test_slam_cases.py::test_slam_case[scan_80cm_marks_one_obstacle] PASSED [ 57%]
+tests/test_slam_core.py::SlamMapperTest::test_forward_20cm_reports_actual_pose_delta PASSED [ 71%]
+tests/test_slam_core.py::SlamMapperTest::test_front_80cm_scan_marks_occupancy_grid_obstacle PASSED [ 85%]
 tests/test_slam_core.py::SlamMapperTest::test_turn_left_90deg_then_forward_changes_coordinate_axis PASSED [100%]
 
-============================== 3 passed in 0.02s ===============================
+============================== 7 passed in 0.03s ===============================

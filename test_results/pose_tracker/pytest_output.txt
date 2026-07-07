@@ -1,6 +1,6 @@
 # module : pose_tracker
 # target : tests/
-# run at : 2026-07-07 23:16:45 CST
+# run at : 2026-07-08 06:42:20 CST
 # cwd    : pose_tracker
 ----------------------------------------------------------------------
 ============================= test session starts ==============================
@@ -8,15 +8,21 @@ platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/work
 cachedir: .pytest_cache
 rootdir: /home/ubuntu/workspace/wangyutang/pose_tracker
 plugins: anyio-4.14.0
-collecting ... collected 8 items
+collecting ... collected 14 items
 
-tests/test_pose_estimator.py::test_imu_quaternion_90deg_yaw PASSED       [ 12%]
-tests/test_pose_estimator.py::test_imu_identity_quaternion_zero_yaw PASSED [ 25%]
-tests/test_pose_estimator.py::test_cmd_vel_forward_integration_known_dt PASSED [ 37%]
-tests/test_pose_estimator.py::test_cmd_vel_angular_integrates_yaw_without_imu PASSED [ 50%]
-tests/test_pose_estimator.py::test_cmd_vel_dt_clamped_to_half_second PASSED [ 62%]
-tests/test_pose_estimator.py::test_snapshot_distance_and_describe_at_origin PASSED [ 75%]
-tests/test_pose_estimator.py::test_reset_clears_state_and_trail PASSED   [ 87%]
+tests/test_pose_cases.py::test_pose_case[imu_90deg_yaw] PASSED           [  7%]
+tests/test_pose_cases.py::test_pose_case[imu_identity_zero_yaw] PASSED   [ 14%]
+tests/test_pose_cases.py::test_pose_case[cmd_vel_forward_integration] PASSED [ 21%]
+tests/test_pose_cases.py::test_pose_case[cmd_vel_angular_integrates_yaw] PASSED [ 28%]
+tests/test_pose_cases.py::test_pose_case[cmd_vel_dt_clamped_half_second] PASSED [ 35%]
+tests/test_pose_cases.py::test_pose_case[reset_clears_state] PASSED      [ 42%]
+tests/test_pose_estimator.py::test_imu_quaternion_90deg_yaw PASSED       [ 50%]
+tests/test_pose_estimator.py::test_imu_identity_quaternion_zero_yaw PASSED [ 57%]
+tests/test_pose_estimator.py::test_cmd_vel_forward_integration_known_dt PASSED [ 64%]
+tests/test_pose_estimator.py::test_cmd_vel_angular_integrates_yaw_without_imu PASSED [ 71%]
+tests/test_pose_estimator.py::test_cmd_vel_dt_clamped_to_half_second PASSED [ 78%]
+tests/test_pose_estimator.py::test_snapshot_distance_and_describe_at_origin PASSED [ 85%]
+tests/test_pose_estimator.py::test_reset_clears_state_and_trail PASSED   [ 92%]
 tests/test_pose_estimator.py::test_trail_capped_at_max PASSED            [100%]
 
-============================== 8 passed in 0.02s ===============================
+============================== 14 passed in 0.05s ==============================

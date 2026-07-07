@@ -1,6 +1,6 @@
 # module : smile_face
 # target : tests/
-# run at : 2026-07-07 23:16:45 CST
+# run at : 2026-07-08 06:42:20 CST
 # cwd    : smile_face
 ----------------------------------------------------------------------
 ============================= test session starts ==============================
@@ -8,19 +8,34 @@ platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/work
 cachedir: .pytest_cache
 rootdir: /home/ubuntu/workspace/wangyutang/smile_face
 plugins: anyio-4.14.0
-collecting ... collected 11 items
+collecting ... collected 26 items
 
-tests/test_face_render.py::test_clamp_bounds PASSED                      [  9%]
-tests/test_face_render.py::test_mix_linear_interpolation PASSED          [ 18%]
-tests/test_face_render.py::test_blend_colors_endpoints_and_midpoint PASSED [ 27%]
-tests/test_face_render.py::test_blend_clamps_out_of_range_t PASSED       [ 36%]
-tests/test_face_render.py::test_star_points_count_is_double PASSED       [ 45%]
-tests/test_face_render.py::test_all_emotions_have_required_keys PASSED   [ 54%]
-tests/test_face_render.py::test_styles_have_palette_keys PASSED          [ 63%]
-tests/test_face_render.py::test_draw_face_returns_rgb_image_correct_size PASSED [ 72%]
-tests/test_face_render.py::test_different_emotions_render_different_pixels PASSED [ 81%]
-tests/test_face_render.py::test_unknown_emotion_falls_back_to_neutral PASSED [ 90%]
-tests/test_face_render.py::test_unknown_style_falls_back_to_mochi PASSED [100%]
+tests/test_face_render.py::test_clamp_bounds PASSED                      [  3%]
+tests/test_face_render.py::test_mix_linear_interpolation PASSED          [  7%]
+tests/test_face_render.py::test_blend_colors_endpoints_and_midpoint PASSED [ 11%]
+tests/test_face_render.py::test_blend_clamps_out_of_range_t PASSED       [ 15%]
+tests/test_face_render.py::test_star_points_count_is_double PASSED       [ 19%]
+tests/test_face_render.py::test_all_emotions_have_required_keys PASSED   [ 23%]
+tests/test_face_render.py::test_styles_have_palette_keys PASSED          [ 26%]
+tests/test_face_render.py::test_draw_face_returns_rgb_image_correct_size PASSED [ 30%]
+tests/test_face_render.py::test_different_emotions_render_different_pixels PASSED [ 34%]
+tests/test_face_render.py::test_unknown_emotion_falls_back_to_neutral PASSED [ 38%]
+tests/test_face_render.py::test_unknown_style_falls_back_to_mochi PASSED [ 42%]
+tests/test_render_cases.py::test_clamp[clamp[-5, 0, 10]] PASSED          [ 46%]
+tests/test_render_cases.py::test_clamp[clamp[15, 0, 10]] PASSED          [ 50%]
+tests/test_render_cases.py::test_clamp[clamp[5, 0, 10]] PASSED           [ 53%]
+tests/test_render_cases.py::test_mix[mix[0.0, 10.0, 0.0]] PASSED         [ 57%]
+tests/test_render_cases.py::test_mix[mix[0.0, 10.0, 1.0]] PASSED         [ 61%]
+tests/test_render_cases.py::test_mix[mix[0.0, 10.0, 0.5]] PASSED         [ 65%]
+tests/test_render_cases.py::test_blend[blend0.0] PASSED                  [ 69%]
+tests/test_render_cases.py::test_blend[blend1.0] PASSED                  [ 73%]
+tests/test_render_cases.py::test_blend[blend0.5] PASSED                  [ 76%]
+tests/test_render_cases.py::test_blend[blend2.0] PASSED                  [ 80%]
+tests/test_render_cases.py::test_blend[blend-1.0] PASSED                 [ 84%]
+tests/test_render_cases.py::test_star_points_count[star5] PASSED         [ 88%]
+tests/test_render_cases.py::test_star_points_count[star6] PASSED         [ 92%]
+tests/test_render_cases.py::test_emotion_table_shape PASSED              [ 96%]
+tests/test_render_cases.py::test_style_table_shape PASSED                [100%]
 
 =============================== warnings summary ===============================
 tests/test_face_render.py::test_different_emotions_render_different_pixels
@@ -39,4 +54,4 @@ tests/test_face_render.py::test_unknown_style_falls_back_to_mochi
     assert list(unknown.getdata()) == list(mochi.getdata())
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-======================== 11 passed, 6 warnings in 2.57s ========================
+======================== 26 passed, 6 warnings in 2.37s ========================

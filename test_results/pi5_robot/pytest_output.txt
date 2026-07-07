@@ -1,6 +1,6 @@
 # module : pi5_robot
 # target : tests/
-# run at : 2026-07-07 23:16:45 CST
+# run at : 2026-07-08 06:42:20 CST
 # cwd    : pi5_robot
 ----------------------------------------------------------------------
 ============================= test session starts ==============================
@@ -8,12 +8,18 @@ platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/work
 cachedir: .pytest_cache
 rootdir: /home/ubuntu/workspace/wangyutang/pi5_robot
 plugins: anyio-4.14.0
-collecting ... collected 5 items
+collecting ... collected 11 items
 
-tests/test_harness_executor.py::HarnessExecutorTests::test_patrol_task_writes_trace_and_report PASSED [ 20%]
-tests/test_robot_safety.py::RobotSafetyTests::test_backward_distance_is_limited PASSED [ 40%]
-tests/test_robot_safety.py::RobotSafetyTests::test_forward_move_updates_pose PASSED [ 60%]
-tests/test_robot_safety.py::RobotSafetyTests::test_front_obstacle_blocks_forward_motion PASSED [ 80%]
-tests/test_robot_safety.py::RobotSafetyTests::test_rotate_is_limited PASSED [100%]
+tests/test_harness_executor.py::HarnessExecutorTests::test_patrol_task_writes_trace_and_report PASSED [  9%]
+tests/test_robot_safety.py::RobotSafetyTests::test_backward_distance_is_limited PASSED [ 18%]
+tests/test_robot_safety.py::RobotSafetyTests::test_forward_move_updates_pose PASSED [ 27%]
+tests/test_robot_safety.py::RobotSafetyTests::test_front_obstacle_blocks_forward_motion PASSED [ 36%]
+tests/test_robot_safety.py::RobotSafetyTests::test_rotate_is_limited PASSED [ 45%]
+tests/test_robot_safety_cases.py::test_robot_safety_case[forward_20cm_updates_pose] PASSED [ 54%]
+tests/test_robot_safety_cases.py::test_robot_safety_case[backward_10cm_ok] PASSED [ 63%]
+tests/test_robot_safety_cases.py::test_robot_safety_case[backward_40cm_exceeds_limit] PASSED [ 72%]
+tests/test_robot_safety_cases.py::test_robot_safety_case[front_obstacle_blocks_forward] PASSED [ 81%]
+tests/test_robot_safety_cases.py::test_robot_safety_case[rotate_30deg_ok] PASSED [ 90%]
+tests/test_robot_safety_cases.py::test_robot_safety_case[rotate_120deg_exceeds_limit] PASSED [100%]
 
-============================== 5 passed in 0.03s ===============================
+============================== 11 passed in 0.05s ==============================
