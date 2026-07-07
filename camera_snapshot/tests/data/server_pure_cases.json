@@ -1,0 +1,41 @@
+{
+  "description": "camera_snapshot server pure-function cases. Verified against camera_snapshot/server.py. Covers normalize_kind, infer_kind_from_source, mode_to_kind_and_mode, normalize_gpio, throttled_flags (RPi throttle bitmask). raises=true means HTTPException(400).",
+  "normalize_kind_cases": [
+    {"value": "camera", "expected": "camera"},
+    {"value": "screenshot", "expected": "screen"},
+    {"value": "SCREEN", "expected": "screen"},
+    {"value": null, "expected": "camera"},
+    {"value": "face", "expected": "face"},
+    {"value": "bogus", "raises": true}
+  ],
+  "infer_kind_cases": [
+    {"source": "face", "expected": "face"},
+    {"source": "smile-face-render", "expected": "face"},
+    {"source": "screenshot", "expected": "screen"},
+    {"source": "inspect", "expected": "screen"},
+    {"source": "whatever", "expected": "camera"}
+  ],
+  "mode_cases": [
+    {"mode": "screenshot", "kind": null, "expected": ["screen", "single"]},
+    {"mode": "face", "kind": null, "expected": ["face", "single"]},
+    {"mode": "inspect", "kind": null, "expected": ["screen", "inspect"]},
+    {"mode": "single", "kind": "camera", "expected": ["camera", "single"]},
+    {"mode": "continuous", "kind": "camera", "expected": ["camera", "continuous"]},
+    {"mode": "continuous", "kind": "screen", "raises": true},
+    {"mode": "bogus", "kind": "camera", "raises": true}
+  ],
+  "gpio_cases": [
+    {"value": 26, "expected": 26},
+    {"value": "17", "expected": 17},
+    {"value": "abc", "expected": 26},
+    {"value": 0, "expected": 0},
+    {"value": 99, "raises": true}
+  ],
+  "throttle_cases": [
+    {"value": "throttled=0x50000", "expected": ["throttled", "undervoltage"]},
+    {"value": "0x0", "expected": []},
+    {"value": "no hex here", "expected": []},
+    {"value": "0x1", "expected": ["undervoltage"]},
+    {"value": "0x5", "expected": ["throttled", "undervoltage"]}
+  ]
+}
