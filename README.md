@@ -30,6 +30,26 @@ audio I/O lives in `audio_interact`, robot command planning/execution in
 | --- | --- | --- | --- |
 | `common_api_manager/` | Public workbench (Model Studio, Robot Skills) + platform ASR/TTS common API | `/common/` | host:8101 |
 
+## Web pages (可打开使用的网页)
+
+All under `https://www.wangyutang.cn`. Each page and what it does:
+
+| 页面 | 地址 | 功能说明 |
+| --- | --- | --- |
+| **首页 / 网关** | `/` | 机器人平台入口主页（robot_gateway 静态站）。 |
+| **相机快照** | `/camera/` | 查看 TurboPi 实时相机帧与截图、触发抓拍、控制相机。 |
+| **动作控制** | `/action/` | 底盘/舵机动作控制界面，直接下发 move/turn/look 等动作，含播报音量设置。 |
+| **robot_sandbox 控制台** | `/robot_sandbox/` | **纯文本指令**入口：输入“前进/左转”等文本 → 指令规划 → 校验 → 安全（front_distance 前置）→ 执行 → TTS 播报；右侧看识别历史、流水线阶段事件、envelope、相机预览、清零任务。**不含音频**（语音请用下面的 audio_interact）。 |
+| **audio_interact 语音输入台** | `/audio_interact/` | **语音输入**入口，三种模式：① **WonderEchoPro**——把输入模式设为 WonderEchoPro，树莓派硬件麦克风定长录音上传、本地扬声器播报；② **浏览器麦克风/扬声器**——用当前浏览器录音（4s）或上传 WAV → ASR → 唤醒词判断 → robot_sandbox 指令 → 浏览器扬声器播 TTS；③ **VAD_ASR 测试**——浏览器持续发 16k PCM，云端 Silero VAD 流式切分 + ASR + 唤醒，带实时 VAD 电平条。识别文本/唤醒状态/命中技能/TTS 实时显示。 |
+| **公共工作台** | `/common/` | common_api_manager 公共能力入口页。 |
+| **Model Studio** | `/common/model-studio` | 模型目录 + 每模型真实推理校验（点“校验”跑真实推理，非硬编码徽章）。 |
+| **机器人技能** | `/common/robot-skills` | 技能面板（原 function_center 继任页），调用 `/action/*`、`/camera/*`。 |
+| **Pi5 控制台** | `/robot/` | 树莓派5 巡逻机器人 MVP 控制台。 |
+| **SLAM 地图** | `/slam/` | 位姿 / 占据栅格地图反馈。 |
+| **表情屏** | `/face/` | Wall-E 风格机器人表情屏（网页 + 树莓派 LCD kiosk）。 |
+
+分工要点：**`/robot_sandbox/` = 文本指令**，**`/audio_interact/` = 音频（WonderEchoPro + 浏览器麦克风/扬声器 + VAD_ASR）**。两页共用同一套指令/唤醒/执行链路。路由改名历史见 [docs/migration-robot_sandbox-routes.md](docs/migration-robot_sandbox-routes.md)。
+
 ## Auxiliary modules and tooling (not deployed as services)
 
 | Path | Role |
