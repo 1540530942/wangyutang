@@ -64,7 +64,7 @@ MODEL_SELECTION_CACHE: dict[str, Any] = {"ts": 0.0, "selection": None, "error": 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="TurboPi Audio Recognition", version="0.1.0")
+app = FastAPI(title="TurboPi Robot Sandbox", version="0.1.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -537,7 +537,7 @@ def health() -> dict[str, Any]:
     age = time.time() - float(latest.get("reported_at") or 0) if latest else 0
     return {
         "status": "ok",
-        "service": "TurboPi Audio Recognition",
+        "service": "TurboPi Robot Sandbox",
         "has_result": bool(latest),
         "latest": latest,
         "latest_event": latest_event,
@@ -556,7 +556,7 @@ def dashboard() -> dict[str, Any]:
     age = time.time() - float(latest.get("reported_at") or 0) if latest else 0
     return {
         "status": "ok",
-        "service": "TurboPi Audio Recognition",
+        "service": "TurboPi Robot Sandbox",
         "action_server": ACTION_SERVER,
         "latest": latest,
         "latest_event": latest_event,
