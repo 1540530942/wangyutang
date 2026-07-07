@@ -1,0 +1,33 @@
+{
+  "description": "audio_interact wake_state cases. Verified against audio_interact/wake_state.py. wake_word_cases feed contains_wake_word(text)->bool; sequence_cases replay decide(device,text) on a fresh WakeStateStore, asserting status/should_route/route_text per utterance.",
+  "wake_word_cases": [
+    {"text": "你好，瓦力", "expected": true},
+    {"text": "你好 哇力", "expected": true},
+    {"text": "你好 walle", "expected": true},
+    {"text": "前进", "expected": false}
+  ],
+  "sequence_cases": [
+    {
+      "name": "sleeping_ignores_commands",
+      "ops": [{"text": "前进", "expected": {"status": "sleeping", "should_route": false}}]
+    },
+    {
+      "name": "wake_then_command_routes",
+      "ops": [
+        {"text": "你好瓦利", "expected": {"status": "awake", "should_route": false}},
+        {"text": "前进", "expected": {"status": "awake", "should_route": true, "route_text": "前进"}}
+      ]
+    },
+    {
+      "name": "inline_wake_plus_command",
+      "ops": [{"text": "你好瓦力向左转", "expected": {"status": "awake", "should_route": true, "route_text": "向左转"}}]
+    },
+    {
+      "name": "dismiss_back_to_sleep",
+      "ops": [
+        {"text": "你好瓦力", "expected": {"status": "awake", "should_route": false}},
+        {"text": "退下吧", "expected": {"status": "sleeping"}}
+      ]
+    }
+  ]
+}
