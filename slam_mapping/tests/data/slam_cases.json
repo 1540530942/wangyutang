@@ -1,0 +1,27 @@
+{
+  "description": "SlamMapper cases — dead-reckoning pose + occupancy-grid scan. Verified against slam_mapping/slam_core.py. ops run in order; angles stored in degrees and converted to radians by the loader.",
+  "cases": [
+    {
+      "name": "forward_20cm_pose_delta",
+      "ops": [{"odometry": {"dx_m": 0.2, "source": "move_forward_20cm"}}],
+      "expected_pose": {"x_m": 0.2, "y_m": 0.0, "distance_travelled_cm": 20.0, "source": "move_forward_20cm"},
+      "expected_map_available": false
+    },
+    {
+      "name": "turn_left_90_then_forward_axis_change",
+      "ops": [{"odometry": {"dyaw_deg": 90.0, "source": "turn_left_90deg"}}, {"odometry": {"dx_m": 0.2, "source": "forward_after_left"}}],
+      "expected_pose": {"x_m": 0.0, "x_tol": 1e-4, "y_m": 0.2, "yaw_deg": 90.0, "distance_travelled_cm": 20.0}
+    },
+    {
+      "name": "forward_accumulates_distance",
+      "ops": [{"odometry": {"dx_m": 0.2}}, {"odometry": {"dx_m": 0.3}}],
+      "expected_pose": {"x_m": 0.5, "distance_travelled_cm": 50.0}
+    },
+    {
+      "name": "scan_80cm_marks_one_obstacle",
+      "ops": [{"configure": {"map_enabled": true, "resolution_m": 0.1, "size_m": 2.0}}, {"scan": {"ranges": [0.8], "angle_min_deg": 0.0, "angle_increment_deg": 1.0}}],
+      "expected_occupied": 1,
+      "expected_map_available": true
+    }
+  ]
+}
