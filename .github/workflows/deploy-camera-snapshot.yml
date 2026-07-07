@@ -71,8 +71,8 @@ jobs:
       - name: Run camera smoke tests
         run: |
           python -m pip install -r camera_snapshot/requirements.txt
-          python -m pip install httpx
-          python -m unittest discover -s camera_snapshot/tests
+          python -m pip install httpx pytest
+          python -m pytest camera_snapshot/tests -v
 
       - name: Create release archive
         run: |
