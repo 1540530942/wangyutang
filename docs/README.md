@@ -10,6 +10,10 @@ docs live under each module (e.g. `robot_sandbox/docs/`, `pi5_robot/docs/`,
 - [audio-interact-robot-sandbox-implementation-plan.md](audio-interact-robot-sandbox-implementation-plan.md) — P1–P5 plan with acceptance criteria
 - [test-cases-and-expected-results.md](test-cases-and-expected-results.md) — verified test cases with real results
 
+## Migrations
+
+- [migration-robot_sandbox-routes.md](migration-robot_sandbox-routes.md) — audio_recognition→robot_sandbox rename + `/audio`,`/interact` route retirement (2026-07)
+
 ## Audits & reviews
 
 - [module-compliance-audit.md](module-compliance-audit.md) — module merge-criteria compliance

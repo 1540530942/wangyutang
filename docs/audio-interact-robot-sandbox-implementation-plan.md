@@ -243,7 +243,7 @@ python3 wonderecho_listener.py --config config.json --once
 
 ## 6. P5 — 收尾（UI 迁移与观测面）
 
-- 输入模式 UI 从 `robot_sandbox/web/static` 迁到 audio_interact（或改调 8097 API），保留 `/audio/api/*` nginx 兼容路由。
+- 输入模式 UI 从 `robot_sandbox/web/static` 迁到 audio_interact（或改调 8097 API）。~~保留 `/audio/api/*` 兼容路由。~~ **（2026-07-08 反转：`/audio`、`/interact` 路由已退役，改用 `/robot_sandbox`、`/audio_interact`，见 [migration-robot_sandbox-routes.md](migration-robot_sandbox-routes.md)。）**
 - 事件观测面**暂不拆**：audio_interact / 新 Pi 监听器继续把 stage 事件投递到 robot_sandbox `POST /api/events`，dashboard 单点可见。
 - `robot_sandbox` 包/容器重命名：原计划 P1–P4 验收通过后另行提案。**（2026-07-07 已执行：`audio_recognition` → `robot_sandbox`，公网 `/audio/*` 保留兼容别名。）**
 

@@ -27,19 +27,15 @@ common API 本地源码位置：
 C:\Users\Administrator\Desktop\Workspace\Project_Codex\wangyutang_platform\common_api_manager
 ```
 
-公共 ASR：
+公共 ASR（规范入口）：
 
 ```text
 POST https://www.wangyutang.cn/common/api/asr/transcribe
 ```
 
-兼容入口：
-
-```text
-POST https://www.wangyutang.cn/audio/api/asr/transcribe
-```
-
-兼容入口只做一件事：把音频转发到 `common_api`，方便旧网页或旧调用方继续工作。
+> 历史说明：早期曾有 `POST /audio/api/asr/transcribe` 兼容入口，转发到 `common_api`。
+> 该兼容入口已随 `/audio/*` 网关路由于 2026-07-08 一并退役，请直接调用上面的
+> `/common/api/asr/transcribe`。详见 [migration-robot_sandbox-routes.md](../../docs/migration-robot_sandbox-routes.md)。
 
 ## 如何调用
 
@@ -127,7 +123,7 @@ console.log(data.text);
 curl -fsS --max-time 120 \
   -F "language=zh" \
   -F "file=@hello_zh.wav;type=audio/wav" \
-  https://www.wangyutang.cn/audio/api/asr/transcribe
+  https://www.wangyutang.cn/common/api/asr/transcribe
 ```
 
 这个入口会转发到 `common_api`，新业务优先直接调用 `/common/api/asr/transcribe`。
@@ -137,11 +133,11 @@ curl -fsS --max-time 120 \
 浏览器手动上传 / 录音：
 
 ```text
-https://www.wangyutang.cn/audio/
--> POST /audio/api/asr/transcribe
+https://www.wangyutang.cn/robot_sandbox/
+-> POST /common/api/asr/transcribe
 -> POST /common/api/asr/transcribe
 -> 返回识别文本
--> POST /audio/api/recognize-text
+-> POST /robot_sandbox/api/recognize-text
 -> POST /action/api/tasks
 ```
 
@@ -151,7 +147,7 @@ https://www.wangyutang.cn/audio/
 WonderEchoPro / USB 麦克风
 -> /home/pi/robot_sandbox/edge_audio_listener.py
 -> POST https://www.wangyutang.cn/common/api/asr/transcribe
--> POST https://www.wangyutang.cn/audio/api/results
+-> POST https://www.wangyutang.cn/robot_sandbox/api/results
 -> POST https://www.wangyutang.cn/action/api/tasks
 ```
 

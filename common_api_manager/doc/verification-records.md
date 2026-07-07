@@ -39,7 +39,7 @@ Health check confirmed that audio routing reads model selection from the new
 Model Studio API:
 
 ```text
-GET https://www.wangyutang.cn/audio/api/health
+GET https://www.wangyutang.cn/robot_sandbox/api/health
 status=200
 router.model_selection.source_url=https://www.wangyutang.cn/common/api/model-studio/selection
 router.model_selection.selection.source=model_studio
@@ -49,7 +49,7 @@ selection_error=
 Simulation command:
 
 ```bash
-curl -X POST https://www.wangyutang.cn/audio/api/simulate/text \
+curl -X POST https://www.wangyutang.cn/robot_sandbox/api/simulate/text \
   -H "Content-Type: application/json" \
   -d '{"device_id":"codex-verify","text":"\u524d\u8fdb","source":"codex-verification"}'
 ```
@@ -122,7 +122,7 @@ Public checks after pushing `feature/llm-manager`:
 | `GET https://www.wangyutang.cn/common/api/model-studio/catalog` | HTTP 200, `len=2262`, `count=8` |
 | `GET https://www.wangyutang.cn/common/api/model-studio/selection` | HTTP 200, `selection.source=model_studio` |
 | `GET https://www.wangyutang.cn/common/api/lab/selection` | HTTP 404 |
-| `GET https://www.wangyutang.cn/audio/api/health` | HTTP 200, `status=ok` |
+| `GET https://www.wangyutang.cn/robot_sandbox/api/health` | HTTP 200, `status=ok` |
 | `GET https://www.wangyutang.cn/action/api/health` | HTTP 200 |
 
 Model Studio validation after deployment:
@@ -178,7 +178,7 @@ Current public checks:
 | `GET https://www.wangyutang.cn/common/api/model-studio/catalog` | HTTP 200, `count=8` |
 | `GET https://www.wangyutang.cn/common/api/model-studio/selection` | HTTP 200, `selection.source=model_studio` |
 | `GET https://www.wangyutang.cn/common/api/lab/selection` | HTTP 404 |
-| `GET https://www.wangyutang.cn/audio/api/health` | HTTP 200, `status=ok` |
+| `GET https://www.wangyutang.cn/robot_sandbox/api/health` | HTTP 200, `status=ok` |
 | `GET https://www.wangyutang.cn/action/api/health` | HTTP 200 |
 | `GET https://www.wangyutang.cn/camera/api/health` | HTTP 200 |
 

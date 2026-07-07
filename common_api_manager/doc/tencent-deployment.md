@@ -105,7 +105,7 @@ console.log(data.text);
 兼容入口：
 
 ```text
-POST https://www.wangyutang.cn/audio/api/asr/transcribe
+POST https://www.wangyutang.cn/common/api/asr/transcribe
 ```
 
 该入口由 `robot_sandbox` 提供，只负责转发到 common API。新业务建议直接调用 `/common/api/asr/transcribe`。
