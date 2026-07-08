@@ -1,5 +1,12 @@
 # audio_interact and robot_sandbox Design
 
+> **Status (2026-07-08):** implemented. The package/service rename and the
+> route retirement are done — public routes are now `/robot_sandbox/*` and
+> `/audio_interact/*`; the old `/audio/*` and `/interact/*` routes were removed
+> (no compat shim). See
+> [migration-robot_sandbox-routes.md](migration-robot_sandbox-routes.md). The
+> flows below are kept as the original design narrative.
+
 ## Purpose
 
 This document defines the target boundary between voice interaction and robot command execution.
@@ -62,7 +69,7 @@ Current WonderEchoPro behavior is:
 
 ```text
 Web page selects WonderEchoPro
--> /audio/api/settings sets input_mode=wonderechopro
+-> /audio_interact/api/settings sets input_mode=wonderechopro
 -> web page starts manual recording
 -> Raspberry Pi edge listener polls settings
 -> arecord records a fixed WAV segment from plughw:CARD=Device,DEV=0
@@ -254,8 +261,8 @@ Pi -> robot_sandbox /api/results
 4. Move TTS synthesis and playback to `audio_interact`.
 5. Make `robot_sandbox` return `tool_calls`, `execution_results`, `diagnostics`, `envelope`, and `tts_text`.
 6. Move input-mode UI/API from `robot_sandbox` to `audio_interact`.
-7. Add compatibility shims for old `/audio/api/*` routes during rollout.
-8. Rename the package or service only after the API boundary is stable.
+7. ~~Add compatibility shims for old `/audio/api/*` routes during rollout.~~ (Reversed 2026-07-08: `/audio/*` and `/interact/*` retired, no compat shim.)
+8. Rename the package or service only after the API boundary is stable. (Done 2026-07-08: `audio_recognition` → `robot_sandbox`.)
 
 ## Design Decision
 
