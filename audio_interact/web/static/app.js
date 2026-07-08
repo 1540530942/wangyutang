@@ -80,9 +80,9 @@ function playBase64Wav(b64) {
   try {
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
-    const p = $("ttsPlayer");
-    p.src = url;
-    p.play().catch(() => {});
+    const a = new Audio(url);
+    a.onended = () => URL.revokeObjectURL(url);
+    a.play().catch(() => {});
   } catch (e) { console.error(e); }
 }
 
