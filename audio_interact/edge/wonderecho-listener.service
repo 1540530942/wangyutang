@@ -1,0 +1,25 @@
+[Unit]
+# WonderEchoPro -> audio_interact edge listener (Raspberry Pi / turbopi-01).
+# Poll-daemon: when the audio_interact page sets input_mode=wonderechopro and
+# manual_recording_enabled=true, this records a fixed WAV via arecord and uploads
+# it to /audio_interact/api/audio/segment (ASR -> wake -> robot_sandbox command ->
+# execute -> TTS), then plays the returned TTS on the Pi speaker.
+#
+# Install on the Pi:
+#   sudo cp wonderecho-listener.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now wonderecho-listener.service
+Description=WonderEchoPro audio_interact listener
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/audio_interact_edge
+ExecStart=/usr/bin/python3 /home/pi/audio_interact_edge/wonderecho_listener.py --config /home/pi/audio_interact_edge/config.json
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
