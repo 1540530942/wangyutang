@@ -38,19 +38,24 @@ const sections = {
   wonder: $("wonderSection"),
   browser: $("browserSection"),
   vad: $("vadSection"),
+  replay: $("replaySection"),
 };
 function showMode(mode) {
   sections.wonder.classList.toggle("hidden", mode !== "wonder");
   sections.browser.classList.toggle("hidden", mode !== "browser");
   sections.vad.classList.toggle("hidden", mode !== "vad");
+  sections.replay.classList.toggle("hidden", mode !== "replay");
   $("modeWonderBtn").classList.toggle("active", mode === "wonder");
   $("modeBrowserBtn").classList.toggle("active", mode === "browser");
   $("modeVadBtn").classList.toggle("active", mode === "vad");
+  $("modeReplayBtn").classList.toggle("active", mode === "replay");
   if (mode !== "vad") stopVad();
+  if (mode !== "replay") stopReplay();
 }
 $("modeWonderBtn").onclick = () => showMode("wonder");
 $("modeBrowserBtn").onclick = () => showMode("browser");
 $("modeVadBtn").onclick = () => showMode("vad");
+$("modeReplayBtn").onclick = () => showMode("replay");
 
 // ---- result rendering ----
 function renderResult(d) {
@@ -245,6 +250,93 @@ function stopVad() {
   try { r.proc.disconnect(); r.src.disconnect(); r.stream.getTracks().forEach((t) => t.stop()); r.ctx.close().catch(() => {}); } catch {}
   setVadBar(0); setVadState("未启动", false);
   $("startVadBtn").disabled = false; $("stopVadBtn").disabled = true;
+}
+
+// ---- 仿真回灌 (replay a long recording through the VAD pipeline) ----
+let replay = null;
+function setReplayState(t, live) { $("replayState").textContent = t; $("replayState").style.color = live ? "var(--ok)" : "var(--muted)"; }
+function setReplayBar(v) { $("replayBar").style.width = `${Math.min(100, Math.round(v * 100))}%`; }
+function appendReplayLog(d) {
+  const skillId = (d.command && d.command.skill_id) || d.skill_id || "";
+  const box = document.createElement("div");
+  box.className = "replay-item";
+  const ok = skillId ? "ok" : "";
+  box.innerHTML =
+    `<div class="replay-text">${d.text || "（空）"}</div>` +
+    `<div class="replay-meta">唤醒 <b>${d.wake_status || "—"}</b> · 技能 <b class="${ok}">${skillId || "—"}</b> · TTS ${d.tts_text || "—"}</div>`;
+  $("replayLog").prepend(box);
+}
+
+$("replayInput").onchange = async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file || replay) return;
+  try {
+    setStatus("解码回灌音频…");
+    const buf = await file.arrayBuffer();
+    const ctx = new AudioContext();
+    const audio = await ctx.decodeAudioData(buf);
+    const samples = downsample(audio.getChannelData(0), audio.sampleRate, TARGET_RATE);
+    await ctx.close().catch(() => {});
+    $("replayLog").innerHTML = "";
+
+    const socket = new WebSocket(wsUrl());
+    socket.binaryType = "arraybuffer";
+    replay = { socket, cancelled: false };
+    $("replayStopBtn").disabled = false;
+    setReplayState("连接云端 VAD…", true);
+
+    socket.onmessage = (ev) => {
+      if (ev.data instanceof ArrayBuffer && ev.data.byteLength > 0) {
+        const url = URL.createObjectURL(new Blob([ev.data], { type: "audio/wav" }));
+        const a = new Audio(url); a.onended = () => URL.revokeObjectURL(url); a.play().catch(() => {});
+        return;
+      }
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+      if (m.type === "vad") setReplayBar(Number(m.probability || 0));
+      else if (m.type === "speech_start") setReplayState("检测到语音…", true);
+      else if (m.type === "speech_end" || m.type === "asr_started") setReplayState("识别中…", true);
+      else if (m.type === "result") { renderResult(m); appendReplayLog(m); setReplayState("回灌中…", true); }
+    };
+
+    await new Promise((res, rej) => { socket.onopen = res; socket.onerror = () => rej(new Error("WebSocket 连接失败")); });
+    socket.send(JSON.stringify({ type: "start_stream", session_id: (crypto.randomUUID ? crypto.randomUUID().slice(0, 12) : String(Date.now())), device_id: DEVICE_ID, sample_rate: TARGET_RATE }));
+    // wait for stream_ready
+    await new Promise((res) => { const h = (ev) => { try { if (JSON.parse(ev.data).type === "stream_ready") { socket.removeEventListener("message", h); res(); } } catch {} }; socket.addEventListener("message", h); });
+
+    setReplayState("回灌中…", true);
+    setStatus(`回灌 ${(samples.length / TARGET_RATE).toFixed(1)}s 音频…`);
+    // Stream PCM in ~128ms chunks, paced ~3x real-time so VAD can segment.
+    const chunk = 2048;
+    for (let i = 0; i < samples.length; i += chunk) {
+      if (!replay || replay.cancelled || socket.readyState !== WebSocket.OPEN) break;
+      const slice = samples.subarray(i, i + chunk);
+      const rms = Math.sqrt(slice.reduce((s, x) => s + x * x, 0) / slice.length);
+      setReplayBar(Math.min(1, rms * 6));
+      socket.send(encodePcm16(slice));
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    // trailing silence so the final utterance flushes
+    if (replay && !replay.cancelled && socket.readyState === WebSocket.OPEN) {
+      const silence = new Float32Array(TARGET_RATE);
+      socket.send(encodePcm16(silence));
+      await new Promise((r) => setTimeout(r, 2500));
+    }
+    setStatus("回灌完成");
+    setReplayState("完成", false);
+    stopReplay();
+  } catch (err) {
+    setStatus("回灌失败：" + err.message);
+    stopReplay();
+  }
+};
+$("replayStopBtn").onclick = () => stopReplay();
+function stopReplay() {
+  if (!replay) return;
+  const r = replay; replay = null; r.cancelled = true;
+  try { if (r.socket.readyState === WebSocket.OPEN) { r.socket.send(JSON.stringify({ type: "stop_stream" })); setTimeout(() => r.socket.close(), 200); } } catch {}
+  setReplayBar(0);
+  $("replayStopBtn").disabled = true;
 }
 
 // ---- init ----

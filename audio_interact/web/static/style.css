@@ -68,3 +68,10 @@ details { margin-top: 14px; } summary { cursor: pointer; color: var(--muted); fo
 pre { background: #0c0e14; border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow: auto; font-size: 12px; max-height: 280px; }
 
 .statusbar { position: sticky; bottom: 0; background: #0c0e14; border-top: 1px solid var(--line); padding: 10px 26px; font-size: 13px; color: var(--muted); }
+
+/* 仿真回灌日志 */
+.replay-log { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.replay-item { background: #0c0e14; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+.replay-text { font-size: 15px; }
+.replay-meta { color: var(--muted); font-size: 12px; margin-top: 3px; }
+.replay-meta b.ok { color: var(--ok); }

@@ -22,8 +22,9 @@
 
   <div class="tabs">
     <button id="modeWonderBtn" class="tab active" type="button">WonderEchoPro</button>
-    <button id="modeBrowserBtn" class="tab" type="button">浏览器麦克风/扬声器</button>
+    <button id="modeBrowserBtn" class="tab" type="button">web模式</button>
     <button id="modeVadBtn" class="tab" type="button">VAD_ASR 测试</button>
+    <button id="modeReplayBtn" class="tab" type="button">仿真回灌</button>
   </div>
 
   <main>
@@ -42,11 +43,11 @@
       <div class="statusline" id="wonderStatus">当前输入模式：加载中…</div>
     </section>
 
-    <!-- Browser mic/speaker -->
+    <!-- web mode (browser mic/speaker) -->
     <section id="browserSection" class="card hidden">
-      <h2>浏览器麦克风 / 扬声器</h2>
+      <h2>web模式（浏览器麦克风 / 扬声器）</h2>
       <p class="note">
-        用当前浏览器的麦克风录一段（默认 4 秒）或上传 WAV，经 ASR→唤醒→指令后，
+        用当前浏览器的麦克风录一段（默认 4 秒）或上传短 WAV，经 ASR→唤醒→指令后，
         返回的 TTS 直接用浏览器扬声器播放。需说唤醒词（如“你好瓦力”）才会触发动作。
       </p>
       <div class="row">
@@ -57,6 +58,26 @@
         </label>
       </div>
       <audio id="ttsPlayer" controls class="player"></audio>
+    </section>
+
+    <!-- 仿真回灌 (replay a long recording through the VAD pipeline) -->
+    <section id="replaySection" class="card hidden">
+      <h2>仿真回灌模式</h2>
+      <p class="note">
+        上传一段<strong>长音频</strong>（可含多句、带唤醒词，如“你好瓦力，往前走 … 你好瓦力，左转”），
+        它会被<strong>回灌</strong>进云端 Silero VAD 流式管线：自动切分出每句语音，逐句
+        ASR→唤醒→robot_sandbox 指令→安全→<strong>真实执行</strong>→TTS 播报。用于无麦克风时复现完整交互。
+      </p>
+      <div class="row">
+        <label class="upload">
+          选择长音频回灌
+          <input id="replayInput" type="file" accept="audio/*" hidden />
+        </label>
+        <button id="replayStopBtn" class="secondary" type="button" disabled>停止</button>
+        <span id="replayState" class="badge">未开始</span>
+      </div>
+      <div class="meter"><span>VAD</span><div class="meter-track"><i id="replayBar"></i></div></div>
+      <div id="replayLog" class="replay-log"></div>
     </section>
 
     <!-- VAD_ASR -->
