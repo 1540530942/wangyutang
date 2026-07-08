@@ -228,7 +228,7 @@ function stopVadStream() {
 const stopVad = stopVadStream;  // back-compat for showMode/replay
 
 // web模式: 浏览器麦克风连续 VAD 交互
-const WEB_VAD_UI = { stateEl: $("webVadState"), barEl: null, startBtn: $("webStartBtn"), stopBtn: $("webStopBtn") };
+const WEB_VAD_UI = { stateEl: $("webVadState"), barEl: $("webVadBar"), startBtn: $("webStartBtn"), stopBtn: $("webStopBtn") };
 $("webStartBtn").onclick = () => startVadStream(WEB_VAD_UI, true);   // 真实派发+执行
 $("webStopBtn").onclick = () => stopVadStream();
 
