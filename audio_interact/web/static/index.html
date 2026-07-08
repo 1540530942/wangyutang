@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Audio Interact — 语音输入</title>
-  <link rel="stylesheet" href="./style.css?v=4" />
+  <link rel="stylesheet" href="./style.css?v=5" />
 </head>
 <body>
   <header class="topbar">
@@ -86,8 +86,8 @@
     <section id="vadSection" class="card hidden">
       <h2>VAD_ASR_TTS（测试 / 调试）</h2>
       <p class="note">
-        <strong>识别方向（调试）</strong>：与 web模式 同一条流式链路，用于观察 VAD 电平与逐句识别。日常语音交互请用 <strong>web模式</strong>。
-        点击开始后浏览器持续发送 16k PCM，Silero VAD 流式切句 → ASR → 唤醒 → 动作路由，TTS 二进制帧回推自动播放。
+        <strong>识别方向（调试）</strong>：观察 VAD 电平条与逐句识别——只做 <strong>ASR + 唤醒判断，不调用沙盒、不派发动作</strong>（安全调试）。
+        VAD 电平条随说话概率变色/伸缩，下方「识别与指令结果」显示 ASR 文本与唤醒状态。日常真实交互请用 <strong>web模式</strong>。
       </p>
       <div class="row">
         <button id="startVadBtn" type="button">开始持续接收</button>
@@ -120,6 +120,6 @@
   </main>
 
   <footer id="status" class="statusbar">就绪</footer>
-  <script src="./app.js?v=4"></script>
+  <script src="./app.js?v=5"></script>
 </body>
 </html>

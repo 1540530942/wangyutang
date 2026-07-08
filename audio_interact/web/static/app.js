@@ -169,7 +169,7 @@ let vad = null;
 function _setState(ui, t, live) { if (ui.stateEl) { ui.stateEl.textContent = t; ui.stateEl.style.color = live ? "var(--ok)" : "var(--muted)"; } }
 function _setBar(ui, v) { if (ui.barEl) ui.barEl.style.width = `${Math.min(100, Math.round(v * 100))}%`; }
 
-async function startVadStream(ui) {
+async function startVadStream(ui, route = true) {
   if (vad) return;
   if (!navigator.mediaDevices?.getUserMedia) { setStatus("此浏览器不支持麦克风采集（需 HTTPS + 授权）"); return; }
   _setState(ui, "启动中…", true);
@@ -202,7 +202,7 @@ async function startVadStream(ui) {
     };
 
     await new Promise((res, rej) => { socket.onopen = res; socket.onerror = () => rej(new Error("WebSocket 连接失败")); });
-    socket.send(JSON.stringify({ type: "start_stream", session_id: (crypto.randomUUID ? crypto.randomUUID().slice(0, 12) : String(Date.now())), device_id: DEVICE_ID, sample_rate: TARGET_RATE }));
+    socket.send(JSON.stringify({ type: "start_stream", session_id: (crypto.randomUUID ? crypto.randomUUID().slice(0, 12) : String(Date.now())), device_id: DEVICE_ID, sample_rate: TARGET_RATE, route }));
 
     proc.onaudioprocess = (e) => {
       if (!vad || socket.readyState !== WebSocket.OPEN || !vad.ready) return;
@@ -229,12 +229,12 @@ const stopVad = stopVadStream;  // back-compat for showMode/replay
 
 // web模式: 浏览器麦克风连续 VAD 交互
 const WEB_VAD_UI = { stateEl: $("webVadState"), barEl: null, startBtn: $("webStartBtn"), stopBtn: $("webStopBtn") };
-$("webStartBtn").onclick = () => startVadStream(WEB_VAD_UI);
+$("webStartBtn").onclick = () => startVadStream(WEB_VAD_UI, true);   // 真实派发+执行
 $("webStopBtn").onclick = () => stopVadStream();
 
-// VAD_ASR_TTS: 流式测试/调试
+// VAD_ASR_TTS: 流式测试/调试(只 ASR+唤醒,不调沙盒/不执行)
 const VAD_TEST_UI = { stateEl: $("vadState"), barEl: $("vadBar"), startBtn: $("startVadBtn"), stopBtn: $("stopVadBtn") };
-$("startVadBtn").onclick = () => startVadStream(VAD_TEST_UI);
+$("startVadBtn").onclick = () => startVadStream(VAD_TEST_UI, false);  // 仅识别,不执行
 $("stopVadBtn").onclick = () => stopVadStream();
 
 // ---- 仿真回灌 (replay a long recording through the VAD pipeline) ----

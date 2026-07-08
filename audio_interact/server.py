@@ -111,6 +111,7 @@ async def audio_ws(websocket: WebSocket) -> None:
     session_full = bytearray()
     session_utterances: list[dict[str, Any]] = []
     pending_start: float | None = None
+    route_enabled = True  # web模式 dispatches actions; VAD_ASR_TTS debug does ASR-only
 
     def flush_session() -> str | None:
         nonlocal session_full, session_utterances, pending_start
@@ -146,7 +147,7 @@ async def audio_ws(websocket: WebSocket) -> None:
                                 )
                             )
                             loop = asyncio.get_event_loop()
-                            result = await loop.run_in_executor(None, _process, wav_bytes, device_id, session_id)
+                            result = await loop.run_in_executor(None, _process, wav_bytes, device_id, session_id, route_enabled)
                             result["streaming_vad"] = "silero"
                             await websocket.send_text(json.dumps(result, ensure_ascii=False))
                             # record this utterance's VAD window + ASR/command outcome
@@ -183,6 +184,7 @@ async def audio_ws(websocket: WebSocket) -> None:
                 elif frame_type == "start_stream":
                     session_id = str(frame.get("session_id") or session_id)
                     device_id = str(frame.get("device_id") or device_id)
+                    route_enabled = bool(frame.get("route", True))
                     sample_rate = int(frame.get("sample_rate") or STREAM_SAMPLE_RATE)
                     if sample_rate != STREAM_SAMPLE_RATE:
                         await websocket.send_text(
@@ -242,7 +244,7 @@ async def audio_ws(websocket: WebSocket) -> None:
                     wav_bytes = bytes(audio_buf)
                     audio_buf.clear()
                     loop = asyncio.get_event_loop()
-                    result = await loop.run_in_executor(None, _process, wav_bytes, device_id, session_id)
+                    result = await loop.run_in_executor(None, _process, wav_bytes, device_id, session_id, route_enabled)
                     await websocket.send_text(json.dumps(result, ensure_ascii=False))
                     tts_text = result.get("tts_text", "")
                     if tts_text and TTS_URL:
@@ -260,7 +262,7 @@ async def audio_ws(websocket: WebSocket) -> None:
                                 )
                             )
                             loop = asyncio.get_event_loop()
-                            result = await loop.run_in_executor(None, _process, final_wav, device_id, session_id)
+                            result = await loop.run_in_executor(None, _process, final_wav, device_id, session_id, route_enabled)
                             result["streaming_vad"] = "silero"
                             await websocket.send_text(json.dumps(result, ensure_ascii=False))
                             tts_text = result.get("tts_text", "")
@@ -446,7 +448,7 @@ async def _push_tts(ws: WebSocket, text: str) -> None:
         print(f"[WARN] tts_failed: {exc}", flush=True)
 
 
-def _process(wav_bytes: bytes, device_id: str, session_id: str) -> dict[str, Any]:
+def _process(wav_bytes: bytes, device_id: str, session_id: str, route_action: bool = True) -> dict[str, Any]:
     started = time.time()
 
     try:
@@ -482,6 +484,19 @@ def _process(wav_bytes: bytes, device_id: str, session_id: str) -> dict[str, Any
         }
 
     wake = WAKE_STATES.decide(device_id, text)
+    if not route_action:
+        # ASR/debug only (VAD_ASR_TTS): report text + wake status, do NOT call
+        # robot_sandbox and do NOT dispatch any action.
+        return {
+            "type": "result",
+            "session_id": session_id,
+            "text": text,
+            "route_text": wake.route_text,
+            "wake_status": wake.status,
+            "skill_id": "",
+            "status": "asr_only",
+            "elapsed_ms": elapsed_ms(started),
+        }
     if not wake.should_route:
         return wake_only_result(session_id=session_id, text=text, wake=wake, started=started)
 
