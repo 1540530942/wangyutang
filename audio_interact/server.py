@@ -16,8 +16,8 @@ from pathlib import Path
 from typing import Annotated, Any
 
 import requests
-from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi import Body, FastAPI, File, Form, Header, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from settings import load_settings, save_settings
@@ -746,6 +746,24 @@ async def audio_segment(
         "audio_url": audio_url,
         "elapsed_ms": elapsed_ms(started),
     }
+
+
+@app.post("/api/tts")
+def tts_speak(text: str = Body(..., embed=True)) -> Response:
+    """Synthesize given text to speech (same TTS params as the voice pipeline).
+
+    Body: {"text": "..."}  ->  audio/wav bytes for the browser to play.
+    """
+    text = (text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+    if not TTS_URL:
+        raise HTTPException(status_code=503, detail="TTS not configured")
+    try:
+        audio = _fetch_tts_audio(text)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"tts failed: {exc}")
+    return Response(content=audio, media_type="audio/wav", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/audio/{name}")

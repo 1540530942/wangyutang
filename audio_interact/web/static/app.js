@@ -339,6 +339,33 @@ function stopReplay() {
   $("replayStopBtn").disabled = true;
 }
 
+// ---- TTS 合成播报 (VAD_ASR_TTS mode) ----
+$("ttsSpeakBtn").onclick = async () => {
+  const text = ($("ttsInput").value || "").trim();
+  if (!text) { setStatus("请输入要播报的文本"); return; }
+  $("ttsSpeakBtn").disabled = true;
+  $("ttsState").textContent = "合成中…";
+  try {
+    const r = await fetch("./api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!r.ok) { let e = {}; try { e = await r.json(); } catch {} throw new Error(e.detail || `HTTP ${r.status}`); }
+    const url = URL.createObjectURL(await r.blob());
+    const p = $("ttsSpeakPlayer");
+    p.src = url; p.play().catch(() => {});
+    $("ttsState").textContent = "已播报";
+    setStatus("TTS 播报完成");
+  } catch (e) {
+    $("ttsState").textContent = "失败";
+    setStatus("TTS 失败：" + e.message);
+  } finally {
+    $("ttsSpeakBtn").disabled = false;
+  }
+};
+$("ttsInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("ttsSpeakBtn").click(); });
+
 // ---- init ----
 pollHealth(); loadSettings(); showMode("wonder");
 setInterval(pollHealth, 15000);

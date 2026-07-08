@@ -23,7 +23,7 @@
   <div class="tabs">
     <button id="modeWonderBtn" class="tab active" type="button">WonderEchoPro</button>
     <button id="modeBrowserBtn" class="tab" type="button">web模式</button>
-    <button id="modeVadBtn" class="tab" type="button">VAD_ASR 测试</button>
+    <button id="modeVadBtn" class="tab" type="button">VAD_ASR_TTS</button>
     <button id="modeReplayBtn" class="tab" type="button">仿真回灌</button>
   </div>
 
@@ -80,11 +80,11 @@
       <div id="replayLog" class="replay-log"></div>
     </section>
 
-    <!-- VAD_ASR -->
+    <!-- VAD_ASR_TTS -->
     <section id="vadSection" class="card hidden">
-      <h2>VAD_ASR 实时测试</h2>
+      <h2>VAD_ASR_TTS</h2>
       <p class="note">
-        点击开始后，浏览器持续发送 16k PCM 到云端；<code>audio_interact</code> 用 Silero VAD 流式切分语音片段，
+        <strong>识别方向</strong>：点击开始后，浏览器持续发送 16k PCM 到云端；<code>audio_interact</code> 用 Silero VAD 流式切分语音片段，
         片段结束调 ASR，final text 才进入唤醒词判断和动作路由。TTS 以二进制帧回推并自动播放。
       </p>
       <div class="row">
@@ -93,6 +93,15 @@
         <span id="vadState" class="badge">未启动</span>
       </div>
       <div class="meter"><span>VAD</span><div class="meter-track"><i id="vadBar"></i></div></div>
+
+      <hr class="divider" />
+      <p class="note"><strong>合成方向（TTS）</strong>：输入任意文本，用 common_api TTS 合成并在浏览器扬声器直接播报。</p>
+      <div class="row">
+        <input id="ttsInput" class="tts-input" type="text" placeholder="例如：你好，我是瓦力" />
+        <button id="ttsSpeakBtn" type="button">🔊 TTS 播报</button>
+        <span id="ttsState" class="badge">待输入</span>
+      </div>
+      <audio id="ttsSpeakPlayer" controls class="player"></audio>
     </section>
 
     <!-- Result -->

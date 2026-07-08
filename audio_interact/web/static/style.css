@@ -75,3 +75,7 @@ pre { background: #0c0e14; border: 1px solid var(--line); border-radius: 8px; pa
 .replay-text { font-size: 15px; }
 .replay-meta { color: var(--muted); font-size: 12px; margin-top: 3px; }
 .replay-meta b.ok { color: var(--ok); }
+
+/* VAD_ASR_TTS: TTS 合成输入 */
+.divider { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
+.tts-input { flex: 1; min-width: 220px; background: #0c0e14; border: 1px solid var(--line); border-radius: 10px; color: var(--fg); padding: 10px 12px; font-size: 14px; }
