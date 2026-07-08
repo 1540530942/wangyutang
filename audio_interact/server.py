@@ -50,6 +50,38 @@ from settings import DATA_DIR as _SETTINGS_DATA_DIR
 AUDIO_DATA_DIR = Path(os.getenv("AUDIO_INTERACT_DATA_DIR", str(_SETTINGS_DATA_DIR)))
 SEGMENTS_DIR = AUDIO_DATA_DIR / "segments"
 SEGMENTS_DIR.mkdir(parents=True, exist_ok=True)
+# Full (un-truncated) streaming-session recordings, organized by date, with the
+# VAD utterance markers + ASR results, for later tracing / replay simulation.
+RECORDINGS_DIR = AUDIO_DATA_DIR / "recordings"
+RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def save_session_recording(session_id: str, device_id: str, sample_rate: int, full_pcm: bytes, utterances: list[dict[str, Any]]) -> str | None:
+    """Persist a full streaming session: un-truncated WAV + VAD/ASR markers.
+
+    Layout (fixed location, per-date folder):
+      <AUDIO_DATA_DIR>/recordings/<YYYY-MM-DD>/<session_id>/full.wav
+      <AUDIO_DATA_DIR>/recordings/<YYYY-MM-DD>/<session_id>/session.json
+    Returns the relative path, or None if there was no audio.
+    """
+    if not full_pcm:
+        return None
+    day = time.strftime("%Y-%m-%d")
+    safe_session = "".join(c for c in session_id if c.isalnum() or c in "-_") or uuid.uuid4().hex[:12]
+    out_dir = RECORDINGS_DIR / day / safe_session
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "full.wav").write_bytes(pcm16_to_wav(full_pcm, sample_rate))
+    meta = {
+        "session_id": session_id,
+        "device_id": device_id,
+        "sample_rate": sample_rate,
+        "recorded_at": time.time(),
+        "duration_seconds": round(len(full_pcm) / 2 / sample_rate, 3),
+        "truncated": False,
+        "utterances": utterances,
+    }
+    (out_dir / "session.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    return f"recordings/{day}/{safe_session}"
 
 app = FastAPI(title="Audio Interact Service", version="0.3.0")
 WAKE_STATES = WakeStateStore()
@@ -75,6 +107,18 @@ async def audio_ws(websocket: WebSocket) -> None:
     device_id = "turbopi-01"
     audio_buf = bytearray()
     stream_vad: StreamingSileroVad | None = None
+    # Full un-truncated streaming audio + per-utterance VAD/ASR markers.
+    session_full = bytearray()
+    session_utterances: list[dict[str, Any]] = []
+    pending_start: float | None = None
+
+    def flush_session() -> str | None:
+        nonlocal session_full, session_utterances, pending_start
+        rel = save_session_recording(session_id, device_id, STREAM_SAMPLE_RATE, bytes(session_full), list(session_utterances))
+        session_full = bytearray()
+        session_utterances = []
+        pending_start = None
+        return rel
 
     try:
         while True:
@@ -85,10 +129,15 @@ async def audio_ws(websocket: WebSocket) -> None:
 
             if msg.get("bytes"):
                 if stream_vad is not None:
+                    session_full.extend(msg["bytes"])  # keep the full, un-truncated stream
                     events = stream_vad.feed(msg["bytes"])
                     for event in events:
-                        if event.get("type") == "speech_end" and event.get("wav_bytes"):
+                        if event.get("type") == "speech_start":
+                            pending_start = event.get("offset_seconds")
+                            await websocket.send_text(json.dumps(event, ensure_ascii=False))
+                        elif event.get("type") == "speech_end" and event.get("wav_bytes"):
                             wav_bytes = event.pop("wav_bytes")
+                            end_offset = event.get("offset_seconds")
                             await websocket.send_text(json.dumps(event, ensure_ascii=False))
                             await websocket.send_text(
                                 json.dumps(
@@ -100,6 +149,18 @@ async def audio_ws(websocket: WebSocket) -> None:
                             result = await loop.run_in_executor(None, _process, wav_bytes, device_id, session_id)
                             result["streaming_vad"] = "silero"
                             await websocket.send_text(json.dumps(result, ensure_ascii=False))
+                            # record this utterance's VAD window + ASR/command outcome
+                            session_utterances.append({
+                                "index": len(session_utterances),
+                                "vad_start_seconds": pending_start,
+                                "vad_end_seconds": end_offset,
+                                "reason": event.get("reason"),
+                                "text": result.get("text", ""),
+                                "wake_status": result.get("wake_status", ""),
+                                "skill_id": result.get("skill_id", ""),
+                                "status": result.get("status", ""),
+                            })
+                            pending_start = None
                             tts_text = result.get("tts_text", "")
                             if tts_text and TTS_URL:
                                 asyncio.create_task(_push_tts(websocket, tts_text))
@@ -205,10 +266,17 @@ async def audio_ws(websocket: WebSocket) -> None:
                             tts_text = result.get("tts_text", "")
                             if tts_text and TTS_URL:
                                 asyncio.create_task(_push_tts(websocket, tts_text))
-                    await websocket.send_text(json.dumps({"type": "stream_stopped", "session_id": session_id}))
+                    saved = flush_session()
+                    await websocket.send_text(json.dumps({"type": "stream_stopped", "session_id": session_id, "recording": saved}))
 
     except WebSocketDisconnect:
         pass
+    finally:
+        # Persist the full session recording even if the client just disconnected.
+        try:
+            flush_session()
+        except Exception:
+            pass
 
 
 def load_silero_vad() -> tuple[Any, Any]:
@@ -247,6 +315,7 @@ class StreamingSileroVad:
     silence_count: int = 0
     speaking: bool = False
     started_at: float = 0.0
+    total_frames: int = 0
 
     def __post_init__(self) -> None:
         self.torch, self.model = load_silero_vad()
@@ -274,6 +343,8 @@ class StreamingSileroVad:
     def _consume_frame(self, frame: bytes) -> list[dict[str, Any]]:
         probability = self._speech_probability(frame)
         is_speech = probability >= SILERO_THRESHOLD
+        self.total_frames += 1
+        now_offset = self.total_frames * self.frame_samples / self.sample_rate
         events: list[dict[str, Any]] = [
             {
                 "type": "vad",
@@ -298,6 +369,7 @@ class StreamingSileroVad:
                         "session_id": self.session_id,
                         "device_id": self.device_id,
                         "probability": round(probability, 4),
+                        "offset_seconds": round(max(0.0, now_offset - SILERO_START_FRAMES * self.frame_samples / self.sample_rate), 3),
                     }
                 )
             return events
@@ -316,6 +388,7 @@ class StreamingSileroVad:
                     "device_id": self.device_id,
                     "reason": reason,
                     "duration_seconds": round(duration_seconds, 3),
+                    "offset_seconds": round(now_offset, 3),
                     "wav_bytes": wav_bytes,
                 }
             )
