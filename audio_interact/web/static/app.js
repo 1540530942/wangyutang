@@ -39,12 +39,14 @@ const sections = {
   browser: $("browserSection"),
   vad: $("vadSection"),
   replay: $("replaySection"),
+  tts: $("ttsSection"),
 };
 function showMode(mode) {
   sections.wonder.classList.toggle("hidden", mode !== "wonder");
   sections.browser.classList.toggle("hidden", mode !== "browser");
   sections.vad.classList.toggle("hidden", mode !== "vad");
   sections.replay.classList.toggle("hidden", mode !== "replay");
+  sections.tts.classList.toggle("hidden", mode !== "vad");  // TTS 合成随 VAD_ASR_TTS 一起显示
   $("modeWonderBtn").classList.toggle("active", mode === "wonder");
   $("modeBrowserBtn").classList.toggle("active", mode === "browser");
   $("modeVadBtn").classList.toggle("active", mode === "vad");

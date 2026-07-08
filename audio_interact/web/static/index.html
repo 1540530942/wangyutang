@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Audio Interact — 语音输入</title>
-  <link rel="stylesheet" href="./style.css?v=6" />
+  <link rel="stylesheet" href="./style.css?v=7" />
 </head>
 <body>
   <header class="topbar">
@@ -96,18 +96,9 @@
         <span id="vadState" class="badge">未启动</span>
       </div>
       <div class="meter"><span>VAD</span><div class="meter-track"><i id="vadBar"></i></div></div>
-
-      <hr class="divider" />
-      <p class="note"><strong>合成方向（TTS）</strong>：输入任意文本，用 common_api TTS 合成并在浏览器扬声器直接播报。</p>
-      <div class="row">
-        <input id="ttsInput" class="tts-input" type="text" placeholder="例如：你好，我是瓦力" />
-        <button id="ttsSpeakBtn" type="button">🔊 TTS 播报</button>
-        <span id="ttsState" class="badge">待输入</span>
-      </div>
-      <audio id="ttsSpeakPlayer" controls class="player"></audio>
     </section>
 
-    <!-- Result -->
+    <!-- Result (shared) -->
     <section class="card result-card">
       <h2>识别与指令结果</h2>
       <div class="result-grid">
@@ -118,9 +109,21 @@
       </div>
       <details><summary>原始响应 JSON</summary><pre id="rRaw">—</pre></details>
     </section>
+
+    <!-- 合成方向 TTS (VAD_ASR_TTS mode only, below the result panel) -->
+    <section id="ttsSection" class="card hidden">
+      <h2>合成方向（TTS）</h2>
+      <p class="note">输入任意文本，用 common_api TTS 合成并在浏览器扬声器直接播报。</p>
+      <div class="row">
+        <input id="ttsInput" class="tts-input" type="text" placeholder="例如：你好，我是瓦力" />
+        <button id="ttsSpeakBtn" type="button">🔊 TTS 播报</button>
+        <span id="ttsState" class="badge">待输入</span>
+      </div>
+      <audio id="ttsSpeakPlayer" controls class="player"></audio>
+    </section>
   </main>
 
   <footer id="status" class="statusbar">就绪</footer>
-  <script src="./app.js?v=6"></script>
+  <script src="./app.js?v=7"></script>
 </body>
 </html>
