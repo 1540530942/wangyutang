@@ -127,37 +127,7 @@ async function postSegment(wavBlob, filename = "web.wav") {
   return d;
 }
 
-// ---- browser record (fixed seconds) ----
-$("recordBtn").onclick = async () => {
-  const btn = $("recordBtn");
-  if (!navigator.mediaDevices?.getUserMedia) { setStatus("此浏览器不支持麦克风采集"); return; }
-  btn.disabled = true;
-  try {
-    setStatus("录音中…");
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
-    const ctx = new AudioContext();
-    const src = ctx.createMediaStreamSource(stream);
-    const proc = ctx.createScriptProcessor(4096, 1, 1);
-    const frames = [];
-    proc.onaudioprocess = (e) => frames.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-    src.connect(proc); proc.connect(ctx.destination);
-    await new Promise((res) => setTimeout(res, RECORD_SECONDS * 1000));
-    proc.disconnect(); src.disconnect(); stream.getTracks().forEach((t) => t.stop());
-    const srcRate = ctx.sampleRate; await ctx.close().catch(() => {});
-    const total = frames.reduce((n, f) => n + f.length, 0);
-    const merged = new Float32Array(total);
-    let off = 0; for (const f of frames) { merged.set(f, off); off += f.length; }
-    const wav = encodeWav(downsample(merged, srcRate, TARGET_RATE), TARGET_RATE);
-    setStatus("识别中…");
-    const d = await postSegment(wav, "record.wav");
-    renderResult(d);
-    setStatus(`识别完成：${d.text ? d.text : "（未检测到语音）"}`);
-  } catch (e) {
-    setStatus("录音失败：" + e.message);
-  } finally { btn.disabled = false; }
-};
-
-// ---- upload file ----
+// ---- upload file (web模式 便捷选项) ----
 $("uploadInput").onchange = async (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -193,12 +163,13 @@ $("manualStopBtn").onclick = async () => {
   setStatus("已停止采集"); loadSettings();
 };
 
-// ---- VAD_ASR streaming ----
+// ---- Continuous VAD streaming (shared by web模式 and VAD_ASR_TTS) ----
+// ui = { stateEl, barEl, startBtn, stopBtn }
 let vad = null;
-function setVadState(t, live) { $("vadState").textContent = t; $("vadState").style.color = live ? "var(--ok)" : "var(--muted)"; }
-function setVadBar(v) { $("vadBar").style.width = `${Math.min(100, Math.round(v * 100))}%`; }
+function _setState(ui, t, live) { if (ui.stateEl) { ui.stateEl.textContent = t; ui.stateEl.style.color = live ? "var(--ok)" : "var(--muted)"; } }
+function _setBar(ui, v) { if (ui.barEl) ui.barEl.style.width = `${Math.min(100, Math.round(v * 100))}%`; }
 
-$("startVadBtn").onclick = async () => {
+async function startVadStream(ui) {
   if (vad) return;
   if (!navigator.mediaDevices?.getUserMedia) { setStatus("此浏览器不支持麦克风采集"); return; }
   try {
@@ -209,8 +180,9 @@ $("startVadBtn").onclick = async () => {
     const proc = ctx.createScriptProcessor(2048, 1, 1);
     const socket = new WebSocket(wsUrl());
     socket.binaryType = "arraybuffer";
-    vad = { ctx, src, proc, stream, socket, ready: false };
-    $("startVadBtn").disabled = true; $("stopVadBtn").disabled = false;
+    vad = { ctx, src, proc, stream, socket, ready: false, ui };
+    if (ui.startBtn) ui.startBtn.disabled = true;
+    if (ui.stopBtn) ui.stopBtn.disabled = false;
 
     socket.onmessage = (ev) => {
       if (ev.data instanceof ArrayBuffer && ev.data.byteLength > 0) {
@@ -219,12 +191,12 @@ $("startVadBtn").onclick = async () => {
         return;
       }
       let m; try { m = JSON.parse(ev.data); } catch { return; }
-      if (m.type === "stream_ready") { vad.ready = true; setVadState("流式接收中", true); setStatus("VAD_ASR 已连接"); }
-      else if (m.type === "vad") setVadBar(Number(m.probability || 0));
-      else if (m.type === "speech_start") setVadState("检测到语音", true);
-      else if (m.type === "speech_end" || m.type === "asr_started") setVadState("识别中…", true);
-      else if (m.type === "result" || m.type === "error") { renderResult(m); setStatus(`VAD_ASR: ${m.status || m.stage || "ok"}`); setVadState(vad ? "流式接收中" : "已停止", Boolean(vad)); }
-      else if (m.type === "stream_stopped") setVadState("已停止", false);
+      if (m.type === "stream_ready") { vad.ready = true; _setState(ui, "流式接收中", true); setStatus("已连接云端 VAD"); }
+      else if (m.type === "vad") _setBar(ui, Number(m.probability || 0));
+      else if (m.type === "speech_start") _setState(ui, "检测到语音", true);
+      else if (m.type === "speech_end" || m.type === "asr_started") _setState(ui, "识别中…", true);
+      else if (m.type === "result" || m.type === "error") { renderResult(m); setStatus(`${m.status || m.stage || "ok"}`); _setState(ui, vad ? "流式接收中" : "已停止", Boolean(vad)); }
+      else if (m.type === "stream_stopped") _setState(ui, "已停止", false);
     };
 
     await new Promise((res, rej) => { socket.onopen = res; socket.onerror = () => rej(new Error("WebSocket 连接失败")); });
@@ -235,22 +207,33 @@ $("startVadBtn").onclick = async () => {
       const input = e.inputBuffer.getChannelData(0);
       const frame = new Float32Array(input);
       const rms = Math.sqrt(frame.reduce((s, x) => s + x * x, 0) / frame.length);
-      setVadBar(Math.min(1, rms * 6));
+      _setBar(ui, Math.min(1, rms * 6));
       socket.send(encodePcm16(downsample(frame, ctx.sampleRate, TARGET_RATE)));
     };
     src.connect(proc); proc.connect(ctx.destination);
-    setVadState("连接云端 VAD…", true);
-  } catch (e) { setStatus("VAD_ASR 启动失败：" + e.message); stopVad(); }
-};
-$("stopVadBtn").onclick = () => stopVad();
-function stopVad() {
+    _setState(ui, "连接云端 VAD…", true);
+  } catch (e) { setStatus("启动失败：" + e.message); stopVadStream(); }
+}
+function stopVadStream() {
   if (!vad) return;
   const r = vad; vad = null;
   try { if (r.socket.readyState === WebSocket.OPEN) { r.socket.send(JSON.stringify({ type: "stop_stream" })); setTimeout(() => r.socket.close(), 200); } } catch {}
   try { r.proc.disconnect(); r.src.disconnect(); r.stream.getTracks().forEach((t) => t.stop()); r.ctx.close().catch(() => {}); } catch {}
-  setVadBar(0); setVadState("未启动", false);
-  $("startVadBtn").disabled = false; $("stopVadBtn").disabled = true;
+  _setBar(r.ui, 0); _setState(r.ui, "未启动", false);
+  if (r.ui.startBtn) r.ui.startBtn.disabled = false;
+  if (r.ui.stopBtn) r.ui.stopBtn.disabled = true;
 }
+const stopVad = stopVadStream;  // back-compat for showMode/replay
+
+// web模式: 浏览器麦克风连续 VAD 交互
+const WEB_VAD_UI = { stateEl: $("webVadState"), barEl: $("webVadBar"), startBtn: $("webStartBtn"), stopBtn: $("webStopBtn") };
+$("webStartBtn").onclick = () => startVadStream(WEB_VAD_UI);
+$("webStopBtn").onclick = () => stopVadStream();
+
+// VAD_ASR_TTS: 流式测试/调试
+const VAD_TEST_UI = { stateEl: $("vadState"), barEl: $("vadBar"), startBtn: $("startVadBtn"), stopBtn: $("stopVadBtn") };
+$("startVadBtn").onclick = () => startVadStream(VAD_TEST_UI);
+$("stopVadBtn").onclick = () => stopVadStream();
 
 // ---- 仿真回灌 (replay a long recording through the VAD pipeline) ----
 let replay = null;

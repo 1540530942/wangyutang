@@ -43,20 +43,24 @@
       <div class="statusline" id="wonderStatus">当前输入模式：加载中…</div>
     </section>
 
-    <!-- web mode (browser mic/speaker) -->
+    <!-- web mode: browser mic continuous VAD interaction -->
     <section id="browserSection" class="card hidden">
       <h2>web模式（浏览器麦克风 / 扬声器）</h2>
       <p class="note">
-        用当前浏览器的麦克风录一段（默认 4 秒）或上传短 WAV，经 ASR→唤醒→指令后，
-        返回的 TTS 直接用浏览器扬声器播放。需说唤醒词（如“你好瓦力”）才会触发动作。
+        点击「开始对话」后，浏览器持续采集麦克风并发送到云端；<code>audio_interact</code> 用 Silero VAD
+        自动断句，每句 ASR→唤醒词判断→robot_sandbox 指令→安全→<strong>真实执行</strong>，TTS 由浏览器扬声器自动播报。
+        需说唤醒词（如“你好瓦力”）才会触发动作。也可直接上传一段音频识别。
       </p>
       <div class="row">
-        <button id="recordBtn" type="button">🎙 录音并识别（4s）</button>
+        <button id="webStartBtn" type="button">🎙 开始对话</button>
+        <button id="webStopBtn" class="secondary" type="button" disabled>停止</button>
+        <span id="webVadState" class="badge">未启动</span>
         <label class="upload">
           上传音频识别
           <input id="uploadInput" type="file" accept="audio/*" hidden />
         </label>
       </div>
+      <div class="meter"><span>VAD</span><div class="meter-track"><i id="webVadBar"></i></div></div>
       <audio id="ttsPlayer" controls class="player"></audio>
     </section>
 
@@ -80,12 +84,12 @@
       <div id="replayLog" class="replay-log"></div>
     </section>
 
-    <!-- VAD_ASR_TTS -->
+    <!-- VAD_ASR_TTS: test/debug + TTS synthesis -->
     <section id="vadSection" class="card hidden">
-      <h2>VAD_ASR_TTS</h2>
+      <h2>VAD_ASR_TTS（测试 / 调试）</h2>
       <p class="note">
-        <strong>识别方向</strong>：点击开始后，浏览器持续发送 16k PCM 到云端；<code>audio_interact</code> 用 Silero VAD 流式切分语音片段，
-        片段结束调 ASR，final text 才进入唤醒词判断和动作路由。TTS 以二进制帧回推并自动播放。
+        <strong>识别方向（调试）</strong>：与 web模式 同一条流式链路，用于观察 VAD 电平与逐句识别。日常语音交互请用 <strong>web模式</strong>。
+        点击开始后浏览器持续发送 16k PCM，Silero VAD 流式切句 → ASR → 唤醒 → 动作路由，TTS 二进制帧回推自动播放。
       </p>
       <div class="row">
         <button id="startVadBtn" type="button">开始持续接收</button>
