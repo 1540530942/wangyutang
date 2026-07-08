@@ -925,13 +925,32 @@ uploadBtn?.addEventListener("click", () => {
     });
 });
 
-sendTextBtn?.addEventListener("click", () => {
+function submitTextCommand() {
+  if (!sendTextBtn) return;
   sendTextBtn.disabled = true;
   sendTextCommand()
     .catch(showError)
     .finally(() => {
       sendTextBtn.disabled = false;
     });
+}
+
+sendTextBtn?.addEventListener("click", submitTextCommand);
+
+// 回车执行(单行输入框)
+webTextInput?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    submitTextCommand();
+  }
+});
+
+// 常用指令快捷键
+document.querySelectorAll(".quick-cmds .chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    if (webTextInput) webTextInput.value = chip.dataset.cmd || chip.textContent.trim();
+    submitTextCommand();
+  });
 });
 
 voiceVolumeInput?.addEventListener("input", () => {

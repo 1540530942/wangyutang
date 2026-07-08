@@ -22,14 +22,28 @@
         <a class="tab" href="/audio_interact/" target="_blank">🎙 语音输入（WonderEchoPro / 浏览器麦克风 / VAD_ASR）→ audio_interact</a>
       </section>
 
-      <section class="control-strip">
-        <div class="toggle-card">
+      <!-- 文本指令执行区(始终可见) -->
+      <section class="panel command-panel">
+        <div class="section-head compact-head">
           <div>
-            <span>本页职责</span>
-            <strong>文本 → 指令规划 → 安全 → 执行</strong>
+            <span>文本指令</span>
+            <h2>输入指令并执行</h2>
           </div>
+          <button id="clearTasksBtn" class="danger" type="button">清零任务</button>
         </div>
-        <button id="clearTasksBtn" class="danger" type="button">清零任务</button>
+        <div class="command-row">
+          <input id="webTextInput" type="text" placeholder="例如：前进 / 左转 / 前面有什么（回车执行）" autocomplete="off" />
+          <button id="sendTextBtn" type="button">执行</button>
+        </div>
+        <div class="quick-cmds">
+          <button class="chip" type="button" data-cmd="前进">前进</button>
+          <button class="chip" type="button" data-cmd="后退">后退</button>
+          <button class="chip" type="button" data-cmd="左转">左转</button>
+          <button class="chip" type="button" data-cmd="右转">右转</button>
+          <button class="chip" type="button" data-cmd="前面有什么">前面有什么</button>
+          <button class="chip" type="button" data-cmd="停下">停下</button>
+        </div>
+        <p class="mode-note">文本 → 指令规划 → 校验 → 安全（前方测距）→ 执行 → TTS 播报。结果见下方面板。</p>
       </section>
 
       <section class="panel volume-panel">
@@ -66,17 +80,7 @@
             </div>
             <code id="latestSkill">未匹配</code>
           </div>
-          <p id="latestMeta">直接输入文本指令（如“前进”“左转”），进入指令规划 → 校验 → 安全 → 执行链路。语音输入请用 <a href="/audio_interact/" target="_blank">audio_interact 语音输入台</a>。</p>
-
-          <div id="webInputSection">
-            <label class="field">
-              <span>文本指令</span>
-              <textarea id="webTextInput" placeholder="例如：前进"></textarea>
-            </label>
-            <div class="upload-row">
-              <button id="sendTextBtn" type="button">发送文本指令</button>
-            </div>
-          </div>
+          <p id="latestMeta">识别与执行结果显示在这里。文本指令在上方「文本指令」区输入；语音输入请用 <a href="/audio_interact/" target="_blank">audio_interact 语音输入台</a>。</p>
 
           <textarea id="asrResult" readonly placeholder="指令结果文本"></textarea>
           <div class="pre-wrap">
@@ -124,6 +128,6 @@
         </section>
       </section>
     </main>
-    <script src="./static/app.js?v=20260630-enriched-context"></script>
+    <script src="./static/app.js?v=20260706-textcmd"></script>
   </body>
 </html>

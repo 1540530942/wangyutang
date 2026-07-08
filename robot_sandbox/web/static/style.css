@@ -660,3 +660,24 @@ pre {
     grid-template-columns: 1fr;
   }
 }
+
+/* 文本指令执行区 */
+.command-panel { border-left: 3px solid var(--accent); }
+.command-row { display: flex; gap: 10px; margin-top: 12px; }
+.command-row input {
+  flex: 1; padding: 12px 14px; font-size: 16px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--bg); color: var(--text);
+}
+.command-row input:focus { outline: none; border-color: var(--accent); background: #fff; }
+.command-row button {
+  padding: 12px 28px; font-size: 16px; font-weight: 600; border: none;
+  border-radius: 10px; background: var(--accent); color: #fff; cursor: pointer;
+}
+.command-row button:disabled { opacity: .5; cursor: not-allowed; }
+.quick-cmds { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.quick-cmds .chip {
+  padding: 6px 14px; font-size: 14px; border: 1px solid var(--line);
+  border-radius: 999px; background: var(--accent-soft); color: var(--accent);
+  cursor: pointer;
+}
+.quick-cmds .chip:hover { background: var(--accent); color: #fff; }
