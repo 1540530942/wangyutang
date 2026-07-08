@@ -171,7 +171,9 @@ function _setBar(ui, v) { if (ui.barEl) ui.barEl.style.width = `${Math.min(100, 
 
 async function startVadStream(ui) {
   if (vad) return;
-  if (!navigator.mediaDevices?.getUserMedia) { setStatus("此浏览器不支持麦克风采集"); return; }
+  if (!navigator.mediaDevices?.getUserMedia) { setStatus("此浏览器不支持麦克风采集（需 HTTPS + 授权）"); return; }
+  _setState(ui, "启动中…", true);
+  setStatus("正在请求麦克风权限…");
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     const ctx = new AudioContext();
@@ -226,7 +228,7 @@ function stopVadStream() {
 const stopVad = stopVadStream;  // back-compat for showMode/replay
 
 // web模式: 浏览器麦克风连续 VAD 交互
-const WEB_VAD_UI = { stateEl: $("webVadState"), barEl: $("webVadBar"), startBtn: $("webStartBtn"), stopBtn: $("webStopBtn") };
+const WEB_VAD_UI = { stateEl: $("webVadState"), barEl: null, startBtn: $("webStartBtn"), stopBtn: $("webStopBtn") };
 $("webStartBtn").onclick = () => startVadStream(WEB_VAD_UI);
 $("webStopBtn").onclick = () => stopVadStream();
 

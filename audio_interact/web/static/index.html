@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Audio Interact — 语音输入</title>
-  <link rel="stylesheet" href="./style.css" />
+  <link rel="stylesheet" href="./style.css?v=3" />
 </head>
 <body>
   <header class="topbar">
@@ -60,7 +60,6 @@
           <input id="uploadInput" type="file" accept="audio/*" hidden />
         </label>
       </div>
-      <div class="meter"><span>VAD</span><div class="meter-track"><i id="webVadBar"></i></div></div>
       <audio id="ttsPlayer" controls class="player"></audio>
     </section>
 
@@ -122,6 +121,6 @@
   </main>
 
   <footer id="status" class="statusbar">就绪</footer>
-  <script src="./app.js"></script>
+  <script src="./app.js?v=3"></script>
 </body>
 </html>
