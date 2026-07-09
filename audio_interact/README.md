@@ -54,3 +54,31 @@ The cloud service is deployed as the `audio-interact` Compose service and expose
 wss://www.wangyutang.cn/audio_interact/ws/audio
 https://www.wangyutang.cn/audio_interact/api/health
 ```
+
+## Session Replay / Eval
+
+Runtime capture writes replayable packages under:
+
+```text
+<AUDIO_INTERACT_DATA_DIR>/sessions/<YYYY-MM-DD>/<session_id>/
+```
+
+Each package contains `manifest.json`, `audio/`, `events/`, `labels/`, `replay/`, and `reports/`.
+
+Replay and evaluate a standard session:
+
+```bash
+python tools/replay_eval.py --session_dir /app/data/sessions/2026-07-08/<session_id>
+```
+
+Convert old recording packages first:
+
+```bash
+python tools/import_legacy_recording.py /app/data/recordings/2026-07-08/<session_id>
+```
+
+Run a batch of sessions:
+
+```bash
+python tools/run_regression.py /app/data/sessions
+```

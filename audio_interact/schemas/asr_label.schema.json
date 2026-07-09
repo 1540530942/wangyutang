@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ASR labels",
+  "type": "object",
+  "required": ["session_id", "turns"],
+  "properties": {
+    "session_id": {"type": "string"},
+    "turns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["turn_id", "start_ms", "end_ms", "normalized_text"],
+        "properties": {
+          "turn_id": {"type": "string"},
+          "start_ms": {"type": "integer", "minimum": 0},
+          "end_ms": {"type": "integer", "minimum": 0},
+          "raw_text": {"type": "string"},
+          "normalized_text": {"type": "string"}
+        }
+      }
+    }
+  }
+}
+

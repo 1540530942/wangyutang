@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Barge-in labels",
+  "type": "object",
+  "required": ["session_id", "bargein_cases"],
+  "properties": {
+    "session_id": {"type": "string"},
+    "bargein_cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["case_id", "tts_id", "user_turn_id", "user_speech_start_ms", "user_speech_end_ms", "should_interrupt"],
+        "properties": {
+          "case_id": {"type": "string"},
+          "tts_id": {"type": "string"},
+          "user_turn_id": {"type": "string"},
+          "user_speech_start_ms": {"type": "integer", "minimum": 0},
+          "user_speech_end_ms": {"type": "integer", "minimum": 0},
+          "user_text": {"type": "string"},
+          "should_interrupt": {"type": "boolean"},
+          "expected_interrupt_commit_after_ms": {"type": "integer", "minimum": 0},
+          "expected_interrupt_commit_before_ms": {"type": "integer", "minimum": 0}
+        }
+      }
+    }
+  }
+}
+

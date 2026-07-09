@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "audio_interact session manifest",
+  "type": "object",
+  "required": ["schema_version", "session_id", "created_at", "duration_ms", "audio"],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "session_id": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string"},
+    "device_id": {"type": "string"},
+    "duration_ms": {"type": "integer", "minimum": 0},
+    "source": {"type": "string"},
+    "audio": {
+      "type": "object",
+      "required": ["sample_rate", "channels", "format", "chunk_ms"],
+      "properties": {
+        "sample_rate": {"type": "integer", "minimum": 1},
+        "channels": {"type": "integer", "minimum": 1},
+        "format": {"type": "string"},
+        "chunk_ms": {"type": "integer", "minimum": 1}
+      }
+    },
+    "versions": {"type": "object"},
+    "tags": {"type": "array", "items": {"type": "string"}}
+  }
+}
+

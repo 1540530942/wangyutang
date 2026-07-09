@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VAD labels",
+  "type": "object",
+  "required": ["session_id", "speech_segments"],
+  "properties": {
+    "session_id": {"type": "string"},
+    "speech_segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label_segment_id", "speaker", "start_ms", "end_ms"],
+        "properties": {
+          "label_segment_id": {"type": "string"},
+          "speaker": {"type": "string"},
+          "start_ms": {"type": "integer", "minimum": 0},
+          "end_ms": {"type": "integer", "minimum": 0},
+          "text": {"type": "string"},
+          "turn_id": {"type": "string"},
+          "overlap_tts_id": {"type": "string"}
+        }
+      }
+    }
+  }
+}
+

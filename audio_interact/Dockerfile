@@ -6,6 +6,11 @@ COPY requirements.txt .
 RUN if [ -n "$PIP_INDEX_URL" ]; then python -m pip config set global.index-url "$PIP_INDEX_URL"; fi \
     && pip install --no-cache-dir -r requirements.txt
 COPY server.py wake_state.py settings.py ./
+COPY runtime ./runtime
+COPY replay ./replay
+COPY eval ./eval
+COPY schemas ./schemas
+COPY tools ./tools
 COPY web ./web
 EXPOSE 8097
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8097"]

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TTS labels",
+  "type": "object",
+  "required": ["session_id", "tts_segments"],
+  "properties": {
+    "session_id": {"type": "string"},
+    "tts_segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tts_id", "text", "play_start_ms"],
+        "properties": {
+          "tts_id": {"type": "string"},
+          "text": {"type": "string"},
+          "play_start_ms": {"type": "integer", "minimum": 0},
+          "expected_play_end_ms": {"type": "integer", "minimum": 0},
+          "actual_stop_ms": {"type": "integer", "minimum": 0},
+          "interrupted": {"type": "boolean"},
+          "stop_reason": {"type": "string"}
+        }
+      }
+    }
+  }
+}
+

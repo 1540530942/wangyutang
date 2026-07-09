@@ -20,6 +20,10 @@ from fastapi import Body, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from runtime.session_writer import (
+    write_segment_session_package as _write_segment_session_package,
+    write_streaming_session_package as _write_streaming_session_package,
+)
 from settings import load_settings, save_settings
 from wake_state import WakeDecision, WakeStateStore
 
@@ -56,16 +60,43 @@ RECORDINGS_DIR = AUDIO_DATA_DIR / "recordings"
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def save_session_recording(session_id: str, device_id: str, sample_rate: int, full_pcm: bytes, utterances: list[dict[str, Any]]) -> str | None:
-    """Persist a full streaming session: un-truncated WAV + VAD/ASR markers.
+def safe_write_streaming_session_package(**kwargs: Any) -> str | None:
+    try:
+        return _write_streaming_session_package(**kwargs)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[WARN] session_package_failed: {exc}", flush=True)
+        return None
 
-    Layout (fixed location, per-date folder):
+
+def safe_write_segment_session_package(**kwargs: Any) -> str:
+    try:
+        return _write_segment_session_package(**kwargs)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[WARN] segment_session_package_failed: {exc}", flush=True)
+        return ""
+
+
+def save_session_recording(session_id: str, device_id: str, sample_rate: int, full_pcm: bytes, utterances: list[dict[str, Any]]) -> str | None:
+    """Persist a full streaming session in legacy and standard layouts.
+
+    Legacy layout:
       <AUDIO_DATA_DIR>/recordings/<YYYY-MM-DD>/<session_id>/full.wav
       <AUDIO_DATA_DIR>/recordings/<YYYY-MM-DD>/<session_id>/session.json
-    Returns the relative path, or None if there was no audio.
+
+    Standard replay/eval layout:
+      <AUDIO_DATA_DIR>/sessions/<YYYY-MM-DD>/<session_id>/{manifest,audio,events,labels,replay,reports}
     """
     if not full_pcm:
         return None
+    standard_rel = safe_write_streaming_session_package(
+        data_root=AUDIO_DATA_DIR,
+        session_id=session_id,
+        device_id=device_id,
+        sample_rate=sample_rate,
+        full_pcm=full_pcm,
+        utterances=utterances,
+        chunk_ms=int(1000 * 512 / sample_rate),
+    )
     day = time.strftime("%Y-%m-%d")
     safe_session = "".join(c for c in session_id if c.isalnum() or c in "-_") or uuid.uuid4().hex[:12]
     out_dir = RECORDINGS_DIR / day / safe_session
@@ -79,9 +110,10 @@ def save_session_recording(session_id: str, device_id: str, sample_rate: int, fu
         "duration_seconds": round(len(full_pcm) / 2 / sample_rate, 3),
         "truncated": False,
         "utterances": utterances,
+        "session_package": standard_rel,
     }
     (out_dir / "session.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-    return f"recordings/{day}/{safe_session}"
+    return standard_rel or f"recordings/{day}/{safe_session}"
 
 app = FastAPI(title="Audio Interact Service", version="0.3.0")
 WAKE_STATES = WakeStateStore()
@@ -667,6 +699,7 @@ async def audio_segment(
 
     # Store audio and build URL for envelope reference
     seg_name, audio_url = _store_segment(wav_bytes)
+    session_package = ""
 
     # ASR
     try:
@@ -680,15 +713,32 @@ async def audio_segment(
         asr_payload = asr_resp.json()
         text = str(asr_payload.get("text") or "").strip()
     except Exception as exc:
+        session_package = safe_write_segment_session_package(
+            data_root=AUDIO_DATA_DIR,
+            session_id=sess,
+            device_id=device_id,
+            wav_bytes=wav_bytes,
+            asr_text="",
+            wake_status="asr_error",
+        )
         return {
             "ok": False,
             "session_id": sess,
             "stage": "asr",
             "message": str(exc),
+            "session_package": session_package,
             "elapsed_ms": elapsed_ms(started),
         }
 
     if not text:
+        session_package = safe_write_segment_session_package(
+            data_root=AUDIO_DATA_DIR,
+            session_id=sess,
+            device_id=device_id,
+            wav_bytes=wav_bytes,
+            asr_text="",
+            wake_status="empty",
+        )
         return {
             "ok": True,
             "session_id": sess,
@@ -698,12 +748,21 @@ async def audio_segment(
             "tts_text": "",
             "tts_audio_base64": None,
             "audio_url": audio_url,
+            "session_package": session_package,
             "elapsed_ms": elapsed_ms(started),
         }
 
     # Wake-state gate
     wake = WAKE_STATES.decide(device_id, text)
     if not wake.should_route:
+        session_package = safe_write_segment_session_package(
+            data_root=AUDIO_DATA_DIR,
+            session_id=sess,
+            device_id=device_id,
+            wav_bytes=wav_bytes,
+            asr_text=text,
+            wake_status=wake.status,
+        )
         return {
             "ok": True,
             "session_id": sess,
@@ -713,6 +772,7 @@ async def audio_segment(
             "tts_text": "",
             "tts_audio_base64": None,
             "audio_url": audio_url,
+            "session_package": session_package,
             "elapsed_ms": elapsed_ms(started),
         }
 
@@ -726,6 +786,14 @@ async def audio_segment(
             wake_status=wake.status,
         )
     except Exception as exc:
+        session_package = safe_write_segment_session_package(
+            data_root=AUDIO_DATA_DIR,
+            session_id=sess,
+            device_id=device_id,
+            wav_bytes=wav_bytes,
+            asr_text=text,
+            wake_status=wake.status,
+        )
         return {
             "ok": False,
             "session_id": sess,
@@ -735,6 +803,7 @@ async def audio_segment(
             "tts_text": "",
             "tts_audio_base64": None,
             "audio_url": audio_url,
+            "session_package": session_package,
             "message": str(exc),
             "elapsed_ms": elapsed_ms(started),
         }
@@ -743,12 +812,25 @@ async def audio_segment(
 
     # Fetch TTS audio for Pi local playback
     tts_audio_b64: str | None = None
+    tts_audio_bytes: bytes | None = None
     if tts_text and TTS_URL:
         try:
-            audio_bytes = _fetch_tts_audio(tts_text)
-            tts_audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+            tts_audio_bytes = _fetch_tts_audio(tts_text)
+            tts_audio_b64 = base64.b64encode(tts_audio_bytes).decode("ascii")
         except Exception as exc:
             print(f"[WARN] segment tts_failed: {exc}", flush=True)
+
+    session_package = safe_write_segment_session_package(
+        data_root=AUDIO_DATA_DIR,
+        session_id=sess,
+        device_id=device_id,
+        wav_bytes=wav_bytes,
+        asr_text=text,
+        wake_status=wake.status,
+        command=command,
+        tts_text=tts_text,
+        tts_wav_bytes=tts_audio_bytes,
+    )
 
     return {
         "ok": True,
@@ -759,6 +841,7 @@ async def audio_segment(
         "tts_text": tts_text,
         "tts_audio_base64": tts_audio_b64,
         "audio_url": audio_url,
+        "session_package": session_package,
         "elapsed_ms": elapsed_ms(started),
     }
 
