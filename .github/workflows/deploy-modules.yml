@@ -19,6 +19,7 @@ on:
       - "pi5_robot/**"
       - "slam_mapping/**"
       - "smile_face/**"
+      - "ci_tests/**"
       - "scripts/tencent_apply_release.sh"
   workflow_dispatch:
     inputs:
@@ -387,3 +388,23 @@ jobs:
               )
           print("Revision assertion OK: latency_ms present ->", env.get("latency_ms"))
           PY
+
+      - name: Run CI integration tests
+        if: steps.scope.outputs.up_services != ''
+        env:
+          MODULES: ${{ steps.scope.outputs.modules }}
+        run: |
+          set -euo pipefail
+          pip install --quiet pytest psutil websockets
+          modules="${MODULES:-}"
+
+          # 始终跑 smoke（robot_sandbox 路由 + 注册表校验）
+          echo "=== smoke tests ==="
+          python -m pytest ci_tests/smoke/ -v --tb=short -q
+
+          # audio_interact 部署时跑金标 VAD+ASR 回放验收
+          if echo "$modules" | grep -qw "audio_interact"; then
+            echo "=== audio_interact golden VAD+ASR tests ==="
+            python -m pytest ci_tests/audio_interact/ -v --tb=short -q \
+              --timeout=120
+          fi
