@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VAD+ASR 金标测试集 · 单工模式</title>
+  <link rel="stylesheet" href="/audio_interact/dashboard.css" />
+  <style>
+    /* page-level overrides for single-column scrollable layout */
+    body { height:auto; min-height:100vh; }
+    .page-body { max-width:960px; margin:0 auto; padding:20px 16px; }
+
+    /* topbar layout with nav */
+    .topbar { justify-content:space-between; }
+    .topbar-left h1 { font-size:16px; font-weight:600; }
+    .topbar-left .sub { font-size:12px; opacity:.75; }
+    .topbar-nav { display:flex; gap:8px; }
+    .topbar-nav a { color:rgba(255,255,255,.8); text-decoration:none; font-size:13px; padding:4px 12px; border-radius:6px; transition:background .15s; }
+    .topbar-nav a:hover { background:rgba(255,255,255,.15); }
+    .topbar-nav a.active { background:rgba(255,255,255,.22); color:#fff; font-weight:600; }
+
+    /* mode badges */
+    .mode-badge { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:.4px; }
+    .mode-simplex { background:#e0f2f1; color:#00695c; border:1px solid #b2dfdb; }
+
+    /* explain box */
+    .explain-box { background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:10px; padding:14px 18px; font-size:13px; line-height:1.7; color:var(--muted); margin-bottom:20px; box-shadow:var(--shadow); }
+    .explain-box strong { color:var(--text); }
+
+    /* case card */
+    .case-card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:24px; box-shadow:var(--shadow); }
+    .case-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+    .case-id { font-size:14px; font-weight:700; color:var(--text); }
+    .case-sub { font-size:12px; color:var(--muted); margin-bottom:8px; }
+    .case-sub a { color:var(--accent); text-decoration:none; }
+    .case-sub a:hover { text-decoration:underline; }
+    .gold-star { color:#f59e0b; font-size:18px; }
+    .desc-text { font-size:12px; color:var(--muted); margin-bottom:12px; }
+
+    /* audio row */
+    .audio-row { display:flex; align-items:center; gap:12px; margin:12px 0 6px; flex-wrap:wrap; }
+    .audio-row audio { flex:1; min-width:200px; height:36px; }
+
+    /* utterance table */
+    .expect-table { width:100%; border-collapse:collapse; font-size:13px; margin-top:14px; }
+    .expect-table th { background:var(--bg); color:var(--muted); font-weight:600; padding:7px 10px; text-align:left; border-bottom:1px solid var(--line); }
+    .expect-table td { padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
+    .expect-table tr:last-child td { border-bottom:none; }
+    .expect-table tr.clickable:hover td { background:var(--accent-soft); cursor:pointer; }
+
+    .loading-note { color:var(--muted); font-size:13px; padding:40px 0; text-align:center; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <h1>VAD+ASR 金标测试集</h1>
+      <div class="sub">单工模式 · 语音检测 + 语音识别 基准验收</div>
+    </div>
+    <div class="topbar-nav">
+      <a href="/dashboard/detail">数据看板</a>
+      <a href="/dashboard/vad_asr" class="active">金标测试集</a>
+    </div>
+  </div>
+
+  <div class="page-body">
+    <div class="explain-box">
+      <strong>什么是单工（Simplex）？</strong><br>
+      任意时刻只有一个方向在传输。在语音交互中，<strong>单工</strong>指用户说话时系统不播放 TTS，系统播完 TTS 后用户再开口，严格交替，如对讲机模式。<br>
+      <strong>优势</strong>：麦克风录到纯净用户语音，无 TTS 回声干扰，无需 AEC，是 VAD+ASR 的最理想基准测试场景。<br>
+      对比：半双工（按键说话）/ 全双工（同时说听，需 Barge-in + 回声消除）。
+    </div>
+
+    <div id="cases-container">
+      <div class="loading-note"><span class="spinner"></span> 加载金标数据…</div>
+    </div>
+  </div>
+
+  <script src="/audio_interact/vad_asr.js?v=20260711a"></script>
+</body>
+</html>

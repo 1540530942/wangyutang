@@ -5,11 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>机器人交互数据看板</title>
   <link rel="stylesheet" href="/audio_interact/dashboard.css" />
+  <style>
+    .topbar-nav { display:flex; gap:12px; align-items:center; }
+    .topbar-nav a { color:var(--accent-light); text-decoration:none; font-size:13px; padding:4px 10px; border-radius:6px; transition:background .15s; }
+    .topbar-nav a:hover { background:rgba(255,255,255,.1); }
+    .topbar-nav a.active { background:rgba(255,255,255,.18); font-weight:600; }
+  </style>
 </head>
 <body>
   <div class="topbar">
-    <h1>机器人交互数据看板</h1>
-    <span class="sub">音频 · VAD · ASR · 沙盒 全链路追踪</span>
+    <div>
+      <h1>机器人交互数据看板</h1>
+      <span class="sub">音频 · VAD · ASR · 沙盒 全链路追踪</span>
+    </div>
+    <div class="topbar-nav">
+      <a href="/dashboard/detail" class="active">数据看板</a>
+      <a href="/dashboard/vad_asr">金标测试集</a>
+    </div>
   </div>
   <div class="layout">
     <aside class="sidebar">

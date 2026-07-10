@@ -851,8 +851,34 @@ async def audio_segment(
 
 @app.get("/dashboard", include_in_schema=False)
 @app.get("/dashboard/", include_in_schema=False)
-def dashboard_page() -> FileResponse:
+def dashboard_redirect():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/dashboard/detail", status_code=308)
+
+
+@app.get("/dashboard/detail", include_in_schema=False)
+def dashboard_detail_page() -> FileResponse:
     return FileResponse(str(_STATIC_DIR / "dashboard.html"))
+
+
+@app.get("/dashboard/vad_asr", include_in_schema=False)
+def dashboard_vad_asr_page() -> FileResponse:
+    return FileResponse(str(_STATIC_DIR / "vad_asr.html"))
+
+
+_GOLDEN_DIR = Path(__file__).resolve().parent / "tests" / "golden"
+
+
+@app.get("/api/golden", include_in_schema=False)
+def list_golden_cases():
+    cases: list[dict[str, Any]] = []
+    if _GOLDEN_DIR.is_dir():
+        for f in sorted(_GOLDEN_DIR.glob("*.json")):
+            try:
+                cases.append(json.loads(f.read_text(encoding="utf-8")))
+            except Exception:
+                pass
+    return cases
 
 
 def _list_sessions(data_root: Path, limit: int = 100) -> list[dict[str, Any]]:
