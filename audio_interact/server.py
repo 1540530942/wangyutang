@@ -192,6 +192,9 @@ async def audio_ws(websocket: WebSocket) -> None:
                                 "wake_status": result.get("wake_status", ""),
                                 "skill_id": result.get("skill_id", ""),
                                 "status": result.get("status", ""),
+                                "action_task": result.get("action_task"),
+                                "tts_text": result.get("tts_text", ""),
+                                "action_error": result.get("action_error", ""),
                             })
                             pending_start = None
                             tts_text = result.get("tts_text", "")
@@ -844,6 +847,219 @@ async def audio_segment(
         "session_package": session_package,
         "elapsed_ms": elapsed_ms(started),
     }
+
+
+@app.get("/dashboard", include_in_schema=False)
+def dashboard_page() -> FileResponse:
+    return FileResponse(str(_STATIC_DIR / "dashboard.html"))
+
+
+def _list_sessions(data_root: Path, limit: int = 100) -> list[dict[str, Any]]:
+    """Scan sessions/ and recordings/ dirs; return merged list newest-first."""
+    found: dict[str, dict[str, Any]] = {}
+    for pkg_dir in sorted(data_root.glob("sessions/*/*/")):
+        mf = pkg_dir / "manifest.json"
+        if not mf.exists():
+            continue
+        try:
+            manifest = json.loads(mf.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            continue
+        sid = str(manifest.get("session_id") or pkg_dir.name)
+        found[sid] = {"session_id": sid, "day": pkg_dir.parent.name, "package_dir": str(pkg_dir),
+                      "legacy_dir": None, "manifest": manifest, "legacy_meta": None}
+    for rec_dir in sorted(data_root.glob("recordings/*/*/")):
+        sf = rec_dir / "session.json"
+        if not sf.exists():
+            continue
+        try:
+            meta = json.loads(sf.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            continue
+        sid = str(meta.get("session_id") or rec_dir.name)
+        entry = found.setdefault(sid, {"session_id": sid, "day": rec_dir.parent.name,
+                                       "package_dir": None, "manifest": None, "legacy_meta": None})
+        entry["legacy_dir"] = str(rec_dir)
+        entry["legacy_meta"] = meta
+    results = sorted(found.values(), key=lambda e: (e["day"], e["session_id"]), reverse=True)
+    return results[:limit]
+
+
+def _load_events_for_session(package_dir: Path) -> list[dict[str, Any]]:
+    seen: set[tuple] = set()
+    events: list[dict[str, Any]] = []
+    for fname in ["runtime_events.jsonl", "vad_runtime.jsonl", "asr_runtime.jsonl", "tts_runtime.jsonl", "bargein_runtime.jsonl"]:
+        fpath = package_dir / "events" / fname
+        if not fpath.exists():
+            continue
+        for line in fpath.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except Exception:  # noqa: BLE001
+                continue
+            key = (int(ev.get("ts_ms", 0)), str(ev.get("type", "")), str(ev.get("segment_id", "")), str(ev.get("turn_id", "")))
+            if key not in seen:
+                seen.add(key)
+                events.append(ev)
+    events.sort(key=lambda e: (int(e.get("ts_ms", 0)), str(e.get("type", ""))))
+    return events
+
+
+@app.get("/api/sessions")
+def list_sessions_route(limit: int = 60) -> list[dict[str, Any]]:
+    entries = _list_sessions(AUDIO_DATA_DIR, limit)
+    out = []
+    for e in entries:
+        m = e.get("manifest") or {}
+        lm = e.get("legacy_meta") or {}
+        utterances = lm.get("utterances") or []
+        duration_ms = int(m.get("duration_ms") or round(float(lm.get("duration_seconds") or 0) * 1000))
+        texts = [str(u.get("text") or "") for u in utterances if u.get("text")]
+        audio_url = None
+        if e.get("package_dir"):
+            pkg = Path(e["package_dir"])
+            for candidate in ("mic_proc_16k.wav", "mic_raw_16k.wav"):
+                if (pkg / "audio" / candidate).exists():
+                    audio_url = f"/audio_interact/api/sessions/{e['session_id']}/audio/{candidate}"
+                    break
+        elif e.get("legacy_dir"):
+            if (Path(e["legacy_dir"]) / "full.wav").exists():
+                audio_url = f"/audio_interact/api/sessions/{e['session_id']}/audio/full.wav"
+        out.append({
+            "session_id": e["session_id"],
+            "day": e["day"],
+            "duration_ms": duration_ms,
+            "utterance_count": len(utterances) if utterances else 0,
+            "source": m.get("source") or ("legacy" if e.get("legacy_dir") else "unknown"),
+            "capture_point": m.get("capture_point") or "unknown",
+            "device_id": m.get("device_id") or lm.get("device_id") or "",
+            "texts": texts[:8],
+            "has_package": bool(e.get("package_dir")),
+            "audio_url": audio_url,
+        })
+    return out
+
+
+@app.get("/api/sessions/{session_id}")
+def get_session_route(session_id: str) -> dict[str, Any]:
+    entries = _list_sessions(AUDIO_DATA_DIR, 500)
+    match = next((e for e in entries if e["session_id"] == session_id), None)
+    if not match:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} not found")
+
+    m = match.get("manifest") or {}
+    lm = match.get("legacy_meta") or {}
+    pkg = Path(match["package_dir"]) if match.get("package_dir") else None
+    leg = Path(match["legacy_dir"]) if match.get("legacy_dir") else None
+
+    # utterances: prefer events (richer), fallback to legacy
+    utterances: list[dict[str, Any]] = []
+    if pkg:
+        events = _load_events_for_session(pkg)
+        # build per-turn chain from events
+        vad_segs: dict[str, dict] = {}
+        asr_finals: dict[str, dict] = {}
+        robot_cmds: dict[str, dict] = {}
+        for ev in events:
+            etype = str(ev.get("type", ""))
+            seg = str(ev.get("segment_id") or "")
+            turn = str(ev.get("turn_id") or "")
+            if etype == "vad.speech_start":
+                vad_segs.setdefault(seg, {})["start_ms"] = int(ev.get("ts_ms", 0))
+            elif etype == "vad.speech_end":
+                vad_segs.setdefault(seg, {}).update({"end_ms": int(ev.get("ts_ms", 0)), "reason": ev.get("reason")})
+            elif etype == "vad.segment":
+                vad_segs[seg] = {"start_ms": int(ev.get("start_ms", 0)), "end_ms": int(ev.get("end_ms", 0)), "source": ev.get("source")}
+            elif etype == "asr.final":
+                asr_finals[seg] = {"text": ev.get("text", ""), "wake_status": ev.get("wake_status", ""),
+                                    "status": ev.get("status", ""), "turn_id": turn,
+                                    "audio_start_ms": ev.get("audio_start_ms"), "audio_end_ms": ev.get("audio_end_ms")}
+            elif etype == "robot.command":
+                robot_cmds[turn] = {"skill_id": (ev.get("command") or {}).get("skill_id") or ev.get("skill_id", ""),
+                                     "action_task": ev.get("action_task"), "tts_text": ev.get("tts_text", ""),
+                                     "action_error": ev.get("action_error", "")}
+        all_segs = sorted(set(vad_segs) | set(asr_finals), key=lambda s: int(vad_segs.get(s, {}).get("start_ms") or asr_finals.get(s, {}).get("audio_start_ms") or 0))
+        for i, seg in enumerate(all_segs):
+            vad = vad_segs.get(seg, {})
+            asr = asr_finals.get(seg, {})
+            turn_id = asr.get("turn_id", "")
+            cmd = robot_cmds.get(turn_id, {})
+            utterances.append({
+                "index": i,
+                "segment_id": seg,
+                "turn_id": turn_id,
+                "vad_start_ms": vad.get("start_ms"),
+                "vad_end_ms": vad.get("end_ms"),
+                "vad_source": vad.get("source"),
+                "text": asr.get("text", ""),
+                "wake_status": asr.get("wake_status", ""),
+                "status": asr.get("status", ""),
+                "audio_start_ms": asr.get("audio_start_ms"),
+                "audio_end_ms": asr.get("audio_end_ms"),
+                "skill_id": cmd.get("skill_id", ""),
+                "action_task": cmd.get("action_task"),
+                "tts_text": cmd.get("tts_text", ""),
+                "action_error": cmd.get("action_error", ""),
+            })
+    else:
+        for item in (lm.get("utterances") or []):
+            start_s = float(item.get("vad_start_seconds") or 0)
+            end_s = float(item.get("vad_end_seconds") or 0)
+            utterances.append({
+                "index": item.get("index", 0),
+                "segment_id": f"seg_{item.get('index', 0):03d}",
+                "turn_id": f"turn_{item.get('index', 0):03d}",
+                "vad_start_ms": int(start_s * 1000),
+                "vad_end_ms": int(end_s * 1000),
+                "vad_source": "silero",
+                "text": item.get("text", ""),
+                "wake_status": item.get("wake_status", ""),
+                "status": item.get("status", ""),
+                "audio_start_ms": int(start_s * 1000),
+                "audio_end_ms": int(end_s * 1000),
+                "skill_id": item.get("skill_id", ""),
+                "action_task": None,
+                "tts_text": "",
+                "action_error": "",
+            })
+
+    duration_ms = int(m.get("duration_ms") or round(float(lm.get("duration_seconds") or 0) * 1000))
+    audio_url = None
+    if pkg:
+        for candidate in ("mic_proc_16k.wav", "mic_raw_16k.wav"):
+            if (pkg / "audio" / candidate).exists():
+                audio_url = f"/audio_interact/api/sessions/{session_id}/audio/{candidate}"
+                break
+    elif leg and (leg / "full.wav").exists():
+        audio_url = f"/audio_interact/api/sessions/{session_id}/audio/full.wav"
+
+    return {
+        "session_id": session_id,
+        "day": match["day"],
+        "duration_ms": duration_ms,
+        "source": m.get("source") or "legacy",
+        "capture_point": m.get("capture_point") or "unknown",
+        "device_id": m.get("device_id") or lm.get("device_id") or "",
+        "proc_same_as_raw": m.get("proc_same_as_raw"),
+        "audio_url": audio_url,
+        "utterances": utterances,
+        "manifest": m or None,
+    }
+
+
+@app.get("/api/sessions/{session_id}/audio/{filename}")
+def get_session_audio(session_id: str, filename: str) -> FileResponse:
+    safe_name = Path(filename).name
+    # search both layouts
+    for pattern in [f"sessions/*/{session_id}/audio/{safe_name}", f"recordings/*/{session_id}/{safe_name}",
+                    f"recordings/*/{session_id}/full.wav"]:
+        matches = list(AUDIO_DATA_DIR.glob(pattern))
+        if matches:
+            return FileResponse(str(matches[0]), media_type="audio/wav")
+    raise HTTPException(status_code=404, detail="audio file not found")
 
 
 @app.post("/api/tts")

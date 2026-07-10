@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>机器人交互数据看板</title>
+  <link rel="stylesheet" href="/audio_interact/dashboard.css" />
+</head>
+<body>
+  <div class="topbar">
+    <h1>机器人交互数据看板</h1>
+    <span class="sub">音频 · VAD · ASR · 沙盒 全链路追踪</span>
+  </div>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <h2>Session 列表</h2>
+        <button onclick="loadSessions()" style="font-size:12px;border:none;background:none;cursor:pointer;color:var(--accent)">刷新</button>
+      </div>
+      <div class="sessions" id="sessions"></div>
+    </aside>
+    <main class="main">
+      <div id="detail" class="detail-empty">← 选择一个 Session 查看全链路</div>
+    </main>
+  </div>
+  <script src="/audio_interact/dashboard.js"></script>
+</body>
+</html>

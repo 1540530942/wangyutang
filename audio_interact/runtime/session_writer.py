@@ -208,6 +208,21 @@ def write_streaming_session_package(
             wake_status=item.get("wake_status"),
             status=item.get("status"),
         )
+        skill_id = str(item.get("skill_id") or "")
+        action_task = item.get("action_task")
+        tts_text = str(item.get("tts_text") or "")
+        action_error = str(item.get("action_error") or "")
+        if skill_id and item.get("status") == "ok":
+            writer.emit(
+                "runtime",
+                ts_ms=end_ms,
+                type="robot.command",
+                turn_id=turn_id,
+                skill_id=skill_id,
+                action_task=action_task,
+                tts_text=tts_text,
+                action_error=action_error,
+            )
     writer.close()
     return writer.relative_path(data_root)
 

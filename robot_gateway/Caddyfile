@@ -29,6 +29,10 @@
 		reverse_proxy {$AUDIO_INTERACT_UPSTREAM:audio-interact:8097}
 	}
 
+	handle /dashboard {
+		reverse_proxy {$AUDIO_INTERACT_UPSTREAM:audio-interact:8097}
+	}
+
 	handle_path /common/* {
 		reverse_proxy {$COMMON_UPSTREAM:host.docker.internal:8101}
 	}
