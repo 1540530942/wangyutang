@@ -33,6 +33,7 @@ class SessionWriter:
         channels: int = 1,
         chunk_ms: int = 32,
         source: str = "audio_interact",
+        capture_point: str = "unknown",
         session_day: str | None = None,
     ) -> None:
         self.root = root
@@ -42,6 +43,7 @@ class SessionWriter:
         self.channels = channels
         self.chunk_ms = chunk_ms
         self.source = source
+        self.capture_point = capture_point
         self.session_day = session_day
         self.created_at = time.time()
         self.session_dir = self._session_dir(root, self.session_id, self.session_day)
@@ -80,12 +82,16 @@ class SessionWriter:
 
     def write_manifest(self, *, duration_ms: int = 0, extra: dict[str, Any] | None = None) -> Path:
         manifest = {
-            "schema_version": "1.0",
+            "schema_version": "1.1",
             "session_id": self.session_id,
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(self.created_at)),
             "device_id": self.device_id,
             "duration_ms": int(duration_ms),
             "source": self.source,
+            # 采集点:browser_processed = 浏览器已做 AEC/降噪/AGC,"raw" 并非真原始
+            "capture_point": self.capture_point,
+            # 当前服务端无独立前处理链,proc 与 raw 逐字节相同
+            "proc_same_as_raw": True,
             "audio": {
                 "sample_rate": self.sample_rate,
                 "channels": self.channels,
@@ -163,6 +169,8 @@ def write_streaming_session_package(
         sample_rate=sample_rate,
         chunk_ms=chunk_ms,
         source="websocket_stream",
+        # WS 流当前只有浏览器客户端;getUserMedia 开启 echoCancellation 等处理
+        capture_point="browser_processed",
     )
     writer.write_audio_pcm16("mic_raw_16k.wav", full_pcm)
     writer.write_audio_pcm16("mic_proc_16k.wav", full_pcm)
@@ -216,11 +224,14 @@ def write_segment_session_package(
     tts_text: str = "",
     tts_wav_bytes: bytes | None = None,
 ) -> str:
-    writer = SessionWriter(data_root, session_id=session_id, device_id=device_id, source="segment_upload")
+    # web-* 设备来自浏览器(已过浏览器处理链);其余为树莓派 ALSA 直采
+    capture_point = "browser_processed" if device_id.startswith("web") else "pi_alsa_raw"
+    writer = SessionWriter(data_root, session_id=session_id, device_id=device_id, source="segment_upload", capture_point=capture_point)
     writer.write_audio_wav("mic_raw_16k.wav", wav_bytes)
     writer.write_audio_wav("mic_proc_16k.wav", wav_bytes)
     duration_ms = wav_duration_ms(writer.audio_dir / "mic_proc_16k.wav")
-    writer.emit("vad", ts_ms=0, type="vad.segment", segment_id="seg_001", start_ms=0, end_ms=duration_ms, source_audio="mic_proc_16k.wav")
+    # 定长上传没有真实 VAD,整段即一个"段";标 fixed_window,评测时不得计入 VAD 预测
+    writer.emit("vad", ts_ms=0, type="vad.segment", segment_id="seg_001", start_ms=0, end_ms=duration_ms, source="fixed_window", source_audio="mic_proc_16k.wav")
     writer.emit("asr", ts_ms=duration_ms, type="asr.final", segment_id="seg_001", turn_id="turn_001", audio_start_ms=0, audio_end_ms=duration_ms, text=asr_text, wake_status=wake_status)
     if command is not None:
         writer.emit("runtime", ts_ms=duration_ms, type="robot.command", turn_id="turn_001", command=command)

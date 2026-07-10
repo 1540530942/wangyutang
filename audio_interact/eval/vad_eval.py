@@ -29,7 +29,12 @@ def evaluate_vad(vad_events: list[dict[str, Any]], vad_label: dict[str, Any]) ->
 
 
 def _pred_segments(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    segments = [event for event in events if event.get("type") == "vad.segment"]
+    # fixed_window 是定长上传的占位段,不是真实 VAD 预测,不参与评测
+    segments = [
+        event
+        for event in events
+        if event.get("type") == "vad.segment" and event.get("source") != "fixed_window"
+    ]
     if segments:
         return segments
     starts: dict[str, int] = {}
