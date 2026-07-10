@@ -405,6 +405,6 @@ jobs:
           # audio_interact 部署时跑金标 VAD+ASR 回放验收
           if echo "$modules" | grep -qw "audio_interact"; then
             echo "=== audio_interact golden VAD+ASR tests ==="
-            python -m pytest ci_tests/audio_interact/ -v --tb=short -q \
+            python -m pytest ci_tests/vad_asr/ -v --tb=short -q \
               --timeout=120
           fi
