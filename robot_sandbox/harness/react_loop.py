@@ -9,7 +9,7 @@ from typing import Any
 from robot_sandbox.agent.react_agent import build_llm_react_agent, run_react_agent
 from robot_sandbox.core.envelope import DecisionEnvelope, ToolCall, build_call_id
 from robot_sandbox.safety.guard import has_emergency_intent, run_safety_guard, run_safety_guard_for_task
-from robot_sandbox.skills.registry import load_skill_registry, resolve_catalog_path, resolve_registry_path
+from robot_sandbox.skills.registry import SkillRegistry, load_skill_registry, resolve_catalog_path, resolve_registry_path
 from robot_sandbox.tools.dispatcher import dispatch_envelope, dispatch_task
 from robot_sandbox.tools.observation_executor import OBSERVATION_TOOLS, execute_observation_tool
 from robot_sandbox.tools.tool_call_adapter import build_tool_result_message
@@ -18,57 +18,24 @@ from robot_sandbox.tools.tool_validator import validate_tool_call, validate_tool
 
 _TTS_SKIP = {"completed", "done", "dry_run", "emergency_stop", "rejected", ""}
 
-_SKILL_TTS: dict[str, str] = {
-    "move_forward": "好的，往前走",
-    "move_backward": "好的，往后退",
-    "move_left": "好的，向左移",
-    "move_right": "好的，向右移",
-    "turn_left": "好的，向左转",
-    "turn_right": "好的，向右转",
-    "look_left": "好的，向左看",
-    "look_right": "好的，向右看",
-    "look_up": "好的，抬头看",
-    "look_down": "好的，低头看",
-    "reset_pose": "好的，回到初始姿态",
-    "rgb_on": "好的，打开灯光",
-    "rgb_off": "好的，关闭灯光",
-    "emergency_stop": "好的，紧急停止",
-    "camera_snapshot": "好的，已拍照",
-    "front_distance": "好的，已测距",
-    "inspect_scene": "好的，已查看场景",
-}
 
-_REJECT_TTS: dict[str, str] = {
-    "front_distance_too_close": "前方太近，无法前进",
-    "front_distance_unavailable": "距离传感器不可用",
-    "front_distance_stale": "传感器数据过旧，我先停下",
-    "front_distance_low_confidence": "传感器置信度低，我先停下",
-    "front_distance_observation_missing": "缺少前方距离数据",
-    "recent_front_distance_required": "需要先测距才能执行",
-    "recent_camera_snapshot_required": "需要先拍照才能执行",
-    "negative_instruction_detected": "好的，我不会这样做",
-    "low_confidence_confirmation_required": "我不太确定指令，先暂停",
-    "too_many_movement_tasks": "动作太多了，只能执行三个",
-    "total_duration_exceeded": "总时长超限，已调整",
-    "unsupported_action_skill": "抱歉，我不认识这个动作",
-    "unsupported_face_skill": "抱歉，我不支持这个表情",
-}
-
-
-def build_tts_text(envelope: DecisionEnvelope) -> str:
+def build_tts_text(envelope: DecisionEnvelope, registry: SkillRegistry | None = None) -> str:
     # LLM path: finish.message is natural language from the LLM
     if envelope.final_response and envelope.final_response not in _TTS_SKIP:
         return envelope.final_response
+
+    reject_tts: dict[str, str] = (registry.defaults.get("reject_tts") or {}) if registry else {}
 
     # emergency_stop is in _TTS_SKIP so check tasks directly
     completed_task = next((t for t in envelope.tasks if t.status in {"completed", "accepted"}), None)
     rejected_task = next((t for t in envelope.tasks if t.status == "rejected"), None)
 
     if completed_task:
-        return _SKILL_TTS.get(completed_task.skill_id, "好的，已执行")
+        spec = registry.get(completed_task.skill_id) if registry else None
+        return (spec.tts_text if spec and spec.tts_text else None) or "好的，已执行"
 
     if rejected_task:
-        return _REJECT_TTS.get(rejected_task.error, "抱歉，无法执行这个动作")
+        return reject_tts.get(rejected_task.error, "抱歉，无法执行这个动作")
 
     # Observation-only result (inspect_scene, front_distance, etc.)
     if envelope.observations:
@@ -90,7 +57,8 @@ def build_tts_text(envelope: DecisionEnvelope) -> str:
                     return f"前方距离约{int(float(dist))}厘米"
                 except (TypeError, ValueError):
                     pass
-        return _SKILL_TTS.get(tool, "好的，观测完成")
+        spec = registry.get(tool) if registry else None
+        return (spec.tts_text if spec and spec.tts_text else None) or "好的，观测完成"
 
     if not envelope.tasks and not envelope.observations:
         return "抱歉，我没有理解这条指令"
@@ -99,49 +67,49 @@ def build_tts_text(envelope: DecisionEnvelope) -> str:
 
 
 EXACT_ACTION_ALIASES = {
-    "forward": "move_forward",
-    "\u524d\u8fdb": "move_forward",
-    "\u5411\u524d": "move_forward",
-    "\u5411\u524d\u8d70": "move_forward",
-    "\u5f80\u524d\u8d70": "move_forward",
-    "\u5411\u524d\u79fb\u52a8": "move_forward",
+    "forward":  "move_forward",
+    "前进":     "move_forward",
+    "向前":     "move_forward",
+    "向前走":   "move_forward",
+    "往前走":   "move_forward",
+    "向前移动": "move_forward",
     "backward": "move_backward",
-    "\u540e\u9000": "move_backward",
-    "\u5411\u540e": "move_backward",
-    "\u5411\u540e\u8d70": "move_backward",
-    "\u5f80\u540e\u8d70": "move_backward",
-    "\u5de6\u8f6c": "turn_left",
-    "\u5411\u5de6\u8f6c": "turn_left",
-    "\u5f80\u5de6\u8f6c": "turn_left",
-    "\u671d\u5de6\u8f6c": "turn_left",
-    "\u5411\u5de6\u65cb\u8f6c": "turn_left",
-    "\u6389\u5934": "turn_left",
-    "\u539f\u5730\u6389\u5934": "turn_left",
-    "\u53f3\u8f6c": "turn_right",
-    "\u5411\u53f3\u8f6c": "turn_right",
-    "\u5f80\u53f3\u8f6c": "turn_right",
-    "\u671d\u53f3\u8f6c": "turn_right",
-    "\u5411\u53f3\u65cb\u8f6c": "turn_right",
-    "\u5de6\u79fb": "move_left",
-    "\u5411\u5de6\u79fb": "move_left",
-    "\u5f80\u5de6\u8d70": "move_left",
-    "\u53f3\u79fb": "move_right",
-    "\u5411\u53f3\u79fb": "move_right",
-    "\u5f80\u53f3\u8d70": "move_right",
+    "后退":     "move_backward",
+    "向后":     "move_backward",
+    "向后走":   "move_backward",
+    "往后走":   "move_backward",
+    "左转":     "turn_left",
+    "向左转":   "turn_left",
+    "往左转":   "turn_left",
+    "朝左转":   "turn_left",
+    "向左旋转": "turn_left",
+    "甩头":     "turn_left",
+    "原地甩头": "turn_left",
+    "右转":     "turn_right",
+    "向右转":   "turn_right",
+    "往右转":   "turn_right",
+    "朝右转":   "turn_right",
+    "向右旋转": "turn_right",
+    "左移":     "move_left",
+    "向左移":   "move_left",
+    "往左走":   "move_left",
+    "右移":     "move_right",
+    "向右移":   "move_right",
+    "往右走":   "move_right",
 }
-EXACT_ACTION_SPLIT_RE = re.compile(r"(?:\s+|[\uff0c,;\uff1b\u3001]+|\u7136\u540e|\u518d|\u63a5\u7740|\u5e76\u4e14|\u540e)+")
+EXACT_ACTION_SPLIT_RE = re.compile(r"(?:\s+|[，,;；、]+|然后|再|接着|并且|后)+")
 DISTANCE_ACTION_RE = re.compile(
-    r"^(?P<alias>forward|\u524d\u8fdb|\u5411\u524d|\u5411\u524d\u8d70|\u5f80\u524d\u8d70|\u5411\u524d\u79fb\u52a8|"
-    r"backward|\u540e\u9000|\u5411\u540e|\u5411\u540e\u8d70|\u5f80\u540e\u8d70|"
-    r"\u5de6\u79fb|\u5411\u5de6\u79fb|\u5f80\u5de6\u8d70|"
-    r"\u53f3\u79fb|\u5411\u53f3\u79fb|\u5f80\u53f3\u8d70)"
-    r"(?P<distance>\d+(?:\.\d+)?)(?:cm|\u5398\u7c73|\u516c\u5206)$",
+    r"^(?P<alias>forward|前进|向前|向前走|往前走|向前移动|"
+    r"backward|后退|向后|向后走|往后走|"
+    r"左移|向左移|往左走|"
+    r"右移|向右移|往右走)"
+    r"(?P<distance>\d+(?:\.\d+)?)(?:cm|厘米|公分)$",
     re.IGNORECASE,
 )
 
 
 def _normalized_exact_text(text: str) -> str:
-    return re.sub(r"[\s\u3002\uff01!\uff1f?]+", "", text.strip().casefold())
+    return re.sub(r"[\s。！!？?]+", "", text.strip().casefold())
 
 
 def _exact_action_sequence(transcript: str) -> list[tuple[str, str, dict[str, Any]]] | None:
@@ -237,7 +205,7 @@ def _run_exact_action_sequence(
         if result.get("status") not in {"completed", "dry_run"}:
             break
     envelope.final_response = str(envelope.dispatch_results[-1].get("status") if envelope.dispatch_results else "done")
-    envelope.t_agent_end = __import__("time").time()
+    envelope.t_agent_end = time.time()
     return envelope
 
 
@@ -301,6 +269,10 @@ def route_transcript(
     device_id: str = "turbopi-01",
     raw: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    registry = load_skill_registry(
+        resolve_registry_path(base_dir, router_config),
+        resolve_catalog_path(base_dir, router_config),
+    )
     envelope = decide_transcript(
         base_dir=base_dir,
         text=text,
@@ -350,7 +322,7 @@ def route_transcript(
         "observation": first_observation,
         "action_error": action_error,
         "face_error": face_error,
-        "tts_text": build_tts_text(envelope),
+        "tts_text": build_tts_text(envelope, registry),
         "envelope": envelope.model_dump(),
     }
 
@@ -406,7 +378,7 @@ def decide_transcript(
                 envelope.t_dispatch_end = time.time()
             envelope.react_turns[-1]["tool_result"] = result
         envelope.final_response = "emergency_stop"
-        envelope.t_agent_end = __import__("time").time()
+        envelope.t_agent_end = time.time()
         return envelope
     exact_actions = _exact_action_sequence(envelope.transcript)
     if exact_actions:
@@ -433,7 +405,7 @@ def decide_transcript(
         tool_result = {"ok": observation.get("status") != "failed", "observation": observation}
         envelope.react_turns[-1]["tool_result"] = tool_result
         envelope.final_response = str(observation.get("status") or "completed")
-        envelope.t_agent_end = __import__("time").time()
+        envelope.t_agent_end = time.time()
         return envelope
     try:
         agent = build_llm_react_agent(base_dir=base_dir, router_config=router_config)
@@ -447,7 +419,7 @@ def decide_transcript(
         {"role": "user", "content": f"/no_think\n用户原始指令: {envelope.transcript}"},
     ]
     envelope.react_messages = list(messages)
-    envelope.t_agent_start = envelope.t_agent_start or __import__("time").time()
+    envelope.t_agent_start = envelope.t_agent_start or time.time()
     pending_deferred: list[dict[str, Any]] = []
     for turn in range(1, max(max_steps, 1) + 1):
         if pending_deferred:
@@ -482,7 +454,7 @@ def decide_transcript(
                             "type": "function",
                             "function": {
                                 "name": call.tool,
-                                "arguments": __import__("json").dumps(call.args, ensure_ascii=False),
+                                "arguments": json.dumps(call.args, ensure_ascii=False),
                             },
                         }
                     ],
@@ -544,7 +516,7 @@ def decide_transcript(
     else:
         envelope.add_error("react_agent", "max_steps_exceeded", {"max_steps": max_steps})
     envelope.react_messages = list(messages)
-    envelope.t_agent_end = __import__("time").time()
+    envelope.t_agent_end = time.time()
     return envelope
 
 

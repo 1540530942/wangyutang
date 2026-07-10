@@ -23,6 +23,7 @@ DEFAULT_REGISTRY_DEFAULTS: dict[str, Any] = {
     "max_face_duration_ms": 5000,
     "observation_ttl_ms": {"camera_snapshot": 30000, "front_distance": 30000, "get_robot_state": 5000, "inspect_scene": 30000},
     "safety_thresholds": {"min_front_distance_estimate_cm": 15},
+    "reject_tts": {},
 }
 
 
@@ -38,6 +39,7 @@ class SkillSpec:
     aliases: tuple[str, ...] = ()
     risk: str = "low"
     pre_conditions: tuple[str, ...] = ()
+    tts_text: str = ""
 
 
 @dataclass(frozen=True)
@@ -174,6 +176,7 @@ def _registry_from_data(data: dict[str, Any], source: str) -> SkillRegistry:
             aliases=aliases,
             risk=_normalize_risk(item.get("risk")),
             pre_conditions=_normalize_pre_conditions(item.get("pre_conditions")),
+            tts_text=str(item.get("tts_text") or ""),
         )
     return SkillRegistry(source=source, skills=skills, defaults=defaults)
 

@@ -10,18 +10,34 @@ defaults:
     inspect_scene: 15000
   safety_thresholds:
     min_front_distance_estimate_cm: 15
+  reject_tts:
+    front_distance_too_close: "前方太近，无法前进"
+    front_distance_unavailable: "距离传感器不可用"
+    front_distance_stale: "传感器数据过旧，我先停下"
+    front_distance_low_confidence: "传感器置信度低，我先停下"
+    front_distance_observation_missing: "缺少前方距离数据"
+    recent_front_distance_required: "需要先测距才能执行"
+    recent_camera_snapshot_required: "需要先拍照才能执行"
+    negative_instruction_detected: "好的，我不会这样做"
+    low_confidence_confirmation_required: "我不太确定指令，先暂停"
+    too_many_movement_tasks: "动作太多了，只能执行三个"
+    total_duration_exceeded: "总时长超限，已调整"
+    unsupported_action_skill: "抱歉，我不认识这个动作"
+    unsupported_face_skill: "抱歉，我不支持这个表情"
 skills:
   - id: emergency_stop
     route: action
     tool: emergency_stop
     max_duration_ms: 0
     risk: low
+    tts_text: "好的，紧急停止"
     aliases: [stop, e-stop]
   - id: move_forward
     route: action
     tool: dispatch_action
     max_duration_ms: 1000
     risk: medium
+    tts_text: "好的，往前走"
     pre_conditions:
       - front_distance_clear
     aliases: [forward]
@@ -29,76 +45,91 @@ skills:
     route: action
     tool: dispatch_action
     max_duration_ms: 1000
+    tts_text: "好的，往后退"
     aliases: [backward]
   - id: move_left
     route: action
     tool: dispatch_action
     max_duration_ms: 1000
+    tts_text: "好的，向左移"
     aliases: [move left]
   - id: move_right
     route: action
     tool: dispatch_action
     max_duration_ms: 1000
+    tts_text: "好的，向右移"
     aliases: [move right]
   - id: turn_left
     route: action
     tool: dispatch_action
     max_duration_ms: 800
+    tts_text: "好的，向左转"
     aliases: [turn left, 左转, 左拐, 朝左转, 向左旋转, 往左转, 往左拐, 向左拐]
   - id: turn_right
     route: action
     tool: dispatch_action
     max_duration_ms: 800
+    tts_text: "好的，向右转"
     aliases: [turn right, 右转, 右拐, 朝右转, 向右旋转, 往右转, 往右拐, 向右拐]
   - id: look_left
     route: action
     tool: dispatch_action
     max_duration_ms: 1000
+    tts_text: "好的，向左看"
     aliases: [look left, 左看, 左边看, 看左边, 向左边看, 摄像头向左, 镜头向左, 舵机向左转]
   - id: look_right
     route: action
     tool: dispatch_action
     max_duration_ms: 1000
+    tts_text: "好的，向右看"
     aliases: [look right, 右看, 右边看, 看右边, 向右边看, 摄像头向右, 镜头向右, 舵机向右转]
   - id: look_up
     route: action
     tool: dispatch_action
     max_duration_ms: 1000
+    tts_text: "好的，抬头看"
     aliases: [look up, 抬头看, 看上面, 向上看, 摄像头向上, 镜头向上, 舵机向上转]
   - id: look_down
     route: action
     tool: dispatch_action
     max_duration_ms: 1000
+    tts_text: "好的，低头看"
     aliases: [look down, 低头看, 看下面, 向下看, 摄像头向下, 镜头向下, 舵机向下转]
   - id: reset_pose
     route: action
     tool: dispatch_action
     max_duration_ms: 1000
+    tts_text: "好的，回到初始姿态"
     aliases: [reset]
   - id: rgb_on
     route: action
     tool: dispatch_action
     max_duration_ms: 1000
+    tts_text: "好的，打开灯光"
     aliases: [rgb on, light on, 开灯, 打开灯光]
   - id: rgb_off
     route: action
     tool: dispatch_action
     max_duration_ms: 1000
+    tts_text: "好的，关闭灯光"
     aliases: [rgb off, light off, 关灯, 关闭灯光]
   - id: camera_snapshot
     route: observation
     tool: camera_snapshot
     max_duration_ms: 5000
+    tts_text: "好的，已拍照"
     aliases: [camera snapshot, snapshot, take photo, 看一下前面, 看看前面, 看一下前方, 看看前方, 拍照, 拍一张, 拍一下]
   - id: front_distance
     route: observation
     tool: front_distance
     max_duration_ms: 2000
+    tts_text: "好的，已测距"
     aliases: [front distance, distance ahead, 前方距离, 前面距离, 测距, 看看距离, 前面有多远]
   - id: inspect_scene
     route: observation
     tool: inspect_scene
     max_duration_ms: 15000
+    tts_text: "好的，已查看场景"
     aliases:
       - inspect scene
       - 前面有没有人
