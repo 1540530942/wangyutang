@@ -850,6 +850,7 @@ async def audio_segment(
 
 
 @app.get("/dashboard", include_in_schema=False)
+@app.get("/dashboard/", include_in_schema=False)
 def dashboard_page() -> FileResponse:
     return FileResponse(str(_STATIC_DIR / "dashboard.html"))
 
@@ -956,10 +957,17 @@ def get_session_route(session_id: str) -> dict[str, Any]:
     leg = Path(match["legacy_dir"]) if match.get("legacy_dir") else None
 
     # utterances: prefer events (richer), fallback to legacy
+    # build skill_id fallback map from legacy session.json (indexed by utterance index)
+    legacy_skill_map: dict[int, str] = {}
+    for item in (lm.get("utterances") or []):
+        idx = int(item.get("index") or 0)
+        sk = str(item.get("skill_id") or "")
+        if sk:
+            legacy_skill_map[idx] = sk
+
     utterances: list[dict[str, Any]] = []
     if pkg:
         events = _load_events_for_session(pkg)
-        # build per-turn chain from events
         vad_segs: dict[str, dict] = {}
         asr_finals: dict[str, dict] = {}
         robot_cmds: dict[str, dict] = {}
@@ -976,6 +984,7 @@ def get_session_route(session_id: str) -> dict[str, Any]:
             elif etype == "asr.final":
                 asr_finals[seg] = {"text": ev.get("text", ""), "wake_status": ev.get("wake_status", ""),
                                     "status": ev.get("status", ""), "turn_id": turn,
+                                    "skill_id": str(ev.get("skill_id") or ""),
                                     "audio_start_ms": ev.get("audio_start_ms"), "audio_end_ms": ev.get("audio_end_ms")}
             elif etype == "robot.command":
                 robot_cmds[turn] = {"skill_id": (ev.get("command") or {}).get("skill_id") or ev.get("skill_id", ""),
@@ -987,6 +996,8 @@ def get_session_route(session_id: str) -> dict[str, Any]:
             asr = asr_finals.get(seg, {})
             turn_id = asr.get("turn_id", "")
             cmd = robot_cmds.get(turn_id, {})
+            # skill_id: robot.command event > asr.final event > legacy session.json fallback
+            skill_id = cmd.get("skill_id") or asr.get("skill_id") or legacy_skill_map.get(i, "")
             utterances.append({
                 "index": i,
                 "segment_id": seg,
@@ -999,7 +1010,7 @@ def get_session_route(session_id: str) -> dict[str, Any]:
                 "status": asr.get("status", ""),
                 "audio_start_ms": asr.get("audio_start_ms"),
                 "audio_end_ms": asr.get("audio_end_ms"),
-                "skill_id": cmd.get("skill_id", ""),
+                "skill_id": skill_id,
                 "action_task": cmd.get("action_task"),
                 "tts_text": cmd.get("tts_text", ""),
                 "action_error": cmd.get("action_error", ""),

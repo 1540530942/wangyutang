@@ -29,7 +29,7 @@
 		reverse_proxy {$AUDIO_INTERACT_UPSTREAM:audio-interact:8097}
 	}
 
-	handle /dashboard {
+	handle /dashboard* {
 		reverse_proxy {$AUDIO_INTERACT_UPSTREAM:audio-interact:8097}
 	}
 

@@ -207,6 +207,7 @@ def write_streaming_session_package(
             text=text,
             wake_status=item.get("wake_status"),
             status=item.get("status"),
+            skill_id=str(item.get("skill_id") or ""),
         )
         skill_id = str(item.get("skill_id") or "")
         action_task = item.get("action_task")
