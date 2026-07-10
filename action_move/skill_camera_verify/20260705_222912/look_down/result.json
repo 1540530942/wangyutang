@@ -1,0 +1,28 @@
+{
+  "action": "look_down",
+  "task_id": "1783263292922-256311",
+  "task_status": "complete",
+  "task_error": "",
+  "task_output": "[INFO] 向下看 -> look_down\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] servo_id=1 position=1500 delta=100\n[INFO] elapsed_seconds=0.352\n[INFO] poller_controller_roundtrip_seconds=0.354\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+  "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\look_down\\before.jpg",
+  "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\look_down\\after.jpg",
+  "before_frame_id": "24",
+  "after_frame_id": "26",
+  "before_task_id": "1783263283418-83c94c",
+  "after_task_id": "1783263298657-08230a",
+  "before_bytes": 47088,
+  "after_bytes": 47188,
+  "metrics": {
+    "image_size": [
+      640,
+      480
+    ],
+    "before_luma_mean": 100.95,
+    "after_luma_mean": 100.4,
+    "mean_abs_diff": 18.59,
+    "changed_percent_gt8": 38.86,
+    "valid_after_frame": true
+  },
+  "visual_changed": true,
+  "verified": true
+}

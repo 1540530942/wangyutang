@@ -1,0 +1,28 @@
+{
+  "action": "look_left",
+  "task_id": "1783263090081-1384ed",
+  "task_status": "complete",
+  "task_error": "",
+  "task_output": "[INFO] 向左看 -> look_left\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] servo_id=2 position=1700 delta=100\n[INFO] elapsed_seconds=0.353\n[INFO] poller_controller_roundtrip_seconds=0.354\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+  "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\look_left\\before.jpg",
+  "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\look_left\\after.jpg",
+  "before_frame_id": "14",
+  "after_frame_id": "17",
+  "before_task_id": "1783263045796-ea3cc7",
+  "after_task_id": "1783263097403-77c172",
+  "before_bytes": 46495,
+  "after_bytes": 46018,
+  "metrics": {
+    "image_size": [
+      640,
+      480
+    ],
+    "before_luma_mean": 100.14,
+    "after_luma_mean": 107.34,
+    "mean_abs_diff": 78.74,
+    "changed_percent_gt8": 92.28,
+    "valid_after_frame": true
+  },
+  "visual_changed": true,
+  "verified": true
+}

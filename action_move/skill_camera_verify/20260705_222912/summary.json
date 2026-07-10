@@ -1,0 +1,571 @@
+{
+  "generated_at": "2026-07-05T23:12:25",
+  "run_dir": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912",
+  "safe_settings": {
+    "unit_distance_cm": 1,
+    "turn_angle_deg": 1,
+    "sensitivity": 2,
+    "voice_volume_percent": 0,
+    "rgb_red": 255,
+    "rgb_green": 255,
+    "rgb_blue": 255
+  },
+  "restored_settings": {
+    "ok": true,
+    "settings": {
+      "unit_distance_cm": 10.0,
+      "turn_angle_deg": 5.0,
+      "sensitivity": 0.5,
+      "voice_volume_percent": 0.0,
+      "rgb_red": 0,
+      "rgb_green": 0,
+      "rgb_blue": 0
+    }
+  },
+  "skipped": [
+    {
+      "action": "remote_shutdown",
+      "status": "skipped",
+      "reason": "destructive: would shut down Raspberry Pi host"
+    }
+  ],
+  "results": [
+    {
+      "action": "camera_snapshot",
+      "task_id": "1783264269724-b62667",
+      "task_status": "complete",
+      "task_error": "controller unavailable: HTTP Error 500: Internal Server Error",
+      "task_output": "[INFO] 拍照 -> camera_snapshot\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\camera_snapshot\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\camera_snapshot\\after.jpg",
+      "before_frame_id": "45",
+      "after_frame_id": "47",
+      "before_task_id": "1783264211701-0453a4",
+      "after_task_id": "1783264285473-4925cd",
+      "before_bytes": 41216,
+      "after_bytes": 41107,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 105.18,
+        "after_luma_mean": 105.23,
+        "mean_abs_diff": 2.18,
+        "changed_percent_gt8": 3.45,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "emergency_stop",
+      "task_id": "1783261736486-b7b5cd",
+      "task_status": "complete",
+      "task_error": "",
+      "task_output": "[INFO] 急停 -> emergency_stop\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] elapsed_seconds=0.092\n[INFO] poller_controller_roundtrip_seconds=0.094\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\emergency_stop\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\emergency_stop\\after.jpg",
+      "before_frame_id": "2",
+      "after_frame_id": "3",
+      "before_task_id": "1783261722159-2aeb79",
+      "after_task_id": "1783261745215-9302f9",
+      "before_bytes": 46795,
+      "after_bytes": 46858,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 100.78,
+        "after_luma_mean": 100.74,
+        "mean_abs_diff": 2.48,
+        "changed_percent_gt8": 4.8,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "front_distance",
+      "task_id": "1783263023823-81a556",
+      "task_status": "complete",
+      "task_error": "",
+      "task_output": "[INFO] 超声波测距 -> front_distance\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] front_distance_estimate_cm=73.9\n[INFO] raw_mm_samples=739,739,739,739,739,739,739\n[INFO] confidence=1.0\n[INFO] elapsed_seconds=0.286\n[INFO] poller_controller_roundtrip_seconds=0.287\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\front_distance\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\front_distance\\after.jpg",
+      "before_frame_id": "12",
+      "after_frame_id": "13",
+      "before_task_id": "1783263015744-464152",
+      "after_task_id": "1783263036612-a3318d",
+      "before_bytes": 46631,
+      "after_bytes": 46569,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 100.15,
+        "after_luma_mean": 100.19,
+        "mean_abs_diff": 2.46,
+        "changed_percent_gt8": 4.71,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "look_down",
+      "task_id": "1783263292922-256311",
+      "task_status": "complete",
+      "task_error": "",
+      "task_output": "[INFO] 向下看 -> look_down\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] servo_id=1 position=1500 delta=100\n[INFO] elapsed_seconds=0.352\n[INFO] poller_controller_roundtrip_seconds=0.354\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\look_down\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\look_down\\after.jpg",
+      "before_frame_id": "24",
+      "after_frame_id": "26",
+      "before_task_id": "1783263283418-83c94c",
+      "after_task_id": "1783263298657-08230a",
+      "before_bytes": 47088,
+      "after_bytes": 47188,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 100.95,
+        "after_luma_mean": 100.4,
+        "mean_abs_diff": 18.59,
+        "changed_percent_gt8": 38.86,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "look_left",
+      "task_id": "1783263090081-1384ed",
+      "task_status": "complete",
+      "task_error": "",
+      "task_output": "[INFO] 向左看 -> look_left\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] servo_id=2 position=1700 delta=100\n[INFO] elapsed_seconds=0.353\n[INFO] poller_controller_roundtrip_seconds=0.354\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\look_left\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\look_left\\after.jpg",
+      "before_frame_id": "14",
+      "after_frame_id": "17",
+      "before_task_id": "1783263045796-ea3cc7",
+      "after_task_id": "1783263097403-77c172",
+      "before_bytes": 46495,
+      "after_bytes": 46018,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 100.14,
+        "after_luma_mean": 107.34,
+        "mean_abs_diff": 78.74,
+        "changed_percent_gt8": 92.28,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "look_right",
+      "task_id": "1783263189007-b17e6c",
+      "task_status": "complete",
+      "task_error": "",
+      "task_output": "[INFO] 向右看 -> look_right\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] servo_id=2 position=1600 delta=-100\n[INFO] elapsed_seconds=0.352\n[INFO] poller_controller_roundtrip_seconds=0.354\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\look_right\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\look_right\\after.jpg",
+      "before_frame_id": "18",
+      "after_frame_id": "20",
+      "before_task_id": "1783263178135-8daeea",
+      "after_task_id": "1783263196534-ac0def",
+      "before_bytes": 46187,
+      "after_bytes": 47189,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 107.45,
+        "after_luma_mean": 99.58,
+        "mean_abs_diff": 61.36,
+        "changed_percent_gt8": 82.77,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "look_up",
+      "task_id": "1783263264729-1016c6",
+      "task_status": "complete",
+      "task_error": "",
+      "task_output": "[INFO] 向上看 -> look_up\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] servo_id=1 position=1400 delta=-100\n[INFO] elapsed_seconds=0.352\n[INFO] poller_controller_roundtrip_seconds=0.354\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\look_up\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\look_up\\after.jpg",
+      "before_frame_id": "21",
+      "after_frame_id": "23",
+      "before_task_id": "1783263222149-58a7bb",
+      "after_task_id": "1783263270463-c7e7da",
+      "before_bytes": 47236,
+      "after_bytes": 46936,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 99.59,
+        "after_luma_mean": 100.89,
+        "mean_abs_diff": 24.54,
+        "changed_percent_gt8": 47.29,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "move_backward",
+      "task_id": "1783263557519-b5ba72",
+      "task_status": "complete",
+      "task_error": "",
+      "task_output": "[INFO] 向后走 -> move_backward\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] duration_ms=180\n[INFO] cmd_vel_topics=/cmd_vel,/controller/cmd_vel\n[INFO] cmd_vel_subscription_counts=/cmd_vel:1,/controller/cmd_vel:0\n[INFO] move_ramp_ms=250 move_start_scale=0.35\n[CMD] actual_distance_cm=1.0\n[INFO] elapsed_seconds=0.297\n[INFO] poller_controller_roundtrip_seconds=0.298\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\move_backward\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\move_backward\\after.jpg",
+      "before_frame_id": "29",
+      "after_frame_id": "30",
+      "before_task_id": "1783263544423-291c05",
+      "after_task_id": "1783263705386-581223",
+      "before_bytes": 47246,
+      "after_bytes": 47373,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 99.99,
+        "after_luma_mean": 100.69,
+        "mean_abs_diff": 24.65,
+        "changed_percent_gt8": 45.73,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "move_diagonal_forward_left",
+      "task_id": "1783264138064-092759",
+      "task_status": "complete",
+      "task_error": "",
+      "task_output": "[INFO] 斜向左前方移动 -> move_diagonal_forward_left\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] duration_ms=180\n[INFO] cmd_vel_topics=/cmd_vel,/controller/cmd_vel\n[INFO] cmd_vel_subscription_counts=/cmd_vel:1,/controller/cmd_vel:0\n[INFO] move_ramp_ms=250 move_start_scale=0.35\n[CMD] actual_distance_cm=1.0\n[INFO] elapsed_seconds=0.295\n[INFO] poller_controller_roundtrip_seconds=0.297\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\move_diagonal_forward_left\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\move_diagonal_forward_left\\after.jpg",
+      "before_frame_id": "41",
+      "after_frame_id": "42",
+      "before_task_id": "1783264122335-318693",
+      "after_task_id": "1783264147731-cf553e",
+      "before_bytes": 39109,
+      "after_bytes": 40055,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 112.78,
+        "after_luma_mean": 109.02,
+        "mean_abs_diff": 43.13,
+        "changed_percent_gt8": 61.14,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "move_diagonal_forward_right",
+      "task_id": "1783264187338-4182af",
+      "task_status": "complete",
+      "task_error": "",
+      "task_output": "[INFO] 斜向右前方移动 -> move_diagonal_forward_right\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] duration_ms=180\n[INFO] cmd_vel_topics=/cmd_vel,/controller/cmd_vel\n[INFO] cmd_vel_subscription_counts=/cmd_vel:1,/controller/cmd_vel:0\n[INFO] move_ramp_ms=250 move_start_scale=0.35\n[CMD] actual_distance_cm=1.0\n[INFO] elapsed_seconds=0.296\n[INFO] poller_controller_roundtrip_seconds=0.297\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\move_diagonal_forward_right\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\move_diagonal_forward_right\\after.jpg",
+      "before_frame_id": "43",
+      "after_frame_id": "44",
+      "before_task_id": "1783264166991-518023",
+      "after_task_id": "1783264199162-49dd51",
+      "before_bytes": 39905,
+      "after_bytes": 41186,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 109.07,
+        "after_luma_mean": 105.16,
+        "mean_abs_diff": 33.06,
+        "changed_percent_gt8": 50.26,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "move_forward",
+      "task_id": "1783263531113-7346fd",
+      "task_status": "complete",
+      "task_error": "",
+      "task_output": "[INFO] 向前走 -> move_forward\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] duration_ms=180\n[INFO] cmd_vel_topics=/cmd_vel,/controller/cmd_vel\n[INFO] cmd_vel_subscription_counts=/cmd_vel:1,/controller/cmd_vel:0\n[INFO] move_ramp_ms=250 move_start_scale=0.35\n[CMD] actual_distance_cm=1.0\n[INFO] elapsed_seconds=0.296\n[INFO] poller_controller_roundtrip_seconds=0.297\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\move_forward\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\move_forward\\after.jpg",
+      "before_frame_id": "27",
+      "after_frame_id": "28",
+      "before_task_id": "1783263306350-591cba",
+      "after_task_id": "1783263536869-c5ab3e",
+      "before_bytes": 47248,
+      "after_bytes": 47275,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 100.38,
+        "after_luma_mean": 99.95,
+        "mean_abs_diff": 15.15,
+        "changed_percent_gt8": 34.27,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "move_left",
+      "task_id": "1783263764362-1ab144",
+      "task_status": "complete",
+      "task_error": "",
+      "task_output": "[INFO] 向左走 -> move_left\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] duration_ms=180\n[INFO] cmd_vel_topics=/cmd_vel,/controller/cmd_vel\n[INFO] cmd_vel_subscription_counts=/cmd_vel:1,/controller/cmd_vel:0\n[INFO] move_ramp_ms=250 move_start_scale=0.35\n[CMD] actual_distance_cm=1.0\n[INFO] elapsed_seconds=0.295\n[INFO] poller_controller_roundtrip_seconds=0.297\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\move_left\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\move_left\\after.jpg",
+      "before_frame_id": "31",
+      "after_frame_id": "32",
+      "before_task_id": "1783263714842-af0b7e",
+      "after_task_id": "1783263785259-479ed4",
+      "before_bytes": 47420,
+      "after_bytes": 46985,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 100.75,
+        "after_luma_mean": 101.95,
+        "mean_abs_diff": 28.92,
+        "changed_percent_gt8": 50.48,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "move_right",
+      "task_id": "1783263809641-0685d9",
+      "task_status": "complete",
+      "task_error": "",
+      "task_output": "[INFO] 向右走 -> move_right\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] duration_ms=180\n[INFO] cmd_vel_topics=/cmd_vel,/controller/cmd_vel\n[INFO] cmd_vel_subscription_counts=/cmd_vel:1,/controller/cmd_vel:0\n[INFO] move_ramp_ms=250 move_start_scale=0.35\n[CMD] actual_distance_cm=1.0\n[INFO] elapsed_seconds=0.297\n[INFO] poller_controller_roundtrip_seconds=0.299\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\move_right\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\move_right\\after.jpg",
+      "before_frame_id": "33",
+      "after_frame_id": "34",
+      "before_task_id": "1783263797080-0b58b4",
+      "after_task_id": "1783263926017-7a70f9",
+      "before_bytes": 46885,
+      "after_bytes": 47409,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 101.95,
+        "after_luma_mean": 102.15,
+        "mean_abs_diff": 29.44,
+        "changed_percent_gt8": 49.81,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "reset_pose",
+      "task_id": "1783261769986-4abb34",
+      "task_status": "complete",
+      "task_error": "",
+      "task_output": "[INFO] Reset -> reset_pose\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] elapsed_seconds=0.444\n[INFO] poller_controller_roundtrip_seconds=0.446\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\reset_pose\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\reset_pose\\after.jpg",
+      "before_frame_id": "4",
+      "after_frame_id": "6",
+      "before_task_id": "1783261753091-a063b5",
+      "after_task_id": "1783261776637-e74e90",
+      "before_bytes": 46902,
+      "after_bytes": 46806,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 100.73,
+        "after_luma_mean": 100.71,
+        "mean_abs_diff": 2.49,
+        "changed_percent_gt8": 4.77,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "rgb_off",
+      "task_id": "1783262995353-539f41",
+      "task_status": "complete",
+      "task_error": "",
+      "task_output": "[INFO] RGB 关灯 -> rgb_off\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] elapsed_seconds=0.005\n[INFO] poller_controller_roundtrip_seconds=0.007\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\rgb_off\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\rgb_off\\after.jpg",
+      "before_frame_id": "10",
+      "after_frame_id": "11",
+      "before_task_id": "1783262986671-e576bd",
+      "after_task_id": "1783263003194-8e66f9",
+      "before_bytes": 46789,
+      "after_bytes": 46606,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 101.42,
+        "after_luma_mean": 100.17,
+        "mean_abs_diff": 2.84,
+        "changed_percent_gt8": 6.03,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "rgb_on",
+      "task_id": "1783262969604-09a259",
+      "task_status": "complete",
+      "task_error": "",
+      "task_output": "[INFO] RGB 开灯 -> rgb_on\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] elapsed_seconds=0.005\n[INFO] poller_controller_roundtrip_seconds=0.007\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\rgb_on\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\rgb_on\\after.jpg",
+      "before_frame_id": "8",
+      "after_frame_id": "9",
+      "before_task_id": "1783262957446-d1947f",
+      "after_task_id": "1783262976057-ab407d",
+      "before_bytes": 46540,
+      "after_bytes": 46736,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 100.79,
+        "after_luma_mean": 101.43,
+        "mean_abs_diff": 2.57,
+        "changed_percent_gt8": 5.06,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "rotate_in_place",
+      "task_id": "1783264090354-c32bcd",
+      "task_status": "complete",
+      "task_error": "",
+      "task_output": "[INFO] 原地旋转 -> rotate_in_place\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] duration_ms=180\n[INFO] cmd_vel_topics=/cmd_vel,/controller/cmd_vel\n[INFO] cmd_vel_subscription_counts=/cmd_vel:1,/controller/cmd_vel:0\n[INFO] move_ramp_ms=250 move_start_scale=0.35\n[CMD] actual_yaw_deg=1.0\n[INFO] elapsed_seconds=0.295\n[INFO] poller_controller_roundtrip_seconds=0.297\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\rotate_in_place\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\rotate_in_place\\after.jpg",
+      "before_frame_id": "39",
+      "after_frame_id": "40",
+      "before_task_id": "1783264077113-859cd1",
+      "after_task_id": "1783264103560-c0c39c",
+      "before_bytes": 47248,
+      "after_bytes": 39009,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 101.15,
+        "after_luma_mean": 112.76,
+        "mean_abs_diff": 83.55,
+        "changed_percent_gt8": 91.72,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "turn_left",
+      "task_id": "1783263946918-920e91",
+      "task_status": "complete",
+      "task_error": "",
+      "task_output": "[INFO] 向左转 -> turn_left\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] duration_ms=180\n[INFO] cmd_vel_topics=/cmd_vel,/controller/cmd_vel\n[INFO] cmd_vel_subscription_counts=/cmd_vel:1,/controller/cmd_vel:0\n[INFO] move_ramp_ms=250 move_start_scale=0.35\n[CMD] actual_yaw_deg=1.0\n[INFO] elapsed_seconds=0.295\n[INFO] poller_controller_roundtrip_seconds=0.297\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\turn_left\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\turn_left\\after.jpg",
+      "before_frame_id": "35",
+      "after_frame_id": "36",
+      "before_task_id": "1783263935238-130e43",
+      "after_task_id": "1783263954943-a97152",
+      "before_bytes": 47391,
+      "after_bytes": 38951,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 102.14,
+        "after_luma_mean": 115.42,
+        "mean_abs_diff": 81.07,
+        "changed_percent_gt8": 91.28,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "turn_right",
+      "task_id": "1783263986315-f6a879",
+      "task_status": "complete",
+      "task_error": "",
+      "task_output": "[INFO] 向右转 -> turn_right\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] duration_ms=180\n[INFO] cmd_vel_topics=/cmd_vel,/controller/cmd_vel\n[INFO] cmd_vel_subscription_counts=/cmd_vel:1,/controller/cmd_vel:0\n[INFO] move_ramp_ms=250 move_start_scale=0.35\n[CMD] actual_yaw_deg=1.0\n[INFO] elapsed_seconds=0.296\n[INFO] poller_controller_roundtrip_seconds=0.297\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+      "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\turn_right\\before.jpg",
+      "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\turn_right\\after.jpg",
+      "before_frame_id": "37",
+      "after_frame_id": "38",
+      "before_task_id": "1783263968533-0440fe",
+      "after_task_id": "1783264006186-aeac26",
+      "before_bytes": 38941,
+      "after_bytes": 47296,
+      "metrics": {
+        "image_size": [
+          640,
+          480
+        ],
+        "before_luma_mean": 115.43,
+        "after_luma_mean": 101.15,
+        "mean_abs_diff": 80.88,
+        "changed_percent_gt8": 91.35,
+        "valid_after_frame": true
+      },
+      "visual_changed": true,
+      "verified": true
+    },
+    {
+      "action": "remote_shutdown",
+      "status": "skipped",
+      "reason": "destructive: would shut down Raspberry Pi host"
+    }
+  ]
+}

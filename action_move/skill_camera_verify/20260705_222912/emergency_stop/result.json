@@ -1,0 +1,28 @@
+{
+  "action": "emergency_stop",
+  "task_id": "1783261736486-b7b5cd",
+  "task_status": "complete",
+  "task_error": "",
+  "task_output": "[INFO] 急停 -> emergency_stop\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] elapsed_seconds=0.092\n[INFO] poller_controller_roundtrip_seconds=0.094\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+  "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\emergency_stop\\before.jpg",
+  "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\emergency_stop\\after.jpg",
+  "before_frame_id": "2",
+  "after_frame_id": "3",
+  "before_task_id": "1783261722159-2aeb79",
+  "after_task_id": "1783261745215-9302f9",
+  "before_bytes": 46795,
+  "after_bytes": 46858,
+  "metrics": {
+    "image_size": [
+      640,
+      480
+    ],
+    "before_luma_mean": 100.78,
+    "after_luma_mean": 100.74,
+    "mean_abs_diff": 2.48,
+    "changed_percent_gt8": 4.8,
+    "valid_after_frame": true
+  },
+  "visual_changed": true,
+  "verified": true
+}

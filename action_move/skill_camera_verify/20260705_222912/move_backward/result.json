@@ -1,0 +1,28 @@
+{
+  "action": "move_backward",
+  "task_id": "1783263557519-b5ba72",
+  "task_status": "complete",
+  "task_error": "",
+  "task_output": "[INFO] 向后走 -> move_backward\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] duration_ms=180\n[INFO] cmd_vel_topics=/cmd_vel,/controller/cmd_vel\n[INFO] cmd_vel_subscription_counts=/cmd_vel:1,/controller/cmd_vel:0\n[INFO] move_ramp_ms=250 move_start_scale=0.35\n[CMD] actual_distance_cm=1.0\n[INFO] elapsed_seconds=0.297\n[INFO] poller_controller_roundtrip_seconds=0.298\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+  "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\move_backward\\before.jpg",
+  "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\move_backward\\after.jpg",
+  "before_frame_id": "29",
+  "after_frame_id": "30",
+  "before_task_id": "1783263544423-291c05",
+  "after_task_id": "1783263705386-581223",
+  "before_bytes": 47246,
+  "after_bytes": 47373,
+  "metrics": {
+    "image_size": [
+      640,
+      480
+    ],
+    "before_luma_mean": 99.99,
+    "after_luma_mean": 100.69,
+    "mean_abs_diff": 24.65,
+    "changed_percent_gt8": 45.73,
+    "valid_after_frame": true
+  },
+  "visual_changed": true,
+  "verified": true
+}

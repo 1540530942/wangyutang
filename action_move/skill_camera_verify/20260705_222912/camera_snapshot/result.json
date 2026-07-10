@@ -1,0 +1,28 @@
+{
+  "action": "camera_snapshot",
+  "task_id": "1783264269724-b62667",
+  "task_status": "complete",
+  "task_error": "controller unavailable: HTTP Error 500: Internal Server Error",
+  "task_output": "[INFO] 拍照 -> camera_snapshot\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+  "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\camera_snapshot\\before.jpg",
+  "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\camera_snapshot\\after.jpg",
+  "before_frame_id": "45",
+  "after_frame_id": "47",
+  "before_task_id": "1783264211701-0453a4",
+  "after_task_id": "1783264285473-4925cd",
+  "before_bytes": 41216,
+  "after_bytes": 41107,
+  "metrics": {
+    "image_size": [
+      640,
+      480
+    ],
+    "before_luma_mean": 105.18,
+    "after_luma_mean": 105.23,
+    "mean_abs_diff": 2.18,
+    "changed_percent_gt8": 3.45,
+    "valid_after_frame": true
+  },
+  "visual_changed": true,
+  "verified": true
+}

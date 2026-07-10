@@ -1,0 +1,28 @@
+{
+  "action": "reset_pose",
+  "task_id": "1783261769986-4abb34",
+  "task_status": "complete",
+  "task_error": "",
+  "task_output": "[INFO] Reset -> reset_pose\n[INFO] transport=persistent_ros_controller\n[INFO] unit_distance_cm=1.0 turn_angle_deg=1.0 sensitivity=2.0\n[INFO] elapsed_seconds=0.444\n[INFO] poller_controller_roundtrip_seconds=0.446\n[INFO] voice_volume_percent=0 mixer_control=Speaker\n[INFO] voice_prompt_skipped=muted",
+  "before_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\reset_pose\\before.jpg",
+  "after_image": "wangyutang_platform\\action_move\\skill_camera_verify\\20260705_222912\\reset_pose\\after.jpg",
+  "before_frame_id": "4",
+  "after_frame_id": "6",
+  "before_task_id": "1783261753091-a063b5",
+  "after_task_id": "1783261776637-e74e90",
+  "before_bytes": 46902,
+  "after_bytes": 46806,
+  "metrics": {
+    "image_size": [
+      640,
+      480
+    ],
+    "before_luma_mean": 100.73,
+    "after_luma_mean": 100.71,
+    "mean_abs_diff": 2.49,
+    "changed_percent_gt8": 4.77,
+    "valid_after_frame": true
+  },
+  "visual_changed": true,
+  "verified": true
+}
