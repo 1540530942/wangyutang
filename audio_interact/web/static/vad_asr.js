@@ -28,7 +28,7 @@ function statusLabel(s) {
 }
 
 function renderCase(c) {
-  const audioUrl = `${API}/sessions/${c.session_id}/audio/mic_proc_16k.wav`;
+  const audioUrl = c.audio_url || `${API}/sessions/${c.audio_source_session || c.session_id}/audio/mic_proc_16k.wav`;
   const dur = c.duration_ms || 0;
 
   // VAD timeline bars

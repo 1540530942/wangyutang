@@ -3,6 +3,8 @@
   "label": "单工",
   "mode": "simplex",
   "description": "web模式浏览器麦克风，单工VAD+ASR基准集——用户说话时无TTS同期播报，信号干净，无回声干扰，无Barge-in场景",
+  "audio_file": "tests/golden/audio/vad_asr_simplex_001.wav",
+  "audio_source_session": "e34689be-8d7",
   "session_id": "e34689be-8d7",
   "day": "2026-07-10",
   "capture_point": "browser_processed",

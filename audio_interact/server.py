@@ -875,10 +875,36 @@ def list_golden_cases():
     if _GOLDEN_DIR.is_dir():
         for f in sorted(_GOLDEN_DIR.glob("*.json")):
             try:
-                cases.append(json.loads(f.read_text(encoding="utf-8")))
+                case = json.loads(f.read_text(encoding="utf-8"))
+                # resolve audio_url: prefer bundled golden audio, fallback to session API
+                audio_file = case.get("audio_file")
+                if audio_file and (_GOLDEN_DIR.parent.parent / audio_file).exists():
+                    case["audio_url"] = f"/audio_interact/api/golden/audio/{case['case_id']}"
+                elif case.get("audio_source_session"):
+                    case["audio_url"] = f"/audio_interact/api/sessions/{case['audio_source_session']}/audio/mic_proc_16k.wav"
+                cases.append(case)
             except Exception:
                 pass
     return cases
+
+
+@app.get("/api/golden/audio/{case_id}", include_in_schema=False)
+def get_golden_audio(case_id: str):
+    from fastapi import HTTPException
+    for f in _GOLDEN_DIR.glob("*.json"):
+        try:
+            case = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if case.get("case_id") == case_id:
+            audio_file = case.get("audio_file")
+            if not audio_file:
+                break
+            audio_path = _GOLDEN_DIR.parent.parent / audio_file
+            if audio_path.exists():
+                return FileResponse(str(audio_path), media_type="audio/wav")
+            break
+    raise HTTPException(status_code=404, detail="golden audio not found")
 
 
 def _list_sessions(data_root: Path, limit: int = 100) -> list[dict[str, Any]]:
