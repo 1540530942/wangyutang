@@ -12,5 +12,6 @@ COPY eval ./eval
 COPY schemas ./schemas
 COPY tools ./tools
 COPY web ./web
+COPY tests ./tests
 EXPOSE 8097
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8097"]
