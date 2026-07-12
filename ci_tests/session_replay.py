@@ -38,7 +38,11 @@ async def replay_session_audio(base_ws_url: str, session: GoldenSession, *, rout
     full_pcm = pcm + (_silence_frame() * SILENCE_PAD_FRAMES)
     frame_size = FRAME_SAMPLES * 2
     ws_url = base_ws_url + WS_PATH
-    replay_session_id = f"ci-{session.session_id}-{uuid.uuid4().hex[:6]}"
+    run_id = uuid.uuid4().hex[:8]
+    replay_session_id = f"ci-{session.session_id}-{run_id}"
+    # Unique device_id per run so WakeStateStore starts fresh (avoids stale
+    # awake state from a previous run bleeding into this one).
+    replay_device_id = f"ci-test-{run_id}"
 
     utterances: list[dict[str, Any]] = []
     pending_start_ms: int | None = None
@@ -47,7 +51,7 @@ async def replay_session_audio(base_ws_url: str, session: GoldenSession, *, rout
         await ws.send(json.dumps({
             "type": "start_stream",
             "session_id": replay_session_id,
-            "device_id": "ci-test",
+            "device_id": replay_device_id,
             "sample_rate": session.sample_rate,
             "route": route,
         }))

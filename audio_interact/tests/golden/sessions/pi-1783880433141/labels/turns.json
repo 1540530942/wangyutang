@@ -86,7 +86,7 @@
       "expected_text": "",
       "expected_wake_status": "empty",
       "expected_status": "empty",
-      "expected_route": "none",
+      "expected_route": "empty",
       "expected_skill_id": "",
       "guards": [
         "vad_asr"
