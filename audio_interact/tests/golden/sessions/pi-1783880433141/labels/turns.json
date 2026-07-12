@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0",
+  "session_id": "pi-1783880433141",
+  "turns": [
+    {
+      "turn_id": "turn_000",
+      "index": 0,
+      "vad_start_ms": 608,
+      "vad_end_ms": 2080,
+      "expected_text": "晚上好。",
+      "expected_wake_status": "sleeping",
+      "expected_status": "waiting_for_wake_word",
+      "expected_route": "none",
+      "expected_skill_id": "",
+      "guards": [
+        "vad_asr",
+        "wake_state"
+      ],
+      "notes": "未唤醒，噪音/闲聊，正确保持等待"
+    },
+    {
+      "turn_id": "turn_001",
+      "index": 1,
+      "vad_start_ms": 2144,
+      "vad_end_ms": 3616,
+      "expected_text": "你好，瓦力。",
+      "expected_wake_status": "awake",
+      "expected_status": "wake_word",
+      "expected_route": "wake_word",
+      "expected_skill_id": "",
+      "guards": [
+        "vad_asr",
+        "wake_state"
+      ],
+      "notes": "唤醒词，进入 awake 状态"
+    },
+    {
+      "turn_id": "turn_002",
+      "index": 2,
+      "vad_start_ms": 4160,
+      "vad_end_ms": 5696,
+      "expected_text": "向右看。",
+      "expected_wake_status": "awake",
+      "expected_status": "ok",
+      "expected_route": "action",
+      "expected_skill_id": "look_right",
+      "expected_tool": "dispatch_action",
+      "guards": [
+        "vad_asr",
+        "wake_state",
+        "react_route"
+      ],
+      "notes": "已唤醒，舵机向右转；camera_servo类，无用户指定距离"
+    },
+    {
+      "turn_id": "turn_003",
+      "index": 3,
+      "vad_start_ms": 8960,
+      "vad_end_ms": 11296,
+      "expected_text": "向后走五厘米啊！",
+      "expected_wake_status": "awake",
+      "expected_status": "ok",
+      "expected_route": "action",
+      "expected_skill_id": "move_backward",
+      "expected_tool": "dispatch_action",
+      "expected_args": {
+        "distance_cm": 5.0
+      },
+      "expected_settings": {
+        "unit_distance_cm": 5.0
+      },
+      "guards": [
+        "vad_asr",
+        "wake_state",
+        "react_route",
+        "distance_param",
+        "movement"
+      ],
+      "notes": "已唤醒，后退5cm；用户明确说出距离，用于防止中文数字距离参数丢失"
+    },
+    {
+      "turn_id": "turn_004",
+      "index": 4,
+      "vad_start_ms": 12672,
+      "vad_end_ms": 13664,
+      "expected_text": "",
+      "expected_wake_status": "empty",
+      "expected_status": "empty",
+      "expected_route": "none",
+      "expected_skill_id": "",
+      "guards": [
+        "vad_asr"
+      ],
+      "notes": "VAD触发但ASR返回空文本，正确标为empty"
+    }
+  ]
+}

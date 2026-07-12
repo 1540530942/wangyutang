@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "session_id": "pi-1783880433141",
+  "case_id": "pi_alsa_wake_distance_001",
+  "label": "Pi唤醒+距离移动",
+  "mode": "simplex",
+  "description": "Pi ALSA原始采集（无浏览器AEC），包含唤醒词、舵机转向、底盘后退（用户明确指定5厘米）；用于distance_param防护回归。",
+  "created_at": "2026-07-12",
+  "capture_point": "pi_alsa_raw",
+  "source": "websocket_stream",
+  "device_id": "turbopi-01",
+  "audio": {
+    "file": "audio/mic_proc_16k.wav",
+    "sample_rate": 16000,
+    "channels": 1,
+    "format": "wav_pcm_s16le",
+    "duration_ms": 16250
+  },
+  "labels": {
+    "turns": "labels/turns.json"
+  },
+  "tiers": [
+    "smoke"
+  ],
+  "guards": [
+    "vad_asr",
+    "wake_state",
+    "react_route",
+    "distance_param",
+    "movement"
+  ]
+}
