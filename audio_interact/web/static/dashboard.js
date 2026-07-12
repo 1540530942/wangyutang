@@ -2,6 +2,7 @@
 const API = "/audio_interact/api";
 let currentSession = null;
 let audioEl = null;
+let sessionsCache = [];
 
 const $ = id => document.getElementById(id);
 const sessionsEl = $("sessions");
@@ -54,6 +55,7 @@ async function loadSessions() {
     sessionsEl.innerHTML = `<div class="empty-note">暂无 session</div>`;
     return;
   }
+  sessionsCache = items;
   sessionsEl.innerHTML = items.map(s => `
     <div class="session-item" data-id="${s.session_id}" onclick="openSession('${s.session_id}')">
       <div class="meta">
@@ -61,22 +63,30 @@ async function loadSessions() {
         <span class="day">${s.day}</span>
         <span class="dur">${durLabel(s.duration_ms)}</span>
       </div>
-      <div class="texts">${s.texts.join(" · ") || "（无识别文本）"}</div>
+      <div class="texts">${(Array.isArray(s.texts) ? s.texts : []).join(" · ") || "（无识别文本）"}</div>
       <div class="badges">
         ${sourceBadge(s.source)}${captureBadge(s.capture_point)}
         <span class="badge cnt">${s.utterance_count} 句</span>
       </div>
     </div>
   `).join("");
+  const hashId = decodeURIComponent((window.location.hash || "").replace(/^#/, ""));
+  const target = items.find(s => s.session_id === hashId)?.session_id || items[0].session_id;
+  if (!currentSession && target) {
+    await openSession(target, { updateHash: false });
+  }
 }
 
 // ── session detail ────────────────────────────────────────────
-async function openSession(sessionId) {
+async function openSession(sessionId, opts = {}) {
   // highlight active
   document.querySelectorAll(".session-item").forEach(el => {
     el.classList.toggle("active", el.dataset.id === sessionId);
   });
   currentSession = sessionId;
+  if (opts.updateHash !== false) {
+    window.history.replaceState(null, "", `#${encodeURIComponent(sessionId)}`);
+  }
   detailEl.innerHTML = `<div style="padding:40px 0;text-align:center"><span class="spinner"></span> 加载链路数据…</div>`;
 
   let s;
@@ -192,3 +202,10 @@ function seekAudio(sec) {
 
 // ── init ──────────────────────────────────────────────────────
 loadSessions();
+window.addEventListener("hashchange", () => {
+  const sessionId = decodeURIComponent((window.location.hash || "").replace(/^#/, ""));
+  if (!sessionId || sessionId === currentSession) return;
+  if (sessionsCache.some(s => s.session_id === sessionId)) {
+    openSession(sessionId, { updateHash: false });
+  }
+});
