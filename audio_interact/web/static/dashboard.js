@@ -1,5 +1,6 @@
 // dashboard.js — 语音交互全链路数据看板
 const API = "/audio_interact/api";
+const SESSION_LIST_LIMIT = 500;
 let currentSession = null;
 let audioEl = null;
 let sessionsCache = [];
@@ -40,13 +41,16 @@ function actionSummary(utt) {
   if (task)  return `<span class="skill-tag">${utt.skill_id}</span> <span class="status-ok">✓</span>`;
   return `<span class="skill-tag">${utt.skill_id}</span> <span class="status-wait">规划中</span>`;
 }
+function hasTraceContent(s) {
+  return Number(s.utterance_count || 0) > 0 || (Array.isArray(s.texts) && s.texts.length > 0);
+}
 
 // ── session list ──────────────────────────────────────────────
 async function loadSessions() {
   sessionsEl.innerHTML = `<div style="padding:16px"><span class="spinner"></span> 加载中…</div>`;
   let items;
   try {
-    items = await fetch(`${API}/sessions`).then(r => r.json());
+    items = await fetch(`${API}/sessions?limit=${SESSION_LIST_LIMIT}`).then(r => r.json());
   } catch (e) {
     sessionsEl.innerHTML = `<div class="empty-note">加载失败: ${e}</div>`;
     return;
@@ -56,7 +60,10 @@ async function loadSessions() {
     return;
   }
   sessionsCache = items;
-  sessionsEl.innerHTML = items.map(s => `
+  const hashId = decodeURIComponent((window.location.hash || "").replace(/^#/, ""));
+  const visibleItems = items.filter(hasTraceContent);
+  const renderItems = visibleItems.length ? visibleItems : items;
+  sessionsEl.innerHTML = renderItems.map(s => `
     <div class="session-item" data-id="${s.session_id}" onclick="openSession('${s.session_id}')">
       <div class="meta">
         <span class="sid">${s.session_id.slice(0,14)}</span>
@@ -70,8 +77,8 @@ async function loadSessions() {
       </div>
     </div>
   `).join("");
-  const hashId = decodeURIComponent((window.location.hash || "").replace(/^#/, ""));
-  const target = items.find(s => s.session_id === hashId)?.session_id || items[0].session_id;
+  const hashTarget = items.find(s => s.session_id === hashId)?.session_id;
+  const target = hashTarget || renderItems[0].session_id;
   if (!currentSession && target) {
     await openSession(target, { updateHash: false });
   }
