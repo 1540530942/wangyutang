@@ -31,23 +31,48 @@ audio_interact/tests/golden/sessions/<session_id>/
 per-turn expected ASR text, wake state, route type, skill id, and structured
 settings such as `unit_distance_cm`.
 
-## Current Golden Session
+## Current Golden Sessions
+
+### vad_asr_simplex_001
 
 ```text
-session_id: e34689be-8d7
-case_id:    vad_asr_simplex_001
-audio:      audio_interact/tests/golden/sessions/e34689be-8d7/audio/mic_proc_16k.wav
+session_id:    e34689be-8d7
+case_id:       vad_asr_simplex_001
+capture_point: browser_processed
+device_id:     web-audio
+audio:         audio_interact/tests/golden/sessions/e34689be-8d7/audio/mic_proc_16k.wav
 ```
 
 Important guarded turns:
 
 ```text
-turn_004: 往前走十五厘米。 -> move_forward, unit_distance_cm=15.0
-turn_005: 向右走十五厘米。 -> move_right, unit_distance_cm=15.0
+turn_004: 往前走十五厘米。  -> move_forward,  unit_distance_cm=15.0
+turn_005: 向右走十五厘米。  -> move_right,    unit_distance_cm=15.0
 ```
 
 These turns protect against losing Chinese-number distance parameters in the LLM
 ReAct route.
+
+### pi_alsa_wake_distance_001
+
+```text
+session_id:    pi-1783880433141
+case_id:       pi_alsa_wake_distance_001
+capture_point: pi_alsa_raw
+device_id:     turbopi-01
+audio:         audio_interact/tests/golden/sessions/pi-1783880433141/audio/mic_proc_16k.wav
+```
+
+Important guarded turns:
+
+```text
+turn_001: 你好，瓦力。        -> wake_word
+turn_002: 向右看。            -> look_right  (camera_servo, no user distance)
+turn_003: 向后走五厘米啊！    -> move_backward, unit_distance_cm=5.0
+```
+
+Pi ALSA raw capture (no browser AEC). Covers the `distance_param` guard with a
+user-specified distance from a real Pi device session.
 
 ## Dashboard Compatibility
 
