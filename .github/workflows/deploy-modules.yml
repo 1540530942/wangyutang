@@ -401,6 +401,7 @@ jobs:
         run: |
           set -euo pipefail
           pip install --quiet pytest pytest-timeout psutil websockets
+          pip install --quiet -r robot_sandbox/requirements.txt
           modules="${MODULES:-}"
 
           # 始终跑 smoke（robot_sandbox 路由 + 注册表校验）
