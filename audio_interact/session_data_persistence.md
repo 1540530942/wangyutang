@@ -449,6 +449,38 @@ trace 工具同时覆盖标准包(`sessions/`)与 legacy 目录(`recordings/`),
 
 ---
 
+## 10.1 金标数据与仿真输入
+
+金标数据同样遵循"一次完整 session 为最小单元"的原则,目录结构为:
+
+```text
+audio_interact/tests/golden/sessions/<session_id>/
+├── manifest.json
+├── audio/
+│   └── mic_proc_16k.wav
+└── labels/
+    └── turns.json
+```
+
+`turns.json` 只描述 session 内每一轮用户语料的期望结果,不把每句用户语音拆成独立主音频。
+CI、回放和仿真可以按 turn 展开断言,但归档和复盘仍以完整 session 为单位。
+
+`/audio_interact/api/golden` 会优先读取上述 `sessions/*/manifest.json`,再转换成
+`/dashboard/vad_asr` 现有前端可消费的兼容 JSON。`/api/golden/audio/{id}` 同时接受
+`case_id` 与 `session_id`,并返回 manifest 中声明的 session 音频。
+
+旧的扁平结构:
+
+```text
+tests/golden/<case_id>.json
+tests/golden/audio/<case_id>.wav
+```
+
+仅作为服务端兼容兜底保留读取逻辑,新增金标必须使用 `tests/golden/sessions/<session_id>/`。
+完整规范见 `../docs/audio-interact-golden-sessions.md`。
+
+---
+
 ## 11. 第一版落盘实现范围
 
 ```text

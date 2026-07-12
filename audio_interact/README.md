@@ -82,3 +82,34 @@ Run a batch of sessions:
 ```bash
 python tools/run_regression.py /app/data/sessions
 ```
+
+## Golden Sessions / Dashboard
+
+Golden test data follows the same full-session principle as runtime capture:
+
+```text
+tests/golden/sessions/<session_id>/
+  manifest.json
+  audio/mic_proc_16k.wav
+  labels/turns.json
+```
+
+Each golden session keeps one continuous multi-turn audio file. Tests may assert
+per-turn behavior, but the primary data unit remains the session.
+
+`/audio_interact/api/golden` reads this session layout and returns the
+legacy-compatible shape consumed by `/dashboard/vad_asr`. The audio endpoint
+accepts either the case id or session id:
+
+```text
+/audio_interact/api/golden/audio/vad_asr_simplex_001
+/audio_interact/api/golden/audio/e34689be-8d7
+```
+
+`/dashboard/detail` uses runtime session APIs and is independent of golden data.
+
+Canonical policy and add-new-session steps live in:
+
+```text
+../docs/audio-interact-golden-sessions.md
+```

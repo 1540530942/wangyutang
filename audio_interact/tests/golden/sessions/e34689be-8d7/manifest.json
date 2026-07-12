@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "session_id": "e34689be-8d7",
+  "case_id": "vad_asr_simplex_001",
+  "label": "单工",
+  "mode": "simplex",
+  "description": "web模式浏览器麦克风，单工VAD+ASR基准集；整段 session 包含多轮用户语料。",
+  "created_at": "2026-07-10",
+  "capture_point": "browser_processed",
+  "source": "websocket_stream",
+  "device_id": "web-audio",
+  "audio": {
+    "file": "audio/mic_proc_16k.wav",
+    "sample_rate": 16000,
+    "channels": 1,
+    "format": "wav_pcm_s16le",
+    "duration_ms": 66422
+  },
+  "labels": {
+    "turns": "labels/turns.json"
+  },
+  "tiers": [
+    "smoke"
+  ],
+  "guards": [
+    "vad_asr",
+    "wake_state",
+    "react_route",
+    "distance_param"
+  ]
+}

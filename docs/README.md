@@ -8,6 +8,7 @@ docs live under each module (e.g. `robot_sandbox/docs/`, `pi5_robot/docs/`,
 
 - [audio-interact-robot-sandbox-design.md](audio-interact-robot-sandbox-design.md) — split architecture of the voice pipeline
 - [audio-interact-robot-sandbox-implementation-plan.md](audio-interact-robot-sandbox-implementation-plan.md) — P1–P5 plan with acceptance criteria
+- [audio-interact-golden-sessions.md](audio-interact-golden-sessions.md) — session-shaped golden data, dashboard compatibility, and layered CI guards
 - [test-cases-and-expected-results.md](test-cases-and-expected-results.md) — verified test cases with real results
 
 ## Migrations

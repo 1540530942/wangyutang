@@ -1,77 +1,123 @@
 {
-  "case_id": "vad_asr_simplex_001",
-  "label": "单工",
-  "mode": "simplex",
-  "description": "web模式浏览器麦克风，单工VAD+ASR基准集——用户说话时无TTS同期播报，信号干净，无回声干扰，无Barge-in场景",
-  "audio_file": "tests/golden/audio/vad_asr_simplex_001.wav",
-  "audio_source_session": "e34689be-8d7",
+  "schema_version": "1.0",
   "session_id": "e34689be-8d7",
-  "day": "2026-07-10",
-  "capture_point": "browser_processed",
-  "source": "websocket_stream",
-  "device_id": "web-audio",
-  "duration_ms": 66422,
-  "created_at": "2026-07-10",
-  "utterances": [
+  "turns": [
     {
+      "turn_id": "turn_000",
       "index": 0,
       "vad_start_ms": 32,
       "vad_end_ms": 960,
       "expected_text": "好。",
       "expected_wake_status": "sleeping",
       "expected_status": "waiting_for_wake_word",
+      "expected_route": "none",
       "expected_skill_id": "",
+      "guards": [
+        "vad_asr",
+        "wake_state"
+      ],
       "notes": "未唤醒，正确保持等待"
     },
     {
+      "turn_id": "turn_001",
       "index": 1,
       "vad_start_ms": 4576,
       "vad_end_ms": 5920,
       "expected_text": "怎么了呀？",
       "expected_wake_status": "sleeping",
       "expected_status": "waiting_for_wake_word",
+      "expected_route": "none",
       "expected_skill_id": "",
+      "guards": [
+        "vad_asr",
+        "wake_state"
+      ],
       "notes": "未唤醒，正确保持等待"
     },
     {
+      "turn_id": "turn_002",
       "index": 2,
       "vad_start_ms": 8736,
       "vad_end_ms": 10592,
       "expected_text": "你好，瓦力。",
       "expected_wake_status": "awake",
       "expected_status": "wake_word",
+      "expected_route": "wake_word",
       "expected_skill_id": "",
-      "notes": "已唤醒，执行指令"
+      "guards": [
+        "vad_asr",
+        "wake_state"
+      ],
+      "notes": "唤醒词，进入 awake 状态"
     },
     {
+      "turn_id": "turn_003",
       "index": 3,
       "vad_start_ms": 13984,
       "vad_end_ms": 16416,
       "expected_text": "描述一下前面有什么。",
       "expected_wake_status": "awake",
       "expected_status": "ok",
+      "expected_route": "observation",
       "expected_skill_id": "inspect_scene",
-      "notes": "已唤醒，执行指令"
+      "guards": [
+        "vad_asr",
+        "wake_state",
+        "react_route"
+      ],
+      "notes": "已唤醒，执行观察类指令"
     },
     {
+      "turn_id": "turn_004",
       "index": 4,
       "vad_start_ms": 30752,
       "vad_end_ms": 33248,
       "expected_text": "往前走十五厘米。",
       "expected_wake_status": "awake",
       "expected_status": "ok",
+      "expected_route": "action",
       "expected_skill_id": "move_forward",
-      "notes": "已唤醒，执行指令"
+      "expected_tool": "dispatch_action",
+      "expected_args": {
+        "distance_cm": 15.0
+      },
+      "expected_settings": {
+        "unit_distance_cm": 15.0
+      },
+      "guards": [
+        "vad_asr",
+        "wake_state",
+        "react_route",
+        "distance_param",
+        "movement"
+      ],
+      "notes": "已唤醒，前进 15cm；用于防止中文数字距离参数丢失"
     },
     {
+      "turn_id": "turn_005",
       "index": 5,
       "vad_start_ms": 45824,
       "vad_end_ms": 47904,
       "expected_text": "向右走十五厘米。",
       "expected_wake_status": "awake",
       "expected_status": "ok",
+      "expected_route": "action",
       "expected_skill_id": "move_right",
-      "notes": "已唤醒，执行指令"
+      "expected_tool": "dispatch_action",
+      "expected_args": {
+        "distance_cm": 15.0
+      },
+      "expected_settings": {
+        "unit_distance_cm": 15.0
+      },
+      "guards": [
+        "vad_asr",
+        "wake_state",
+        "react_route",
+        "distance_param",
+        "movement"
+      ],
+      "notes": "已唤醒，右移 15cm；用于防止中文数字距离参数丢失"
     }
   ]
 }

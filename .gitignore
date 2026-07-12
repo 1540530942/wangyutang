@@ -17,6 +17,8 @@ data/
 # but keep per-module JSON test fixtures under tests/data/
 !**/tests/data/
 !**/tests/data/**
+!ci_tests/smoke/data/
+!ci_tests/smoke/data/**
 dist/
 cloud_image_verify/
 movement_verify_local/

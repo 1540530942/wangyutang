@@ -126,11 +126,15 @@ jobs:
               selected=("${all_modules[@]}")
             else
               echo "$changed" | grep -Eq '^robot_gateway/' && add_module robot_gateway || true
+              echo "$changed" | grep -Eq '^action_move/' && add_module action_move || true
               echo "$changed" | grep -Eq '^robot_sandbox/' && add_module robot_sandbox || true
               echo "$changed" | grep -Eq '^audio_interact/' && add_module audio_interact || true
               echo "$changed" | grep -Eq '^pi5_robot/' && add_module pi5_robot || true
               echo "$changed" | grep -Eq '^slam_mapping/' && add_module slam_mapping || true
               echo "$changed" | grep -Eq '^smile_face/' && add_module smile_face || true
+              if echo "$changed" | grep -Eq '^ci_tests/'; then
+                selected=("${all_modules[@]}")
+              fi
             fi
           fi
 
@@ -393,18 +397,29 @@ jobs:
         if: steps.scope.outputs.up_services != ''
         env:
           MODULES: ${{ steps.scope.outputs.modules }}
+          RUN_LLM_REACT_GUARD: "1"
         run: |
           set -euo pipefail
-          pip install --quiet pytest psutil websockets
+          pip install --quiet pytest pytest-timeout psutil websockets
           modules="${MODULES:-}"
 
           # 始终跑 smoke（robot_sandbox 路由 + 注册表校验）
           echo "=== smoke tests ==="
           python -m pytest ci_tests/smoke/ -v --tb=short -q
 
-          # audio_interact 部署时跑金标 VAD+ASR 回放验收
+          echo "=== action_move distance mapping tests ==="
+          python -m pytest ci_tests/action_move/ -v --tb=short -q
+
+          # robot_sandbox 或 audio_interact 部署时跑真实 LLM ReAct 语义防护。
+          if echo "$modules" | grep -Eqw "robot_sandbox|audio_interact"; then
+            echo "=== robot_sandbox live LLM ReAct guards ==="
+            python -m pytest ci_tests/robot_sandbox/ -v --tb=short -q --timeout=180
+          fi
+
+          # audio_interact 部署时跑金标 session 音频回放验收和跨模块语义链路。
           if echo "$modules" | grep -qw "audio_interact"; then
-            echo "=== audio_interact golden VAD+ASR tests ==="
-            python -m pytest ci_tests/vad_asr/ -v --tb=short -q \
-              --timeout=120
+            echo "=== vad_asr golden session tests ==="
+            python -m pytest ci_tests/vad_asr/ -v --tb=short -q --timeout=120
+            echo "=== audio_interact semantic pipeline tests ==="
+            python -m pytest ci_tests/audio_interact/ -v --tb=short -q --timeout=240
           fi
