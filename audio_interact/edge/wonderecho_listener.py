@@ -1,30 +1,23 @@
 """WonderEchoPro Pi-side listener — WebSocket streaming mode.
 
-Flow (default):
+Flow:
   poll /api/settings  ->  when manual_recording_enabled + input_mode==wonderechopro
   ->  arecord raw PCM16 pipe  ->  WebSocket /ws/audio (512-sample chunks, 16 kHz)
   ->  server Silero VAD cuts sentences  ->  ASR -> wake -> robot_sandbox -> TTS
   ->  binary TTS WAV frames back  ->  aplay local speaker
 
-The streaming path is identical to the browser web-mode path; both end up in
-the same /ws/audio pipeline.
-
-Legacy fallback (--segment flag):
-  Fixed-length 4-second WAV upload via POST /api/audio/segment.
+Identical pipeline to browser web-mode.
 
 Requirements: websockets>=10 (pip install websockets)
 
 Run:
   python3 wonderecho_listener.py --config config.json
-  python3 wonderecho_listener.py --config config.json --segment   # legacy
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
-import base64
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -43,11 +36,10 @@ DEFAULT_CONFIG = SCRIPT_DIR / "config.example.json"
 CHUNK_SAMPLES = 512
 CHUNK_BYTES = CHUNK_SAMPLES * 2  # PCM16 mono
 SETTINGS_POLL_INTERVAL = 3.0
-_FINAL_STATUS_SKIP = {"completed", "done", "emergency_stop", "dry_run", "rejected", ""}
 
 
 # ---------------------------------------------------------------------------
-# HTTP helpers (stdlib-only, used for settings poll + legacy segment mode)
+# HTTP helpers (stdlib-only, used for settings poll)
 # ---------------------------------------------------------------------------
 
 def _get_json(url: str, token: str, timeout: float = 8.0) -> dict[str, Any] | None:
@@ -92,16 +84,11 @@ def _play_tts_bytes(wav_bytes: bytes, device: str = "") -> None:
         tmp_path.unlink(missing_ok=True)
 
 
-def _play_tts_base64(b64: str, device: str = "") -> None:
-    _play_tts_bytes(base64.b64decode(b64), device)
-
-
 # ---------------------------------------------------------------------------
 # WebSocket streaming session
 # ---------------------------------------------------------------------------
 
 def _ws_url(server: str) -> str:
-    """Convert http(s) server URL to ws(s) WebSocket URL for /ws/audio."""
     s = server.rstrip("/")
     if s.startswith("https://"):
         return s.replace("https://", "wss://", 1) + "/ws/audio"
@@ -111,7 +98,6 @@ def _ws_url(server: str) -> str:
 
 
 async def _run_ws_session(config: dict[str, Any]) -> None:
-    """Open one WebSocket session: stream arecord PCM until manual_recording_enabled turns off."""
     try:
         import websockets  # type: ignore
     except ImportError:
@@ -122,8 +108,7 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
     token = str(config.get("token") or "")
     device_id = str(config.get("device_id") or "turbopi-01")
     tts_device = str(config.get("tts_device") or "")
-    recorder_cfg = config.get("recorder", {})
-    alsa_device = str(recorder_cfg.get("device") or "")
+    alsa_device = str((config.get("recorder") or {}).get("device") or "")
 
     ws_url = _ws_url(server)
     session_id = f"pi-{int(time.time() * 1000)}"
@@ -133,9 +118,7 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
         arecord_cmd += ["-D", alsa_device]
     arecord_cmd.append("-")
 
-    extra_headers = {}
-    if token:
-        extra_headers["X-Audio-Token"] = token
+    extra_headers = {"X-Audio-Token": token} if token else {}
 
     print(f"[INFO] WS connect {ws_url} session={session_id}", flush=True)
 
@@ -148,14 +131,11 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
             "route": True,
         }))
 
-        # wait for stream_ready
         while True:
             msg = await asyncio.wait_for(ws.recv(), timeout=10.0)
-            if isinstance(msg, str):
-                data = json.loads(msg)
-                if data.get("type") == "stream_ready":
-                    print("[INFO] stream_ready — streaming audio", flush=True)
-                    break
+            if isinstance(msg, str) and json.loads(msg).get("type") == "stream_ready":
+                print("[INFO] stream_ready — streaming audio", flush=True)
+                break
 
         proc = await asyncio.create_subprocess_exec(
             *arecord_cmd,
@@ -172,15 +152,13 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
                         ev = json.loads(msg)
                     except json.JSONDecodeError:
                         continue
-                    t = ev.get("type", "")
-                    if t == "result":
-                        text = ev.get("text") or ""
-                        tts_text = ev.get("tts_text") or ""
-                        wake = ev.get("wake_status") or "—"
-                        print(json.dumps({"text": text, "tts_text": tts_text, "wake": wake}, ensure_ascii=False), flush=True)
-                    elif t in ("speech_start", "speech_end", "vad", "asr_started"):
-                        pass  # low-noise events
-                    elif t == "stream_stopped":
+                    if ev.get("type") == "result":
+                        print(json.dumps({
+                            "text": ev.get("text") or "",
+                            "tts_text": ev.get("tts_text") or "",
+                            "wake": ev.get("wake_status") or "—",
+                        }, ensure_ascii=False), flush=True)
+                    elif ev.get("type") == "stream_stopped":
                         break
 
         recv_task = asyncio.create_task(_recv_loop())
@@ -223,17 +201,17 @@ async def _ws_main(config: dict[str, Any]) -> None:
     while True:
         try:
             settings = get_cloud_settings(server, token)
-            input_mode = str(settings.get("input_mode") or "wonderechopro")
-            manual_enabled = bool(settings.get("manual_recording_enabled"))
-
-            should_run = input_mode == "wonderechopro" and manual_enabled
+            should_run = (
+                str(settings.get("input_mode") or "wonderechopro") == "wonderechopro"
+                and bool(settings.get("manual_recording_enabled"))
+            )
 
             if should_run and (session_task is None or session_task.done()):
-                print("[INFO] starting WS session (manual_recording_enabled=true)", flush=True)
+                print("[INFO] starting WS session", flush=True)
                 session_task = asyncio.create_task(_run_ws_session(config))
 
             if not should_run and session_task is not None and not session_task.done():
-                print("[INFO] stopping WS session (manual_recording_enabled=false)", flush=True)
+                print("[INFO] stopping WS session", flush=True)
                 session_task.cancel()
                 try:
                     await session_task
@@ -248,92 +226,12 @@ async def _ws_main(config: dict[str, Any]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Legacy segment mode (--segment flag)
-# ---------------------------------------------------------------------------
-
-def _post_segment(server: str, token: str, wav_path: Path, device_id: str) -> dict[str, Any] | None:
-    boundary = f"----WLBoundary{int(time.time() * 1000)}"
-    body_parts: list[bytes] = []
-
-    def _field(name: str, value: str) -> bytes:
-        return (
-            f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
-            f"{value}\r\n"
-        ).encode("utf-8")
-
-    body_parts.append(_field("device_id", device_id))
-    body_parts.append(_field("session_id", f"wep-{int(time.time() * 1000)}"))
-    wav_data = wav_path.read_bytes()
-    body_parts.append(
-        (
-            f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="file"; filename="{wav_path.name}"\r\n'
-            f"Content-Type: audio/wav\r\n\r\n"
-        ).encode("utf-8")
-        + wav_data
-        + b"\r\n"
-    )
-    body_parts.append(f"--{boundary}--\r\n".encode("utf-8"))
-    body = b"".join(body_parts)
-    headers: dict[str, str] = {
-        "Content-Type": f"multipart/form-data; boundary={boundary}",
-        "Content-Length": str(len(body)),
-    }
-    if token:
-        headers["X-Audio-Token"] = token
-    req = urllib.request.Request(
-        f"{server.rstrip('/')}/api/audio/segment", data=body, headers=headers, method="POST"
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=90) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except (urllib.error.HTTPError, urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
-        print(f"[WARN] segment upload failed: {exc}", flush=True)
-        return None
-
-
-def _segment_loop(config: dict[str, Any], once: bool, loop_gap: float) -> int:
-    from recorder import record_wav  # noqa: PLC0415
-
-    server = str(config.get("server") or "")
-    token = str(config.get("token") or "")
-    device_id = str(config.get("device_id") or "turbopi-01")
-    tts_device = str(config.get("tts_device") or "")
-
-    while True:
-        try:
-            settings = get_cloud_settings(server, token)
-            if not once and not settings.get("manual_recording_enabled"):
-                time.sleep(max(loop_gap, 1.5))
-                continue
-            wav_path = record_wav(config.get("recorder", {}))
-            result = _post_segment(server, token, wav_path, device_id)
-            tts_b64 = str((result or {}).get("tts_audio_base64") or "")
-            tts_text = str((result or {}).get("tts_text") or "")
-            if tts_b64 and tts_text not in _FINAL_STATUS_SKIP:
-                threading.Thread(target=_play_tts_base64, args=(tts_b64, tts_device), daemon=True).start()
-            print(json.dumps(result or {}, ensure_ascii=False), flush=True)
-            if once:
-                return 0
-            time.sleep(max(loop_gap, 0.0))
-        except Exception as exc:  # noqa: BLE001
-            print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False), flush=True)
-            if once:
-                return 1
-            time.sleep(1.0)
-
-
-# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="WonderEchoPro Pi-side listener.")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument("--segment", action="store_true", help="Legacy: fixed 4s WAV upload mode.")
-    parser.add_argument("--once", action="store_true", help="Legacy segment mode: record once and exit.")
-    parser.add_argument("--loop-gap", type=float, default=0.5, help="Legacy: seconds between poll cycles.")
     args = parser.parse_args()
 
     if not args.config.exists():
@@ -341,10 +239,6 @@ def main() -> int:
         return 1
 
     config = json.loads(args.config.read_text(encoding="utf-8"))
-
-    if args.segment:
-        return _segment_loop(config, once=args.once, loop_gap=args.loop_gap)
-
     asyncio.run(_ws_main(config))
     return 0
 
