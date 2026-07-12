@@ -169,8 +169,7 @@ def write_streaming_session_package(
         sample_rate=sample_rate,
         chunk_ms=chunk_ms,
         source="websocket_stream",
-        # WS 流当前只有浏览器客户端;getUserMedia 开启 echoCancellation 等处理
-        capture_point="browser_processed",
+        capture_point="browser_processed" if device_id.startswith("web") else "pi_alsa_raw",
     )
     writer.write_audio_pcm16("mic_raw_16k.wav", full_pcm)
     writer.write_audio_pcm16("mic_proc_16k.wav", full_pcm)
