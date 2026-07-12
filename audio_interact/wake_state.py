@@ -20,6 +20,8 @@ WAKE_WORD_VARIANTS = (
     "你好wall-e",
     "你好walle",
     "你好wallie",
+    "你好阿里",  # ASR sometimes renders "瓦力" as "阿里" (e.g. "你好，阿里个。")
+    "你好阿力",
 )
 DISMISS_PHRASES = ("退下吧", "退下", "退一下吧", "退下了")
 
