@@ -25,7 +25,14 @@ def _offset_ms(msg: dict[str, Any]) -> int | None:
     return int(float(offset) * 1000)
 
 
-async def replay_session_audio(base_ws_url: str, session: GoldenSession, *, route: bool = False) -> list[dict[str, Any]]:
+async def replay_session_audio(
+    base_ws_url: str,
+    session: GoldenSession,
+    *,
+    route: bool = False,
+    device_id: str | None = None,
+    session_id_prefix: str = "ci",
+) -> list[dict[str, Any]]:
     """Stream one full session audio file and collect per-utterance results.
 
     Keep route=False for CI unless the target robot sandbox is explicitly
@@ -39,10 +46,10 @@ async def replay_session_audio(base_ws_url: str, session: GoldenSession, *, rout
     frame_size = FRAME_SAMPLES * 2
     ws_url = base_ws_url + WS_PATH
     run_id = uuid.uuid4().hex[:8]
-    replay_session_id = f"ci-{session.session_id}-{run_id}"
+    replay_session_id = f"{session_id_prefix}-{session.session_id}-{run_id}"
     # Unique device_id per run so WakeStateStore starts fresh (avoids stale
     # awake state from a previous run bleeding into this one).
-    replay_device_id = f"ci-test-{run_id}"
+    replay_device_id = device_id or f"{session_id_prefix}-test-{run_id}"
 
     utterances: list[dict[str, Any]] = []
     pending_start_ms: int | None = None
@@ -90,6 +97,10 @@ async def replay_session_audio(base_ws_url: str, session: GoldenSession, *, rout
                     "wake_status": msg.get("wake_status", ""),
                     "status": msg.get("status", ""),
                     "skill_id": msg.get("skill_id", ""),
+                    "action_task": msg.get("action_task"),
+                    "action_error": msg.get("action_error", ""),
+                    "face_task": msg.get("face_task"),
+                    "plan": msg.get("plan"),
                     "raw": msg,
                 })
                 pending_start_ms = None
