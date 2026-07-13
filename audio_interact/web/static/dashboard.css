@@ -43,7 +43,9 @@ body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg);
 .badge.leg  { background: #f5f5f5; color: #757575; }
 .badge.bp   { background: #fff8e1; color: #b86a00; }
 .badge.pi   { background: #e8f5e9; color: #2e7d32; }
-.badge.cnt  { background: var(--accent-soft); color: var(--accent); }
+.badge.cnt          { background: var(--accent-soft); color: var(--accent); }
+.badge.golden-exec  { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.badge.ci-test      { background: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; }
 
 /* ── detail panels ── */
 .detail-empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-size: 15px; }

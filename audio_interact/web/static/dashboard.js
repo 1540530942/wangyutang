@@ -41,6 +41,12 @@ function captureBadge(cp) {
   if (cp === "pi_alsa_raw")       return `<span class="badge pi">Pi原始</span>`;
   return "";
 }
+function sessionTypeBadge(sessionId) {
+  if (!sessionId) return "";
+  if (sessionId.startsWith("golden-exec-")) return `<span class="badge golden-exec">金标执行</span>`;
+  if (sessionId.startsWith("ci-"))          return `<span class="badge ci-test">CI测试</span>`;
+  return "";
+}
 function actionSummary(utt) {
   if (utt.status === "asr_only") return `<span class="status-wait">仅 ASR，未进沙盒</span>`;
   if (!utt.skill_id) return `<span class="status-wait">—</span>`;
@@ -88,7 +94,7 @@ async function loadSessions() {
       </div>
       <div class="texts">${(Array.isArray(s.texts) ? s.texts : []).join(" · ") || "（无识别文本）"}</div>
       <div class="badges">
-        ${sourceBadge(s.source)}${captureBadge(s.capture_point)}
+        ${sessionTypeBadge(s.session_id)}${sourceBadge(s.source)}${captureBadge(s.capture_point)}
         <span class="badge cnt">${s.utterance_count} 句</span>
       </div>
     </div>
