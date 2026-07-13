@@ -38,6 +38,11 @@ TTS_MODEL = os.getenv("AUDIO_TTS_MODEL", "qwen3-tts-12hz-1.7b-customvoice")
 TTS_VOICE = os.getenv("AUDIO_TTS_VOICE", "vivian")
 TTS_INSTRUCTIONS = os.getenv("AUDIO_TTS_INSTRUCTIONS", "用清新自然、甜美温柔的语气说，声音明亮亲切，语调轻快柔和")
 TTS_TIMEOUT = int(os.getenv("AUDIO_TTS_TIMEOUT", "30"))
+TTS_SUPPORTED_VOICES = [
+    voice.strip()
+    for voice in os.getenv("AUDIO_TTS_SUPPORTED_VOICES", "aiden,dylan,eric,ono_anna,ryan,serena,sohee,uncle_fu,vivian").split(",")
+    if voice.strip()
+]
 ASR_TIMEOUT = int(os.getenv("ASR_TIMEOUT", "60"))
 ROUTE_TIMEOUT = int(os.getenv("ROUTE_TIMEOUT", "90"))
 STREAM_SAMPLE_RATE = int(os.getenv("STREAM_SAMPLE_RATE", "16000"))
@@ -457,13 +462,13 @@ def pcm16_to_wav(pcm16: bytes, sample_rate: int) -> bytes:
     return buf.getvalue()
 
 
-def _fetch_tts_audio(text: str) -> bytes:
+def _fetch_tts_audio(text: str, *, voice: str | None = None, instructions: str | None = None) -> bytes:
     payload = {
         "model": TTS_MODEL,
         "input": text,
-        "voice": TTS_VOICE,
+        "voice": voice or TTS_VOICE,
         "language": "chinese",
-        "instructions": TTS_INSTRUCTIONS,
+        "instructions": instructions or TTS_INSTRUCTIONS,
         "response_format": "wav",
     }
     resp = requests.post(TTS_URL, json=payload, timeout=TTS_TIMEOUT)
@@ -1200,19 +1205,33 @@ def get_session_audio(session_id: str, filename: str) -> FileResponse:
     raise HTTPException(status_code=404, detail="audio file not found")
 
 
+@app.get("/api/tts/config")
+def tts_config() -> dict[str, Any]:
+    return {
+        "model": TTS_MODEL,
+        "default_voice": TTS_VOICE,
+        "supported_voices": TTS_SUPPORTED_VOICES,
+        "default_instructions": TTS_INSTRUCTIONS,
+    }
+
+
 @app.post("/api/tts")
-def tts_speak(text: str = Body(..., embed=True)) -> Response:
+def tts_speak(payload: dict[str, Any] = Body(...)) -> Response:
     """Synthesize given text to speech (same TTS params as the voice pipeline).
 
-    Body: {"text": "..."}  ->  audio/wav bytes for the browser to play.
+    Body: {"text": "...", "voice": "...", "instructions": "..."} -> audio/wav.
     """
-    text = (text or "").strip()
+    text = str(payload.get("text") or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="text is required")
     if not TTS_URL:
         raise HTTPException(status_code=503, detail="TTS not configured")
+    voice = str(payload.get("voice") or TTS_VOICE).strip()
+    if voice not in TTS_SUPPORTED_VOICES:
+        raise HTTPException(status_code=400, detail=f"unsupported voice: {voice}")
+    instructions = str(payload.get("instructions") or TTS_INSTRUCTIONS).strip()
     try:
-        audio = _fetch_tts_audio(text)
+        audio = _fetch_tts_audio(text, voice=voice, instructions=instructions)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"tts failed: {exc}")
     return Response(content=audio, media_type="audio/wav", headers={"Cache-Control": "no-store"})

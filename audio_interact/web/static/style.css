@@ -79,3 +79,13 @@ pre { background: #0c0e14; border: 1px solid var(--line); border-radius: 8px; pa
 /* VAD_ASR_TTS: TTS 合成输入 */
 .divider { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
 .tts-input { flex: 1; min-width: 220px; background: #0c0e14; border: 1px solid var(--line); border-radius: 10px; color: var(--fg); padding: 10px 12px; font-size: 14px; }
+.tts-settings { margin-top: 12px; display: grid; grid-template-columns: minmax(160px, 220px) 1fr auto; gap: 12px; align-items: end; }
+.tts-settings label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 12px; }
+.tts-select,
+.tts-instructions { background: #0c0e14; border: 1px solid var(--line); border-radius: 10px; color: var(--fg); padding: 10px 12px; font-size: 14px; }
+.tts-instructions { min-height: 72px; resize: vertical; line-height: 1.45; }
+.tts-instructions-label { min-width: 0; }
+
+@media (max-width: 760px) {
+  .tts-settings { grid-template-columns: 1fr; align-items: stretch; }
+}

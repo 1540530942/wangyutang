@@ -7,6 +7,11 @@
 const TARGET_RATE = 16000;
 const DEVICE_ID = "web-audio";
 const RECORD_SECONDS = 4;
+let ttsDefaults = {
+  default_voice: "vivian",
+  supported_voices: ["aiden", "dylan", "eric", "ono_anna", "ryan", "serena", "sohee", "uncle_fu", "vivian"],
+  default_instructions: "用清新自然、甜美温柔的语气说，声音明亮亲切，语调轻快柔和",
+};
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $("status");
@@ -31,6 +36,29 @@ async function pollHealth() {
     el.textContent = "● 服务不可达";
     el.className = "health err";
   }
+}
+
+async function loadTtsConfig() {
+  try {
+    const r = await fetch("./api/tts/config", { cache: "no-store" });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    ttsDefaults = { ...ttsDefaults, ...d };
+  } catch {}
+  const voiceSelect = $("ttsVoiceSelect");
+  if (voiceSelect) {
+    voiceSelect.innerHTML = "";
+    const voices = Array.isArray(ttsDefaults.supported_voices) ? ttsDefaults.supported_voices : [];
+    for (const voice of voices) {
+      const option = document.createElement("option");
+      option.value = voice;
+      option.textContent = voice;
+      voiceSelect.appendChild(option);
+    }
+    voiceSelect.value = ttsDefaults.default_voice || "vivian";
+  }
+  const instructions = $("ttsInstructionsInput");
+  if (instructions) instructions.value = ttsDefaults.default_instructions || "";
 }
 
 // ---- tabs ----
@@ -339,13 +367,15 @@ function stopReplay() {
 $("ttsSpeakBtn").onclick = async () => {
   const text = ($("ttsInput").value || "").trim();
   if (!text) { setStatus("请输入要播报的文本"); return; }
+  const voice = ($("ttsVoiceSelect")?.value || ttsDefaults.default_voice || "vivian").trim();
+  const instructions = ($("ttsInstructionsInput")?.value || ttsDefaults.default_instructions || "").trim();
   $("ttsSpeakBtn").disabled = true;
   $("ttsState").textContent = "合成中…";
   try {
     const r = await fetch("./api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, voice, instructions }),
     });
     if (!r.ok) { let e = {}; try { e = await r.json(); } catch {} throw new Error(e.detail || `HTTP ${r.status}`); }
     const url = URL.createObjectURL(await r.blob());
@@ -361,6 +391,12 @@ $("ttsSpeakBtn").onclick = async () => {
   }
 };
 $("ttsInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("ttsSpeakBtn").click(); });
+$("ttsResetBtn")?.addEventListener("click", () => {
+  if ($("ttsVoiceSelect")) $("ttsVoiceSelect").value = ttsDefaults.default_voice || "vivian";
+  if ($("ttsInstructionsInput")) $("ttsInstructionsInput").value = ttsDefaults.default_instructions || "";
+  $("ttsState").textContent = "已重置";
+  setStatus("TTS 音色和播报风格已重置为默认值");
+});
 
 // ---- WonderEchoPro result polling ----
 // The browser isn't involved in Pi WebSocket sessions, so poll the sessions
@@ -381,6 +417,6 @@ async function pollWonderResult() {
 }
 
 // ---- init ----
-pollHealth(); loadSettings(); showMode("wonder");
+pollHealth(); loadSettings(); loadTtsConfig(); showMode("wonder");
 setInterval(pollHealth, 15000);
 setInterval(pollWonderResult, 3000);

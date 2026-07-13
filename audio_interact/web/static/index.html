@@ -119,11 +119,22 @@
         <button id="ttsSpeakBtn" type="button">🔊 TTS 播报</button>
         <span id="ttsState" class="badge">待输入</span>
       </div>
+      <div class="tts-settings">
+        <label>
+          音色
+          <select id="ttsVoiceSelect" class="tts-select"></select>
+        </label>
+        <label class="tts-instructions-label">
+          播报风格提示词
+          <textarea id="ttsInstructionsInput" class="tts-instructions" rows="3"></textarea>
+        </label>
+        <button id="ttsResetBtn" class="secondary" type="button">重置</button>
+      </div>
       <audio id="ttsSpeakPlayer" controls class="player"></audio>
     </section>
   </main>
 
   <footer id="status" class="statusbar">就绪</footer>
-  <script src="./app.js?v=8"></script>
+  <script src="./app.js?v=9"></script>
 </body>
 </html>
