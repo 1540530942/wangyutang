@@ -48,7 +48,8 @@
       "guards": [
         "vad_asr",
         "wake_state",
-        "react_route"
+        "react_route",
+        "no_distance_param"
       ],
       "notes": "已唤醒，舵机向右转；camera_servo类，无用户指定距离"
     },
@@ -89,9 +90,10 @@
       "expected_route": "empty",
       "expected_skill_id": "",
       "guards": [
-        "vad_asr"
+        "vad_asr",
+        "empty_turn"
       ],
-      "notes": "VAD触发但ASR返回空文本，正确标为empty"
+      "notes": "VAD触发但ASR返回空文本，正确标为empty；无路由调用无TTS产生"
     }
   ]
 }

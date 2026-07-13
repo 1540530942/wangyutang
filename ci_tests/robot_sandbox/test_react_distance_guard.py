@@ -94,3 +94,55 @@ def test_llm_react_preserves_cn_distance_param(session_id, turn):
     assert envelope.tasks[0].settings_override.get("unit_distance_cm") == expected_unit
     assert envelope.dispatch_results[0]["status"] == "dry_run"
     assert envelope.dispatch_results[0]["result"]["settings_override"]["unit_distance_cm"] == expected_unit
+
+
+def _no_distance_turns():
+    turns = []
+    for session in iter_golden_sessions(tier="smoke"):
+        for turn in session.guard_turns("no_distance_param"):
+            turns.append((session.session_id, turn))
+    return turns
+
+
+@pytest.mark.parametrize("session_id,turn", _no_distance_turns(), ids=lambda item: item if isinstance(item, str) else item["turn_id"])
+def test_llm_react_no_distance_for_non_movement_skill(session_id, turn):
+    """Non-movement skills must NOT inject distance_cm or alter unit_distance_cm."""
+    if not _live_llm_required():
+        pytest.skip("set RUN_LLM_REACT_GUARD=1, or run under CI=true, to execute live LLM ReAct guard")
+
+    with patch(
+        "robot_sandbox.tools.observation_executor._get_json",
+        return_value={
+            "available": True,
+            "front_distance_estimate_cm": 40,
+            "confidence": 0.9,
+            "reported_at": 9999999999,
+        },
+    ):
+        envelope = decide_transcript(
+            base_dir=ROBOT_SANDBOX_DIR,
+            text=turn["expected_text"],
+            router_config=ROUTER_CONFIG,
+            cloud_config=CLOUD_CONFIG,
+            dispatch_mode="dry_run",
+            source="ci-robot-sandbox",
+            device_id="ci-test",
+        )
+
+    assert not envelope.errors, f"{session_id}[{turn['turn_id']}] ReAct errors: {envelope.errors}"
+    assert envelope.tasks, f"{session_id}[{turn['turn_id']}] no task created"
+    assert envelope.tasks[0].skill_id == turn["expected_skill_id"]
+
+    calls = [call for call in envelope.validated_tool_calls if call.tool == turn.get("expected_tool", "dispatch_action")]
+    assert calls, f"{session_id}[{turn['turn_id']}] no validated dispatch_action call"
+    action_call = calls[0]
+
+    assert "distance_cm" not in action_call.args, (
+        f"{session_id}[{turn['turn_id']}] non-movement skill must not inject distance_cm; "
+        f"got args={action_call.args}"
+    )
+    unit_override = (envelope.tasks[0].settings_override or {}).get("unit_distance_cm")
+    assert unit_override is None, (
+        f"{session_id}[{turn['turn_id']}] non-movement skill must not change unit_distance_cm; "
+        f"got unit_distance_cm={unit_override}"
+    )

@@ -13,7 +13,7 @@ from ci_tests.golden_sessions import iter_golden_sessions, strip_text
 from ci_tests.session_replay import replay_session_audio
 
 
-VAD_TOL_MS = 400
+VAD_TOL_MS = 200
 
 
 @pytest.fixture(scope="module")
@@ -94,3 +94,26 @@ def test_wake_state_progression(golden_sessions, replayed_sessions):
             elif route in {"action", "observation"}:
                 assert seen_awake, f"{session.session_id}[{expected['index']}] routed before wake"
                 assert actual.get("wake_status") == "awake"
+
+
+def test_empty_turn_no_route_no_tts(golden_sessions, replayed_sessions):
+    """Empty-text turns must not trigger routing or TTS."""
+    for session in golden_sessions:
+        actual_turns = replayed_sessions[session.session_id]
+        for expected in session.guard_turns("empty_turn"):
+            idx = int(expected["index"])
+            assert idx < len(actual_turns), f"{session.session_id}[{idx}] missing actual turn"
+            actual = actual_turns[idx]
+            assert actual.get("status") == "empty", (
+                f"{session.session_id}[{idx}] expected status=empty, got {actual.get('status')!r}"
+            )
+            assert not actual.get("skill_id"), (
+                f"{session.session_id}[{idx}] empty turn must not produce a skill_id; "
+                f"got skill_id={actual.get('skill_id')!r}"
+            )
+            raw = actual.get("raw") or {}
+            tts = str(raw.get("tts_text") or "").strip()
+            assert not tts, (
+                f"{session.session_id}[{idx}] empty turn must not produce TTS; "
+                f"got tts_text={tts!r}"
+            )
