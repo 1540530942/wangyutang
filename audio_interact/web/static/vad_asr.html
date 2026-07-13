@@ -49,6 +49,18 @@
     .expect-table tr.clickable:hover td { background:var(--accent-soft); cursor:pointer; }
 
     .loading-note { color:var(--muted); font-size:13px; padding:40px 0; text-align:center; }
+
+    /* execution section */
+    .exec-section { margin-top:18px; padding-top:14px; border-top:1px solid var(--line); }
+    .exec-header { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .exec-btn { background:#dc2626; color:#fff; border:none; border-radius:8px; padding:7px 16px; font-size:13px; font-weight:600; cursor:pointer; transition:background .15s; }
+    .exec-btn:hover:not(:disabled) { background:#b91c1c; }
+    .exec-btn:disabled { opacity:.5; cursor:default; }
+    .exec-note { font-size:12px; color:var(--muted); }
+    .exec-result { margin-top:12px; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px 14px; }
+    .exec-running { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); }
+    .exec-done { display:flex; align-items:center; font-size:13px; font-weight:600; }
+    .exec-error { color:#dc2626; font-size:13px; }
   </style>
 </head>
 <body>
@@ -76,6 +88,6 @@
     </div>
   </div>
 
-  <script src="/audio_interact/vad_asr.js?v=20260711a"></script>
+  <script src="/audio_interact/vad_asr.js?v=20260714a"></script>
 </body>
 </html>

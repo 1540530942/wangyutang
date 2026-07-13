@@ -987,6 +987,113 @@ def get_golden_audio(case_id: str):
     raise HTTPException(status_code=404, detail="golden audio not found")
 
 
+@app.post("/api/golden/{case_id}/execute", include_in_schema=False)
+async def execute_golden_case(case_id: str):
+    """Replay golden session audio with route=True via self WebSocket; returns per-turn results."""
+    import wave as _wave
+
+    import websockets
+
+    safe_case_id = Path(case_id).name
+
+    # Find the session directory
+    session_dir: Path | None = None
+    if _GOLDEN_SESSIONS_DIR.is_dir():
+        for sdir in sorted(p for p in _GOLDEN_SESSIONS_DIR.iterdir() if p.is_dir()):
+            mf = sdir / "manifest.json"
+            if not mf.exists():
+                continue
+            mf_data = json.loads(mf.read_text(encoding="utf-8"))
+            if str(mf_data.get("case_id") or sdir.name) == safe_case_id or str(mf_data.get("session_id") or sdir.name) == safe_case_id:
+                session_dir = sdir
+                break
+
+    if session_dir is None:
+        raise HTTPException(status_code=404, detail=f"golden case {safe_case_id!r} not found")
+
+    manifest = json.loads((session_dir / "manifest.json").read_text(encoding="utf-8"))
+    audio_meta = manifest.get("audio") or {}
+    audio_file = str(audio_meta.get("file") or "audio/mic_proc_16k.wav")
+    audio_path = session_dir / audio_file
+    sample_rate = int(audio_meta.get("sample_rate") or 16000)
+
+    if not audio_path.exists():
+        raise HTTPException(status_code=404, detail="golden audio file not found")
+
+    with _wave.open(str(audio_path), "rb") as wf:
+        pcm = wf.readframes(wf.getnframes())
+
+    frame_samples = 512
+    frame_bytes = frame_samples * 2
+    silence_pad = b"\x00" * frame_bytes * 25
+    full_pcm = pcm + silence_pad
+
+    run_id = uuid.uuid4().hex[:8]
+    replay_session_id = f"golden-exec-{safe_case_id}-{run_id}"
+    replay_device_id = f"golden-exec-{run_id}"
+
+    utterances: list[dict[str, Any]] = []
+    pending_start_ms: int | None = None
+
+    async with websockets.connect("ws://127.0.0.1:8097/ws/audio", ping_interval=None, open_timeout=20) as ws:
+        await ws.send(json.dumps({
+            "type": "start_stream",
+            "session_id": replay_session_id,
+            "device_id": replay_device_id,
+            "sample_rate": sample_rate,
+            "route": True,
+        }))
+
+        ready = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
+        if ready.get("type") not in {"ready", "stream_ready"}:
+            raise HTTPException(status_code=502, detail=f"unexpected ws handshake: {ready}")
+
+        for i in range(0, len(full_pcm), frame_bytes):
+            frame = full_pcm[i: i + frame_bytes]
+            if len(frame) < frame_bytes:
+                frame = frame.ljust(frame_bytes, b"\x00")
+            await ws.send(frame)
+
+        await ws.send(json.dumps({"type": "stop_stream"}))
+
+        deadline = asyncio.get_event_loop().time() + 90
+        while asyncio.get_event_loop().time() < deadline:
+            try:
+                raw = await asyncio.wait_for(ws.recv(), timeout=30)
+            except asyncio.TimeoutError:
+                break
+            if isinstance(raw, bytes):
+                continue
+            msg = json.loads(raw)
+            msg_type = str(msg.get("type") or "")
+            if msg_type == "speech_start":
+                offset = msg.get("offset_seconds")
+                pending_start_ms = int(float(offset) * 1000) if offset is not None else None
+            elif msg_type == "stream_stopped":
+                break
+            elif "streaming_vad" in msg or ("text" in msg and "wake_status" in msg):
+                offset = msg.get("offset_seconds")
+                utterances.append({
+                    "vad_start_ms": pending_start_ms,
+                    "vad_end_ms": int(float(offset) * 1000) if offset is not None else None,
+                    "text": msg.get("text", ""),
+                    "wake_status": msg.get("wake_status", ""),
+                    "status": msg.get("status", ""),
+                    "skill_id": msg.get("skill_id", ""),
+                    "action_task": msg.get("action_task"),
+                    "tts_text": msg.get("tts_text", ""),
+                })
+                pending_start_ms = None
+
+    return {
+        "case_id": safe_case_id,
+        "session_id": str(manifest.get("session_id") or ""),
+        "device_id": str(manifest.get("device_id") or ""),
+        "run_id": run_id,
+        "turns": utterances,
+    }
+
+
 def _list_sessions(data_root: Path, limit: int = 100) -> list[dict[str, Any]]:
     """Scan sessions/ and recordings/ dirs; return merged list newest-first."""
     found: dict[str, dict[str, Any]] = {}
