@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>数据日志</title>
+  <link rel="stylesheet" href="/audio_interact/dashboard.css" />
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <h1>数据日志</h1>
+      <span class="sub">音频 · VAD · ASR · 沙盒 全链路追踪</span>
+    </div>
+    <div class="topbar-nav">
+      <a href="/dashboard/sessions" class="active">数据日志</a>
+      <a href="/dashboard/golden">金标测试集</a>
+    </div>
+  </div>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <h2>Session 列表</h2>
+        <button onclick="loadSessions()" style="font-size:12px;border:none;background:none;cursor:pointer;color:var(--accent)">刷新</button>
+      </div>
+      <div class="sessions" id="sessions"></div>
+    </aside>
+    <main class="main">
+      <div id="detail" class="detail-empty">← 选择一个 Session 查看全链路</div>
+    </main>
+  </div>
+  <script src="/audio_interact/sessions.js?v=4"></script>
+</body>
+</html>

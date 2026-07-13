@@ -856,19 +856,26 @@ async def audio_segment(
 
 @app.get("/dashboard", include_in_schema=False)
 @app.get("/dashboard/", include_in_schema=False)
-def dashboard_redirect():
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/dashboard/detail", status_code=308)
-
-
 @app.get("/dashboard/detail", include_in_schema=False)
-def dashboard_detail_page() -> FileResponse:
-    return FileResponse(str(_STATIC_DIR / "dashboard.html"))
+def dashboard_sessions_redirect():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/dashboard/sessions", status_code=308)
+
+
+@app.get("/dashboard/sessions", include_in_schema=False)
+def dashboard_sessions_page() -> FileResponse:
+    return FileResponse(str(_STATIC_DIR / "sessions.html"))
 
 
 @app.get("/dashboard/vad_asr", include_in_schema=False)
-def dashboard_vad_asr_page() -> FileResponse:
-    return FileResponse(str(_STATIC_DIR / "vad_asr.html"))
+def dashboard_golden_redirect():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/dashboard/golden", status_code=308)
+
+
+@app.get("/dashboard/golden", include_in_schema=False)
+def dashboard_golden_page() -> FileResponse:
+    return FileResponse(str(_STATIC_DIR / "golden.html"))
 
 
 _GOLDEN_DIR = Path(__file__).resolve().parent / "tests" / "golden"

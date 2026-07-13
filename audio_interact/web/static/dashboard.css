@@ -15,9 +15,14 @@
 body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; height: 100vh; display: flex; flex-direction: column; }
 
 /* ── top bar ── */
-.topbar { background: var(--accent); color: #fff; padding: 10px 20px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.topbar { background: var(--accent); color: #fff; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
 .topbar h1 { font-size: 16px; font-weight: 600; }
-.topbar .sub { font-size: 12px; opacity: .75; margin-left: auto; }
+.topbar .sub { font-size: 12px; opacity: .75; }
+.topbar-left { display: flex; flex-direction: column; gap: 2px; }
+.topbar-nav { display: flex; gap: 8px; align-items: center; }
+.topbar-nav a { color: rgba(255,255,255,.8); text-decoration: none; font-size: 13px; padding: 4px 12px; border-radius: 6px; transition: background .15s; }
+.topbar-nav a:hover { background: rgba(255,255,255,.15); }
+.topbar-nav a.active { background: rgba(255,255,255,.22); color: #fff; font-weight: 600; }
 
 /* ── layout ── */
 .layout { display: flex; flex: 1; overflow: hidden; }
