@@ -73,6 +73,10 @@ def safe_write_streaming_session_package(**kwargs: Any) -> str | None:
         return None
 
 
+# keyed by f"{session_id}:{turn_idx}" → tts_elapsed_ms
+_tts_timing_store: dict[str, int] = {}
+
+
 def safe_write_segment_session_package(**kwargs: Any) -> str:
     try:
         return _write_segment_session_package(**kwargs)
@@ -152,7 +156,12 @@ async def audio_ws(websocket: WebSocket) -> None:
 
     def flush_session() -> str | None:
         nonlocal session_full, session_utterances, pending_start
-        rel = save_session_recording(session_id, device_id, STREAM_SAMPLE_RATE, bytes(session_full), list(session_utterances))
+        utts = list(session_utterances)
+        for i, utt in enumerate(utts):
+            tts_ms = _tts_timing_store.pop(f"{session_id}:{i}", None)
+            if tts_ms is not None:
+                utt["tts_elapsed_ms"] = tts_ms
+        rel = save_session_recording(session_id, device_id, STREAM_SAMPLE_RATE, bytes(session_full), utts)
         session_full = bytearray()
         session_utterances = []
         pending_start = None
@@ -188,8 +197,9 @@ async def audio_ws(websocket: WebSocket) -> None:
                             result["streaming_vad"] = "silero"
                             await websocket.send_text(json.dumps(result, ensure_ascii=False))
                             # record this utterance's VAD window + ASR/command outcome
+                            turn_idx = len(session_utterances)
                             session_utterances.append({
-                                "index": len(session_utterances),
+                                "index": turn_idx,
                                 "vad_start_seconds": pending_start,
                                 "vad_end_seconds": end_offset,
                                 "reason": event.get("reason"),
@@ -200,11 +210,13 @@ async def audio_ws(websocket: WebSocket) -> None:
                                 "action_task": result.get("action_task"),
                                 "tts_text": result.get("tts_text", ""),
                                 "action_error": result.get("action_error", ""),
+                                "asr_elapsed_ms": result.get("asr_elapsed_ms"),
+                                "route_elapsed_ms": result.get("route_elapsed_ms"),
                             })
                             pending_start = None
                             tts_text = result.get("tts_text", "")
                             if tts_text and TTS_URL:
-                                asyncio.create_task(_push_tts(websocket, tts_text))
+                                asyncio.create_task(_push_tts(websocket, tts_text, session_id, turn_idx))
                         else:
                             await websocket.send_text(json.dumps(event, ensure_ascii=False))
                 else:
@@ -479,10 +491,13 @@ def _fetch_tts_audio(text: str, *, voice: str | None = None, instructions: str |
     return audio
 
 
-async def _push_tts(ws: WebSocket, text: str) -> None:
+async def _push_tts(ws: WebSocket, text: str, session_id: str = "", turn_idx: int = -1) -> None:
+    tts_started = time.time()
     try:
         loop = asyncio.get_event_loop()
         audio = await loop.run_in_executor(None, _fetch_tts_audio, text)
+        if session_id and turn_idx >= 0:
+            _tts_timing_store[f"{session_id}:{turn_idx}"] = int((time.time() - tts_started) * 1000)
         await ws.send_bytes(audio)
     except Exception as exc:
         print(f"[WARN] tts_failed: {exc}", flush=True)
@@ -511,6 +526,8 @@ def _process(wav_bytes: bytes, device_id: str, session_id: str, route_action: bo
             "elapsed_ms": elapsed_ms(started),
         }
 
+    asr_elapsed = int((asr_done_at - started) * 1000)
+
     if not text:
         return {
             "type": "result",
@@ -520,6 +537,7 @@ def _process(wav_bytes: bytes, device_id: str, session_id: str, route_action: bo
             "wake_status": "empty",
             "skill_id": "",
             "status": "empty",
+            "asr_elapsed_ms": asr_elapsed,
             "elapsed_ms": elapsed_ms(started),
         }
 
@@ -535,10 +553,12 @@ def _process(wav_bytes: bytes, device_id: str, session_id: str, route_action: bo
             "wake_status": wake.status,
             "skill_id": "",
             "status": "asr_only",
+            "asr_elapsed_ms": asr_elapsed,
             "elapsed_ms": elapsed_ms(started),
         }
     if not wake.should_route:
-        return wake_only_result(session_id=session_id, text=text, wake=wake, started=started)
+        return wake_only_result(session_id=session_id, text=text, wake=wake, started=started,
+                                asr_elapsed_ms=asr_elapsed)
 
     try:
         resp = requests.post(
@@ -555,12 +575,13 @@ def _process(wav_bytes: bytes, device_id: str, session_id: str, route_action: bo
                     "wake_message": wake.message,
                     "capture_at": started,
                     "asr_done_at": asr_done_at,
-                    "asr_elapsed_ms": int((asr_done_at - started) * 1000),
+                    "asr_elapsed_ms": asr_elapsed,
                 },
             },
             timeout=ROUTE_TIMEOUT,
         )
         resp.raise_for_status()
+        route_done_at = time.time()
         route = resp.json()
     except Exception as exc:
         return {
@@ -572,6 +593,7 @@ def _process(wav_bytes: bytes, device_id: str, session_id: str, route_action: bo
             "skill_id": "",
             "status": "route_error",
             "message": str(exc),
+            "asr_elapsed_ms": asr_elapsed,
             "elapsed_ms": elapsed_ms(started),
         }
 
@@ -587,12 +609,15 @@ def _process(wav_bytes: bytes, device_id: str, session_id: str, route_action: bo
         "plan": route.get("plan"),
         "tts_text": str(route.get("tts_text") or ""),
         "status": "ok",
+        "asr_elapsed_ms": asr_elapsed,
+        "route_elapsed_ms": int((route_done_at - asr_done_at) * 1000),
         "elapsed_ms": elapsed_ms(started),
     }
 
 
-def wake_only_result(*, session_id: str, text: str, wake: WakeDecision, started: float) -> dict[str, Any]:
-    return {
+def wake_only_result(*, session_id: str, text: str, wake: WakeDecision, started: float,
+                     asr_elapsed_ms: int | None = None) -> dict[str, Any]:
+    result: dict[str, Any] = {
         "type": "result",
         "session_id": session_id,
         "text": text,
@@ -602,6 +627,9 @@ def wake_only_result(*, session_id: str, text: str, wake: WakeDecision, started:
         "status": wake.message or wake.status,
         "elapsed_ms": elapsed_ms(started),
     }
+    if asr_elapsed_ms is not None:
+        result["asr_elapsed_ms"] = asr_elapsed_ms
+    return result
 
 
 def elapsed_ms(started: float) -> int:
@@ -1240,6 +1268,7 @@ def get_session_route(session_id: str) -> dict[str, Any]:
         vad_segs: dict[str, dict] = {}
         asr_finals: dict[str, dict] = {}
         robot_cmds: dict[str, dict] = {}
+        tts_ready: dict[str, int | None] = {}
         for ev in events:
             etype = str(ev.get("type", ""))
             seg = str(ev.get("segment_id") or "")
@@ -1254,11 +1283,15 @@ def get_session_route(session_id: str) -> dict[str, Any]:
                 asr_finals[seg] = {"text": ev.get("text", ""), "wake_status": ev.get("wake_status", ""),
                                     "status": ev.get("status", ""), "turn_id": turn,
                                     "skill_id": str(ev.get("skill_id") or ""),
-                                    "audio_start_ms": ev.get("audio_start_ms"), "audio_end_ms": ev.get("audio_end_ms")}
+                                    "audio_start_ms": ev.get("audio_start_ms"), "audio_end_ms": ev.get("audio_end_ms"),
+                                    "asr_elapsed_ms": ev.get("asr_elapsed_ms")}
             elif etype == "robot.command":
                 robot_cmds[turn] = {"skill_id": (ev.get("command") or {}).get("skill_id") or ev.get("skill_id", ""),
                                      "action_task": ev.get("action_task"), "tts_text": ev.get("tts_text", ""),
-                                     "action_error": ev.get("action_error", "")}
+                                     "action_error": ev.get("action_error", ""),
+                                     "route_elapsed_ms": ev.get("route_elapsed_ms")}
+            elif etype == "tts.audio_ready":
+                tts_ready[turn] = ev.get("tts_elapsed_ms")
         all_segs = sorted(set(vad_segs) | set(asr_finals), key=lambda s: int(vad_segs.get(s, {}).get("start_ms") or asr_finals.get(s, {}).get("audio_start_ms") or 0))
         for i, seg in enumerate(all_segs):
             vad = vad_segs.get(seg, {})
@@ -1283,6 +1316,9 @@ def get_session_route(session_id: str) -> dict[str, Any]:
                 "action_task": cmd.get("action_task"),
                 "tts_text": cmd.get("tts_text", ""),
                 "action_error": cmd.get("action_error", ""),
+                "asr_elapsed_ms": asr.get("asr_elapsed_ms"),
+                "route_elapsed_ms": cmd.get("route_elapsed_ms"),
+                "tts_elapsed_ms": tts_ready.get(turn_id),
             })
     else:
         for item in (lm.get("utterances") or []):

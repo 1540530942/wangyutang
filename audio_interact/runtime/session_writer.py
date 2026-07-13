@@ -178,6 +178,9 @@ def write_streaming_session_package(
         turn_id = ordinal_id("turn", index)
         start_ms = _seconds_to_ms(item.get("vad_start_seconds"))
         end_ms = _seconds_to_ms(item.get("vad_end_seconds"))
+        asr_elapsed_ms = item.get("asr_elapsed_ms")
+        route_elapsed_ms = item.get("route_elapsed_ms")
+        tts_elapsed_ms = item.get("tts_elapsed_ms")
         writer.emit(
             "vad",
             ts_ms=start_ms,
@@ -195,8 +198,7 @@ def write_streaming_session_package(
             reason=item.get("reason"),
         )
         text = str(item.get("text") or "")
-        writer.emit(
-            "asr",
+        asr_event: dict[str, Any] = dict(
             ts_ms=end_ms,
             type="asr.final",
             segment_id=segment_id,
@@ -208,13 +210,15 @@ def write_streaming_session_package(
             status=item.get("status"),
             skill_id=str(item.get("skill_id") or ""),
         )
+        if asr_elapsed_ms is not None:
+            asr_event["asr_elapsed_ms"] = asr_elapsed_ms
+        writer.emit("asr", **asr_event)
         skill_id = str(item.get("skill_id") or "")
         action_task = item.get("action_task")
         tts_text = str(item.get("tts_text") or "")
         action_error = str(item.get("action_error") or "")
         if skill_id and item.get("status") == "ok":
-            writer.emit(
-                "runtime",
+            cmd_event: dict[str, Any] = dict(
                 ts_ms=end_ms,
                 type="robot.command",
                 turn_id=turn_id,
@@ -223,6 +227,13 @@ def write_streaming_session_package(
                 tts_text=tts_text,
                 action_error=action_error,
             )
+            if route_elapsed_ms is not None:
+                cmd_event["route_elapsed_ms"] = route_elapsed_ms
+            writer.emit("runtime", **cmd_event)
+        if tts_elapsed_ms is not None:
+            writer.emit("tts", ts_ms=end_ms, type="tts.request", turn_id=turn_id)
+            writer.emit("tts", ts_ms=end_ms, type="tts.audio_ready", turn_id=turn_id,
+                        tts_elapsed_ms=tts_elapsed_ms)
     writer.close()
     return writer.relative_path(data_root)
 

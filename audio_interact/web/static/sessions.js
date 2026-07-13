@@ -1,4 +1,56 @@
 // sessions.js — 语音交互全链路数据日志
+
+// ── waterfall chart ───────────────────────────────────────────
+function renderWaterfall(utts) {
+  const withTiming = utts.filter(u => u.asr_elapsed_ms != null);
+  if (!withTiming.length) {
+    return `<div class="wf-legacy-note">历史 session，无阶段耗时埋点——仅显示 VAD 音频时间轴</div>`;
+  }
+  const rows = withTiming.map(u => {
+    const vadMs = Math.max(0, (u.vad_end_ms ?? 0) - (u.vad_start_ms ?? 0));
+    const asrMs = u.asr_elapsed_ms ?? 0;
+    const routeMs = (u.status === "asr_only" || u.status === "empty" || u.status === "waiting_for_wake_word" || u.status === "wake_word")
+      ? null : (u.route_elapsed_ms ?? null);
+    const ttsMs = u.tts_elapsed_ms ?? null;
+
+    const total = vadMs + asrMs + (routeMs ?? 0) + (ttsMs ?? 0) || 1;
+    const pct = v => (v / total * 100).toFixed(1);
+
+    const vadPct = pct(vadMs);
+    const asrPct = pct(asrMs);
+    const routePct = routeMs != null ? pct(routeMs) : null;
+    const ttsPct = ttsMs != null ? pct(ttsMs) : null;
+
+    const label = u.text || `（${u.wake_status || u.status || "—"}）`;
+
+    return `<div class="wf-row">
+      <div class="wf-label" title="${label}">${label.slice(0, 20)}${label.length > 20 ? "…" : ""}</div>
+      <div class="wf-track">
+        <div class="wf-seg wf-vad" style="width:${vadPct}%" title="VAD 语音段 ${vadMs}ms">
+          <span class="wf-seg-label">${vadMs}ms</span>
+        </div>
+        <div class="wf-seg wf-asr" style="width:${asrPct}%" title="ASR 识别 ${asrMs}ms">
+          <span class="wf-seg-label">${asrMs}ms</span>
+        </div>
+        ${routePct != null ? `<div class="wf-seg wf-route" style="width:${routePct}%" title="路由 LLM ${routeMs}ms">
+          <span class="wf-seg-label">${routeMs}ms</span>
+        </div>` : ""}
+        ${ttsPct != null ? `<div class="wf-seg wf-tts" style="width:${ttsPct}%" title="TTS 合成 ${ttsMs}ms">
+          <span class="wf-seg-label">${ttsMs}ms</span>
+        </div>` : ""}
+      </div>
+      <div class="wf-total">${total}ms</div>
+    </div>`;
+  }).join("");
+
+  return `<div class="wf-legend">
+    <span class="wf-dot wf-vad-dot"></span>VAD
+    <span class="wf-dot wf-asr-dot"></span>ASR
+    <span class="wf-dot wf-route-dot"></span>路由
+    <span class="wf-dot wf-tts-dot"></span>TTS
+  </div>
+  <div class="wf-chart">${rows}</div>`;
+}
 const API = "/audio_interact/api";
 const SESSION_LIST_LIMIT = 500;
 let currentSession = null;
@@ -195,6 +247,13 @@ function renderDetail(s) {
         ${timelineBars}
         <div class="timeline-cursor" id="cursor" style="left:0%"></div>
       </div>
+    </div>` : ""}
+
+    <!-- 阶段耗时瀑布图 -->
+    ${utts.length > 0 ? `
+    <div class="card">
+      <div class="card-head"><h2>阶段耗时瀑布图</h2></div>
+      ${renderWaterfall(utts)}
     </div>` : ""}
 
     <!-- 链路追踪表 -->
