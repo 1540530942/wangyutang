@@ -122,7 +122,6 @@ ci_tests/vad_asr/          full-session audio replay; VAD/ASR/wake assertions
 ci_tests/robot_sandbox/    live LLM ReAct dry-run; semantic routing assertions
 ci_tests/action_move/      no LLM; action parameter-to-duration mapping
 ci_tests/audio_interact/   cross-module semantic pipeline and API compatibility
-ci_tests/live_execution/   explicit hardware run; creates real action_move tasks
 ```
 
 Useful guard tags in `turns.json`:
@@ -135,38 +134,36 @@ distance_param  movement distance must be preserved
 movement        action_move distance-to-duration mapping
 ```
 
-## Live Robot Execution
+## Live Robot Execution Direction
 
 Golden sessions are dry-run CI inputs by default. Real robot execution is a
-separate, explicit pre-hardware-test verification step. It must not run in the
-ordinary deployment CI gate.
+separate, explicit pre-hardware-test verification step and must not run in the
+ordinary deployment CI gate or from pytest.
 
-The current live execution case is limited to the Pi ALSA session:
+The preferred product flow is through `/dashboard/vad_asr`:
+
+```text
+/dashboard/vad_asr
+  select a golden session
+  run dry-run validation first
+  show action summary and target device
+  require explicit human confirmation
+  then execute route=true against the selected session
+  display action_task status and final result
+```
+
+For the Pi ALSA case, the real actions would be limited to:
 
 ```text
 case_id: pi_alsa_wake_distance_001
-real actions: look_right, move_backward with unit_distance_cm=5.0
+actions: look_right, move_backward with unit_distance_cm=5.0
+target:  turbopi-01
 ```
 
-Run it only when the TurboPi is powered, on the floor, clear of obstacles, and
-the Pi action poller is online:
-
-```bash
-RUN_LIVE_ROBOT_EXECUTION=1 \
-LIVE_ROBOT_CONFIRM_DEVICE=turbopi-01 \
-python -m pytest ci_tests/live_execution/ -q
-```
-
-Optional override:
-
-```bash
-LIVE_ACTION_SERVER=https://www.wangyutang.cn/action
-```
-
-The live test replays the full golden audio through `/audio_interact/ws/audio`
-with `route=true`, then verifies that routed action turns create action_move
-tasks and that the Pi reports them as `complete`. Non-action turns must not
-create action tasks.
+The implementation should live behind an explicit dashboard API, not under
+`ci_tests/`. The backend should read the selected golden session, replay it with
+`route=true`, collect action_task ids, poll action_move for terminal status, and
+return per-turn results to the page.
 
 ## Adding A New Golden Session
 
@@ -182,4 +179,5 @@ python -m pytest ci_tests/audio_interact/test_golden_session_api.py ci_tests/act
 ```
 
 Live LLM ReAct and remote audio replay checks run in CI, or locally when the
-required services and environment variables are available.
+required services and environment variables are available. Real robot execution
+should be triggered manually from the golden-session dashboard flow.
