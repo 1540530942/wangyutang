@@ -1121,7 +1121,13 @@ def _list_sessions(data_root: Path, limit: int = 100) -> list[dict[str, Any]]:
                                        "package_dir": None, "manifest": None, "legacy_meta": None})
         entry["legacy_dir"] = str(rec_dir)
         entry["legacy_meta"] = meta
-    results = sorted(found.values(), key=lambda e: (e["day"], e["session_id"]), reverse=True)
+    def _sort_key(e: dict[str, Any]) -> str:
+        created = str((e.get("manifest") or {}).get("created_at") or "").strip()
+        if created:
+            return created
+        return f"{e.get('day', '')}|{e.get('session_id', '')}"
+
+    results = sorted(found.values(), key=_sort_key, reverse=True)
     return results[:limit]
 
 
