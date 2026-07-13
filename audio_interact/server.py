@@ -1018,6 +1018,22 @@ def _list_sessions(data_root: Path, limit: int = 100) -> list[dict[str, Any]]:
     return results[:limit]
 
 
+def _session_created_at(entry: dict[str, Any]) -> str:
+    manifest = entry.get("manifest") or {}
+    legacy_meta = entry.get("legacy_meta") or {}
+    created = str(manifest.get("created_at") or "").strip()
+    if created:
+        return created
+    recorded_at = legacy_meta.get("recorded_at")
+    if recorded_at:
+        try:
+            return time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(float(recorded_at)))
+        except (TypeError, ValueError, OSError):
+            pass
+    day = str(entry.get("day") or "").strip()
+    return f"{day}T00:00:00" if day else ""
+
+
 def _load_events_for_session(package_dir: Path) -> list[dict[str, Any]]:
     seen: set[tuple] = set()
     events: list[dict[str, Any]] = []
@@ -1064,6 +1080,7 @@ def list_sessions_route(limit: int = 60) -> list[dict[str, Any]]:
         out.append({
             "session_id": e["session_id"],
             "day": e["day"],
+            "created_at": _session_created_at(e),
             "duration_ms": duration_ms,
             "utterance_count": len(utterances) if utterances else 0,
             "source": m.get("source") or ("legacy" if e.get("legacy_dir") else "unknown"),
@@ -1182,6 +1199,7 @@ def get_session_route(session_id: str) -> dict[str, Any]:
     return {
         "session_id": session_id,
         "day": match["day"],
+        "created_at": _session_created_at(match),
         "duration_ms": duration_ms,
         "source": m.get("source") or "legacy",
         "capture_point": m.get("capture_point") or "unknown",

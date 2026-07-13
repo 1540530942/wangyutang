@@ -18,6 +18,14 @@ function durLabel(ms) {
   if (!ms) return "—";
   return ms >= 60000 ? `${(ms/60000).toFixed(1)}m` : `${(ms/1000).toFixed(1)}s`;
 }
+function dateTimeLabel(value) {
+  if (!value) return "—";
+  const normalized = String(value).replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return String(value).replace("T", " ").replace(/\+.*$/, "").slice(0, 19);
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
 function wakeClass(w) {
   if (w === "awake")     return "awake";
   if (w === "wake_word") return "wake_word";
@@ -34,6 +42,7 @@ function captureBadge(cp) {
   return "";
 }
 function actionSummary(utt) {
+  if (utt.status === "asr_only") return `<span class="status-wait">仅 ASR，未进沙盒</span>`;
   if (!utt.skill_id) return `<span class="status-wait">—</span>`;
   const task = utt.action_task;
   const err  = utt.action_error;
@@ -43,6 +52,13 @@ function actionSummary(utt) {
 }
 function hasTraceContent(s) {
   return Number(s.utterance_count || 0) > 0 || (Array.isArray(s.texts) && s.texts.length > 0);
+}
+
+function ttsSummary(utt) {
+  if (utt.tts_text) return utt.tts_text;
+  if (utt.status === "asr_only") return "未调用沙盒，无 TTS";
+  if (utt.wake_status === "sleeping") return "未唤醒，无 TTS";
+  return "—";
 }
 
 // ── session list ──────────────────────────────────────────────
@@ -67,7 +83,7 @@ async function loadSessions() {
     <div class="session-item" data-id="${s.session_id}" onclick="openSession('${s.session_id}')">
       <div class="meta">
         <span class="sid">${s.session_id.slice(0,14)}</span>
-        <span class="day">${s.day}</span>
+        <span class="day">${dateTimeLabel(s.created_at || s.day)}</span>
         <span class="dur">${durLabel(s.duration_ms)}</span>
       </div>
       <div class="texts">${(Array.isArray(s.texts) ? s.texts : []).join(" · ") || "（无识别文本）"}</div>
@@ -136,7 +152,7 @@ function renderDetail(s) {
       <td><span class="wake-pill ${wakeClass(u.wake_status)}">${u.wake_status || '—'}</span></td>
       <td>${u.status ? `<span class="status-${u.status === 'ok' ? 'ok' : u.status === 'waiting_for_wake_word' ? 'wait' : 'err'}">${u.status}</span>` : '—'}</td>
       <td>${actionSummary(u)}</td>
-      <td class="tts-text">${u.tts_text || '—'}</td>
+      <td class="tts-text">${ttsSummary(u)}</td>
     </tr>`;
   }).join("");
 
@@ -149,12 +165,13 @@ function renderDetail(s) {
           <h2>${s.session_id}</h2>
         </div>
         <div style="text-align:right;font-size:12px;color:var(--muted)">
-          ${s.day} · ${durLabel(s.duration_ms)}<br>
+          ${dateTimeLabel(s.created_at || s.day)} · ${durLabel(s.duration_ms)}<br>
           ${sourceBadge(s.source)} ${captureBadge(s.capture_point)}
         </div>
       </div>
       <div class="meta-grid">
         <div class="meta-cell"><div class="k">设备</div><div class="v">${s.device_id || '—'}</div></div>
+        <div class="meta-cell"><div class="k">创建时间</div><div class="v">${dateTimeLabel(s.created_at || s.day)}</div></div>
         <div class="meta-cell"><div class="k">时长</div><div class="v">${durLabel(s.duration_ms)}</div></div>
         <div class="meta-cell"><div class="k">句数</div><div class="v">${utts.length}</div></div>
         <div class="meta-cell"><div class="k">采集点</div><div class="v">${s.capture_point || '—'}</div></div>
