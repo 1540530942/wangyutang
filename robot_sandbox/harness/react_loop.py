@@ -96,6 +96,17 @@ EXACT_ACTION_ALIASES = {
     "右移":     "move_right",
     "向右移":   "move_right",
     "往右走":   "move_right",
+    # camera servo — no distance param, deterministic dispatch
+    "向右看":   "look_right",
+    "右看":     "look_right",
+    "看右边":   "look_right",
+    "向左看":   "look_left",
+    "左看":     "look_left",
+    "看左边":   "look_left",
+    "向上看":   "look_up",
+    "上看":     "look_up",
+    "向下看":   "look_down",
+    "下看":     "look_down",
 }
 EXACT_ACTION_SPLIT_RE = re.compile(r"(?:\s+|[，,;；、]+|然后|再|接着|并且|后)+")
 DISTANCE_ACTION_RE = re.compile(

@@ -137,6 +137,8 @@ def test_llm_react_no_distance_for_non_movement_skill(session_id, turn):
     assert calls, f"{session_id}[{turn['turn_id']}] no validated dispatch_action call"
     action_call = calls[0]
 
+    # Exact-action bypass (preflight) is now the expected path for servo commands
+    # like look_right — either path must not inject distance_cm.
     assert "distance_cm" not in action_call.args, (
         f"{session_id}[{turn['turn_id']}] non-movement skill must not inject distance_cm; "
         f"got args={action_call.args}"
