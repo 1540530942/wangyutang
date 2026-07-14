@@ -1,55 +1,74 @@
 // sessions.js — 语音交互全链路数据日志
 
 // ── waterfall chart ───────────────────────────────────────────
-function renderWaterfall(utts) {
+// durationMs = full session length; all rows share one absolute timeline so
+// bars are horizontally aligned and silence gaps are visible.
+function renderWaterfall(utts, durationMs) {
   const withTiming = utts.filter(u => u.asr_elapsed_ms != null);
   if (!withTiming.length) {
     return `<div class="wf-legacy-note">历史 session，无阶段耗时埋点——仅显示 VAD 音频时间轴</div>`;
   }
+
+  // Use session total as the shared x-axis; fall back to last utterance end if missing.
+  const total = durationMs || Math.max(...withTiming.map(u =>
+    (u.vad_end_ms ?? 0) + (u.asr_elapsed_ms ?? 0) + (u.route_elapsed_ms ?? 0) + (u.tts_elapsed_ms ?? 0)
+  )) || 1;
+  const p = ms => (Math.max(0, ms || 0) / total * 100).toFixed(2);
+
+  const NO_ROUTE = new Set(["asr_only", "empty", "waiting_for_wake_word", "wake_word"]);
+
   const rows = withTiming.map(u => {
-    const vadMs = Math.max(0, (u.vad_end_ms ?? 0) - (u.vad_start_ms ?? 0));
-    const asrMs = u.asr_elapsed_ms ?? 0;
-    const routeMs = (u.status === "asr_only" || u.status === "empty" || u.status === "waiting_for_wake_word" || u.status === "wake_word")
-      ? null : (u.route_elapsed_ms ?? null);
-    const ttsMs = u.tts_elapsed_ms ?? null;
+    const vadStart = u.vad_start_ms ?? 0;
+    const vadDur   = Math.max(0, (u.vad_end_ms ?? 0) - vadStart);
+    const asrMs    = u.asr_elapsed_ms ?? 0;
+    const hasRoute = !NO_ROUTE.has(u.status) && u.route_elapsed_ms != null;
+    const routeMs  = hasRoute ? u.route_elapsed_ms : null;
+    const ttsMs    = u.tts_elapsed_ms ?? null;
 
-    const total = vadMs + asrMs + (routeMs ?? 0) + (ttsMs ?? 0) || 1;
-    const pct = v => (v / total * 100).toFixed(1);
+    const label = u.text || `（${u.status || u.wake_status || "—"}）`;
+    const shortLabel = label.length > 16 ? label.slice(0, 15) + "…" : label;
 
-    const vadPct = pct(vadMs);
-    const asrPct = pct(asrMs);
-    const routePct = routeMs != null ? pct(routeMs) : null;
-    const ttsPct = ttsMs != null ? pct(ttsMs) : null;
-
-    const label = u.text || `（${u.wake_status || u.status || "—"}）`;
+    // Compact stats line below the bar — no numbers crammed inside bars
+    const parts = [`VAD ${vadDur}ms`, `ASR ${asrMs}ms`];
+    if (routeMs != null) parts.push(`路由 ${routeMs}ms`);
+    if (ttsMs   != null) parts.push(`TTS ${ttsMs}ms`);
+    const chainMs = vadDur + asrMs + (routeMs ?? 0) + (ttsMs ?? 0);
 
     return `<div class="wf-row">
-      <div class="wf-label" title="${label}">${label.slice(0, 20)}${label.length > 20 ? "…" : ""}</div>
-      <div class="wf-track">
-        <div class="wf-seg wf-vad" style="width:${vadPct}%" title="VAD 语音段 ${vadMs}ms">
-          <span class="wf-seg-label">${vadMs}ms</span>
+      <div class="wf-label" title="${label}">${shortLabel}</div>
+      <div class="wf-col">
+        <div class="wf-track">
+          <div class="wf-seg wf-gap"   style="width:${p(vadStart)}%" title="等待 ${vadStart}ms"></div>
+          <div class="wf-seg wf-vad"   style="width:${p(vadDur)}%"   title="VAD 说话 ${vadDur}ms"></div>
+          <div class="wf-seg wf-asr"   style="width:${p(asrMs)}%"    title="ASR 识别 ${asrMs}ms"></div>
+          ${routeMs != null ? `<div class="wf-seg wf-route" style="width:${p(routeMs)}%" title="路由+执行 ${routeMs}ms"></div>` : ""}
+          ${ttsMs   != null ? `<div class="wf-seg wf-tts"   style="width:${p(ttsMs)}%"   title="TTS 合成 ${ttsMs}ms"></div>`   : ""}
         </div>
-        <div class="wf-seg wf-asr" style="width:${asrPct}%" title="ASR 识别 ${asrMs}ms">
-          <span class="wf-seg-label">${asrMs}ms</span>
-        </div>
-        ${routePct != null ? `<div class="wf-seg wf-route" style="width:${routePct}%" title="路由 LLM ${routeMs}ms">
-          <span class="wf-seg-label">${routeMs}ms</span>
-        </div>` : ""}
-        ${ttsPct != null ? `<div class="wf-seg wf-tts" style="width:${ttsPct}%" title="TTS 合成 ${ttsMs}ms">
-          <span class="wf-seg-label">${ttsMs}ms</span>
-        </div>` : ""}
+        <div class="wf-stats">${parts.join(" · ")} <span class="wf-chain-total">＝ ${chainMs}ms</span></div>
       </div>
-      <div class="wf-total">${total}ms</div>
     </div>`;
   }).join("");
 
-  return `<div class="wf-legend">
-    <span class="wf-dot wf-vad-dot"></span>VAD
-    <span class="wf-dot wf-asr-dot"></span>ASR
-    <span class="wf-dot wf-route-dot"></span>路由
-    <span class="wf-dot wf-tts-dot"></span>TTS
+  // Time-scale ruler aligned with track area
+  const ticks = [0, 25, 50, 75, 100].map(pct =>
+    `<span class="wf-tick" style="left:${pct}%">${(pct / 100 * total / 1000).toFixed(1)}s</span>`
+  ).join("");
+
+  return `
+  <div class="wf-legend">
+    <span><span class="wf-dot wf-vad-dot"></span>VAD 说话</span>
+    <span><span class="wf-dot wf-asr-dot"></span>ASR 识别</span>
+    <span><span class="wf-dot wf-route-dot"></span>路由+执行</span>
+    <span><span class="wf-dot wf-tts-dot"></span>TTS 合成</span>
+    <span class="wf-legend-note">时间轴基准：session 总时长 ${(total / 1000).toFixed(1)}s，各行横向对齐说话时刻</span>
   </div>
-  <div class="wf-chart">${rows}</div>`;
+  <div class="wf-chart">
+    ${rows}
+    <div class="wf-ruler">
+      <div class="wf-label"></div>
+      <div class="wf-col"><div class="wf-ruler-inner">${ticks}</div></div>
+    </div>
+  </div>`;
 }
 const API = "/audio_interact/api";
 const SESSION_LIST_LIMIT = 500;
@@ -253,7 +272,7 @@ function renderDetail(s) {
     ${utts.length > 0 ? `
     <div class="card">
       <div class="card-head"><h2>阶段耗时瀑布图</h2></div>
-      ${renderWaterfall(utts)}
+      ${renderWaterfall(utts, dur)}
     </div>` : ""}
 
     <!-- 链路追踪表 -->
