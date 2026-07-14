@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from common.settings import settings
@@ -40,5 +40,15 @@ def qwen3_tts_speech(payload: SpeechRequest) -> Response:
         content=audio,
         media_type=content_type,
         headers={"Content-Disposition": f'attachment; filename="speech.{suffix}"'},
+    )
+
+
+@router.post("/api/tts/speech/stream")
+@router.post("/api/tts/qwen3/speech/stream")
+def qwen3_tts_speech_stream(payload: SpeechRequest) -> StreamingResponse:
+    """分句流式 TTS：每句生成完立即以 [4B 长度][WAV] 格式推送给调用方。"""
+    return StreamingResponse(
+        synthesize_with_lv_qwen.stream(payload.model_dump()),
+        media_type="application/octet-stream",
     )
 

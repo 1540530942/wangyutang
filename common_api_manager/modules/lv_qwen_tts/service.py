@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import struct
+from collections.abc import Iterator
+
 import requests
 from fastapi import HTTPException
 
@@ -55,6 +58,40 @@ class LvQwenTtsClient:
             input_text=request_payload["input"],
         )
         return response.content, content_type
+
+    def stream(self, payload: dict[str, object]) -> Iterator[bytes]:
+        """分句流式：从 lv_server /v1/audio/speech/stream 读取 [4B 长度][WAV] 分块，逐块 yield。"""
+        request_payload = {
+            "model": payload.get("model") or settings.lv_tts_model,
+            "input": payload.get("input") or "",
+            "voice": payload.get("voice") or settings.lv_tts_voice,
+            "language": payload.get("language") or settings.lv_tts_language,
+            "instructions": payload.get("instructions") or settings.lv_tts_instructions,
+            "response_format": "wav",
+        }
+        if not str(request_payload["input"]).strip():
+            raise HTTPException(status_code=400, detail="input is required")
+        try:
+            with requests.post(
+                self._url("/v1/audio/speech/stream"),
+                json=request_payload,
+                timeout=settings.lv_timeout_seconds,
+                stream=True,
+            ) as resp:
+                resp.raise_for_status()
+                buf = b""
+                for raw in resp.iter_content(chunk_size=8192):
+                    buf += raw
+                    while len(buf) >= 4:
+                        length = struct.unpack(">I", buf[:4])[0]
+                        if length == 0:
+                            return  # EOF sentinel
+                        if len(buf) < 4 + length:
+                            break
+                        yield buf[4 : 4 + length]
+                        buf = buf[4 + length :]
+        except requests.RequestException as exc:
+            raise HTTPException(status_code=502, detail=f"LV Qwen TTS stream failed: {exc}") from exc
 
 
 synthesize_with_lv_qwen = LvQwenTtsClient()

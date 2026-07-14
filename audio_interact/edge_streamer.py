@@ -213,15 +213,18 @@ def send_and_receive(wav_bytes: bytes, cfg: dict[str, Any]) -> dict[str, Any]:
         ws.settimeout(cfg["result_timeout"])
         result = json.loads(ws.recv())
 
-        # Wait for TTS audio binary sent by the server after the result
+        # 接收流式 TTS 分块：每块是一句完整 WAV，空 bytes 表示结束
         tts_timeout = float(cfg.get("tts_timeout", 15))
         ws.settimeout(tts_timeout)
-        try:
-            msg = ws.recv()
-            if isinstance(msg, bytes) and msg:
-                _play_wav_bytes(msg, cfg)
-        except Exception:
-            pass
+        while True:
+            try:
+                msg = ws.recv()
+                if isinstance(msg, bytes):
+                    if not msg:  # 空 bytes = 流式结束哨兵
+                        break
+                    _play_wav_bytes(msg, cfg)
+            except Exception:
+                break
 
         return result
     finally:

@@ -34,6 +34,7 @@ _STATIC_DIR = Path(__file__).resolve().parent / "web" / "static"
 ROBOT_SANDBOX_URL = os.getenv("ROBOT_SANDBOX_URL") or os.getenv("AUDIO_RECOGNITION_URL", "http://robot-sandbox:8095")
 COMMON_ASR_URL = os.getenv("COMMON_ASR_URL", "https://www.wangyutang.cn/common/api/asr/transcribe")
 TTS_URL = os.getenv("AUDIO_TTS_URL", "https://www.wangyutang.cn/common/api/tts/speech")
+TTS_STREAM_URL = os.getenv("AUDIO_TTS_STREAM_URL", "")  # 留空则自动派生为 TTS_URL + "/stream"
 TTS_MODEL = os.getenv("AUDIO_TTS_MODEL", "qwen3-tts-12hz-1.7b-customvoice")
 TTS_VOICE = os.getenv("AUDIO_TTS_VOICE", "vivian")
 TTS_INSTRUCTIONS = os.getenv("AUDIO_TTS_INSTRUCTIONS", "用清新自然、甜美温柔的语气说，声音明亮亲切，语调轻快柔和")
@@ -491,14 +492,62 @@ def _fetch_tts_audio(text: str, *, voice: str | None = None, instructions: str |
     return audio
 
 
+def _iter_tts_stream(text: str, *, voice: str | None = None, instructions: str | None = None):
+    """从流式 TTS 端点逐句读取 [4B 长度][WAV] 分块，yield 每句 WAV bytes。"""
+    stream_url = TTS_STREAM_URL or (TTS_URL.rstrip("/") + "/stream")
+    payload = {
+        "model": TTS_MODEL,
+        "input": text,
+        "voice": voice or TTS_VOICE,
+        "language": "chinese",
+        "instructions": instructions or TTS_INSTRUCTIONS,
+        "response_format": "wav",
+    }
+    with requests.post(stream_url, json=payload, timeout=TTS_TIMEOUT, stream=True) as resp:
+        resp.raise_for_status()
+        buf = b""
+        for raw in resp.iter_content(chunk_size=8192):
+            buf += raw
+            while len(buf) >= 4:
+                length = struct.unpack(">I", buf[:4])[0]
+                if length == 0:
+                    return  # EOF sentinel
+                if len(buf) < 4 + length:
+                    break
+                yield buf[4 : 4 + length]
+                buf = buf[4 + length :]
+
+
 async def _push_tts(ws: WebSocket, text: str, session_id: str = "", turn_idx: int = -1) -> None:
+    """流式 TTS：每句生成完立即推给 WebSocket 客户端，首句到达即记录耗时。"""
     tts_started = time.time()
+    first_chunk = True
+    loop = asyncio.get_running_loop()
+    q: asyncio.Queue[bytes | BaseException | None] = asyncio.Queue()
+
+    def _produce() -> None:
+        try:
+            for chunk in _iter_tts_stream(text):
+                loop.call_soon_threadsafe(q.put_nowait, chunk)
+        except Exception as exc:
+            loop.call_soon_threadsafe(q.put_nowait, exc)
+        finally:
+            loop.call_soon_threadsafe(q.put_nowait, None)
+
     try:
-        loop = asyncio.get_event_loop()
-        audio = await loop.run_in_executor(None, _fetch_tts_audio, text)
-        if session_id and turn_idx >= 0:
-            _tts_timing_store[f"{session_id}:{turn_idx}"] = int((time.time() - tts_started) * 1000)
-        await ws.send_bytes(audio)
+        asyncio.ensure_future(loop.run_in_executor(None, _produce))
+        while True:
+            item = await q.get()
+            if item is None:
+                break
+            if isinstance(item, BaseException):
+                raise item
+            if first_chunk:
+                first_chunk = False
+                if session_id and turn_idx >= 0:
+                    _tts_timing_store[f"{session_id}:{turn_idx}"] = int((time.time() - tts_started) * 1000)
+            await ws.send_bytes(item)
+        await ws.send_bytes(b"")  # 通知客户端流式结束
     except Exception as exc:
         print(f"[WARN] tts_failed: {exc}", flush=True)
 
