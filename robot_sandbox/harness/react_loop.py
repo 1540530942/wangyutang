@@ -108,7 +108,7 @@ EXACT_ACTION_ALIASES = {
     "向下看":   "look_down",
     "下看":     "look_down",
 }
-EXACT_ACTION_SPLIT_RE = re.compile(r"(?:\s+|[，,;；、]+|然后|再|接着|并且|后)+")
+EXACT_ACTION_SPLIT_RE = re.compile(r"(?:\s+|[，,;；、]+|然后|再|接着|并且)+")
 DISTANCE_ACTION_RE = re.compile(
     r"^(?P<alias>forward|前进|向前|向前走|往前走|向前移动|"
     r"backward|后退|向后|向后走|往后走|"
@@ -118,9 +118,36 @@ DISTANCE_ACTION_RE = re.compile(
     re.IGNORECASE,
 )
 
+_CN_DIGIT = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
+             "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+_CN_NUM_RE = re.compile(r"[零一二两三四五六七八九十百]+")
+
+
+def _cn_to_int(s: str) -> int | None:
+    """Convert a simple Chinese numeral (≤ 999) to an integer."""
+    n = 0
+    for ch in s:
+        v = _CN_DIGIT.get(ch)
+        if v is None:
+            return None
+        if v == 10:
+            n = (n or 1) * 10
+        elif v == 100:
+            n = (n or 1) * 100
+        else:
+            n += v
+    return n if n else None
+
 
 def _normalized_exact_text(text: str) -> str:
-    return re.sub(r"[\s。！!？?]+", "", text.strip().casefold())
+    # Strip whitespace, terminal punctuation, and common filler particles (啊/呀/嘛/吧)
+    s = re.sub(r"[\s。！!？?]+", "", text.strip().casefold())
+    s = re.sub(r"[啊呀嘛吧哦哟嗯]+$", "", s)
+    # Replace Chinese numeral sequences with ASCII digits
+    def _replace_cn(m: re.Match) -> str:
+        v = _cn_to_int(m.group())
+        return str(v) if v is not None else m.group()
+    return _CN_NUM_RE.sub(_replace_cn, s)
 
 
 def _exact_action_sequence(transcript: str) -> list[tuple[str, str, dict[str, Any]]] | None:
