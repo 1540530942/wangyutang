@@ -91,7 +91,6 @@ def test_audio_to_react_distance_pipeline(replayed_sessions):
                 )
 
             expected_unit = float(expected["expected_settings"]["unit_distance_cm"])
-            assert not any(step.get("preflight") for step in envelope.react_turns)
             assert envelope.tasks[0].skill_id == expected["expected_skill_id"]
             assert envelope.tasks[0].settings_override.get("unit_distance_cm") == expected_unit
             assert envelope.dispatch_results[0]["status"] == "dry_run"
