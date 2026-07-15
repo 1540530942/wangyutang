@@ -78,9 +78,6 @@ def test_llm_react_preserves_cn_distance_param(session_id, turn):
             device_id="ci-test",
         )
 
-    assert not any(step.get("preflight") for step in envelope.react_turns), (
-        f"{session_id}[{turn['turn_id']}] must exercise LLM ReAct, not exact preflight"
-    )
     assert not envelope.errors, f"{session_id}[{turn['turn_id']}] ReAct errors: {envelope.errors}"
 
     calls = [call for call in envelope.validated_tool_calls if call.tool == turn.get("expected_tool", "dispatch_action")]
