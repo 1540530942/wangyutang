@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import struct
 from collections.abc import Iterator
 
 import requests
@@ -60,7 +59,11 @@ class LvQwenTtsClient:
         return response.content, content_type
 
     def stream(self, payload: dict[str, object]) -> Iterator[bytes]:
-        """分句流式：从 lv_server /v1/audio/speech/stream 读取 [4B 长度][WAV] 分块，逐块 yield。"""
+        """分句流式：透传 lv_server /v1/audio/speech/stream 的 [4B 长度][WAV] 字节流。
+
+        格式：每句 = [大端 4 字节长度][WAV 数据]，结束哨兵 = [4 字节零]。
+        调用方按此协议解析，收到零长度包即结束。
+        """
         request_payload = {
             "model": payload.get("model") or settings.lv_tts_model,
             "input": payload.get("input") or "",
@@ -79,17 +82,9 @@ class LvQwenTtsClient:
                 stream=True,
             ) as resp:
                 resp.raise_for_status()
-                buf = b""
-                for raw in resp.iter_content(chunk_size=8192):
-                    buf += raw
-                    while len(buf) >= 4:
-                        length = struct.unpack(">I", buf[:4])[0]
-                        if length == 0:
-                            return  # EOF sentinel
-                        if len(buf) < 4 + length:
-                            break
-                        yield buf[4 : 4 + length]
-                        buf = buf[4 + length :]
+                for chunk in resp.iter_content(chunk_size=8192):
+                    if chunk:
+                        yield chunk
         except requests.RequestException as exc:
             raise HTTPException(status_code=502, detail=f"LV Qwen TTS stream failed: {exc}") from exc
 
