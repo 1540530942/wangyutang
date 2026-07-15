@@ -5,7 +5,7 @@ ARG PIP_INDEX_URL=
 COPY requirements.txt .
 RUN if [ -n "$PIP_INDEX_URL" ]; then python -m pip config set global.index-url "$PIP_INDEX_URL"; fi \
     && pip install --no-cache-dir -r requirements.txt
-COPY server.py wake_state.py settings.py ./
+COPY server.py wake_state.py settings.py golden.py ./
 COPY runtime ./runtime
 COPY replay ./replay
 COPY eval ./eval
