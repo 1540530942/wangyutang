@@ -145,9 +145,13 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
         )
 
         async def _recv_loop() -> None:
+            last_turn_had_b64 = False
             async for msg in ws:
                 if isinstance(msg, bytes) and len(msg) > 0:
-                    threading.Thread(target=_play_tts_bytes, args=(msg, tts_device), daemon=True).start()
+                    # Skip binary frame if tts_audio_base64 already handled for this turn
+                    if not last_turn_had_b64:
+                        threading.Thread(target=_play_tts_bytes, args=(msg, tts_device), daemon=True).start()
+                    last_turn_had_b64 = False
                 elif isinstance(msg, str):
                     try:
                         ev = json.loads(msg)
@@ -164,8 +168,11 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
                             try:
                                 tts_wav = base64.b64decode(tts_b64)
                                 threading.Thread(target=_play_tts_bytes, args=(tts_wav, tts_device), daemon=True).start()
+                                last_turn_had_b64 = True
                             except Exception as exc:
                                 print(f"[WARN] tts_play_failed: {exc}", flush=True)
+                        else:
+                            last_turn_had_b64 = False
                     elif ev.get("type") == "stream_stopped":
                         break
 
