@@ -92,6 +92,7 @@ class LvQwenVisionClient:
             ],
             "max_tokens": 512,
             "temperature": 0,
+            "chat_template_kwargs": {"enable_thinking": False},
         }
         last_exc: Exception | None = None
         for attempt in range(3):
