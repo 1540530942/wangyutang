@@ -17,6 +17,7 @@ docs live under each module (e.g. `robot_sandbox/docs/`, `pi5_robot/docs/`,
 
 ## Audits & reviews
 
+- [project-review-2026-07-16.md](project-review-2026-07-16.md) — full-project module review: mission, strengths, issues (P0–P2), and 3-phase evolution plan
 - [module-compliance-audit.md](module-compliance-audit.md) — module merge-criteria compliance
 - [module-functional-review-2026-05-26.md](module-functional-review-2026-05-26.md) — cross-module functional review
 - [pitfalls-and-fixes.md](pitfalls-and-fixes.md) — recurring pitfalls and their fixes
