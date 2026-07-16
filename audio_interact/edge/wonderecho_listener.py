@@ -38,6 +38,11 @@ CHUNK_SAMPLES = 512
 CHUNK_BYTES = CHUNK_SAMPLES * 2  # PCM16 mono
 SETTINGS_POLL_INTERVAL = 3.0
 
+# TTS playback mute window: while TTS plays through speaker, send silence to
+# server so the mic echo doesn't re-trigger VAD → ASR → TTS feedback loop.
+_tts_mute_until: float = 0.0
+_TTS_MUTE_MARGIN_SECS: float = 0.8  # extra silence after aplay finishes
+
 
 # ---------------------------------------------------------------------------
 # HTTP helpers (stdlib-only, used for settings poll)
@@ -68,6 +73,7 @@ def get_cloud_settings(server: str, token: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def _play_tts_bytes(wav_bytes: bytes, device: str = "") -> None:
+    global _tts_mute_until
     player = shutil.which("aplay") or shutil.which("paplay") or ""
     if not player:
         print("[WARN] tts_play: no audio player (aplay/paplay)", flush=True)
@@ -80,8 +86,10 @@ def _play_tts_bytes(wav_bytes: bytes, device: str = "") -> None:
         if device and Path(player).name == "aplay":
             cmd.extend(["-D", device])
         cmd.append(str(tmp_path))
+        _tts_mute_until = time.time() + 60  # mute mic until playback done
         subprocess.run(cmd, capture_output=True, timeout=15)
     finally:
+        _tts_mute_until = time.time() + _TTS_MUTE_MARGIN_SECS
         tmp_path.unlink(missing_ok=True)
 
 
@@ -186,6 +194,8 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
                     break
                 if len(chunk) < CHUNK_BYTES:
                     chunk = chunk + b"\x00" * (CHUNK_BYTES - len(chunk))
+                if time.time() < _tts_mute_until:
+                    chunk = b"\x00" * CHUNK_BYTES  # silence during TTS playback
                 await ws.send(chunk)
         finally:
             proc.kill()
