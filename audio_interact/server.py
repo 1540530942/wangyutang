@@ -16,8 +16,8 @@ from pathlib import Path
 from typing import Annotated, Any
 
 import requests
-from fastapi import Body, FastAPI, File, Form, Header, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, Response
+from fastapi import Body, FastAPI, File, Form, Header, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from runtime.session_writer import (
@@ -130,6 +130,45 @@ WAKE_STATES = WakeStateStore()
 SILERO_VAD_MODEL: Any | None = None
 SILERO_TORCH: Any | None = None
 
+_sse_queues: list[asyncio.Queue] = []
+
+
+def _sse_broadcast(payload: str) -> None:
+    dead = []
+    for q in _sse_queues:
+        try:
+            q.put_nowait(payload)
+        except asyncio.QueueFull:
+            dead.append(q)
+    for q in dead:
+        _sse_queues.remove(q)
+
+
+@app.get("/api/live-results")
+async def live_results(request: Request):
+    q: asyncio.Queue[str] = asyncio.Queue(maxsize=20)
+    _sse_queues.append(q)
+
+    async def stream():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    data = await asyncio.wait_for(q.get(), timeout=15.0)
+                    yield f"data: {data}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        finally:
+            if q in _sse_queues:
+                _sse_queues.remove(q)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
@@ -205,6 +244,14 @@ async def audio_ws(websocket: WebSocket) -> None:
                                 except Exception as exc:
                                     print(f"[WARN] ws_tts_failed: {exc}", flush=True)
                             await websocket.send_text(json.dumps(result, ensure_ascii=False))
+                            _sse_broadcast(json.dumps({
+                                "type": "result",
+                                "text": result.get("text", ""),
+                                "wake_status": result.get("wake_status", ""),
+                                "skill_id": result.get("skill_id", ""),
+                                "tts_text": result.get("tts_text", ""),
+                                "status": result.get("status", ""),
+                            }, ensure_ascii=False))
                             if tts_bytes_ready:
                                 try:
                                     await websocket.send_bytes(tts_bytes_ready)
@@ -318,6 +365,14 @@ async def audio_ws(websocket: WebSocket) -> None:
                         except Exception as exc:
                             print(f"[WARN] ws_tts_failed: {exc}", flush=True)
                     await websocket.send_text(json.dumps(result, ensure_ascii=False))
+                    _sse_broadcast(json.dumps({
+                        "type": "result",
+                        "text": result.get("text", ""),
+                        "wake_status": result.get("wake_status", ""),
+                        "skill_id": result.get("skill_id", ""),
+                        "tts_text": result.get("tts_text", ""),
+                        "status": result.get("status", ""),
+                    }, ensure_ascii=False))
                     if tts_bytes_ready:
                         try:
                             await websocket.send_bytes(tts_bytes_ready)
@@ -348,6 +403,14 @@ async def audio_ws(websocket: WebSocket) -> None:
                                 except Exception as exc:
                                     print(f"[WARN] ws_tts_failed: {exc}", flush=True)
                             await websocket.send_text(json.dumps(result, ensure_ascii=False))
+                            _sse_broadcast(json.dumps({
+                                "type": "result",
+                                "text": result.get("text", ""),
+                                "wake_status": result.get("wake_status", ""),
+                                "skill_id": result.get("skill_id", ""),
+                                "tts_text": result.get("tts_text", ""),
+                                "status": result.get("status", ""),
+                            }, ensure_ascii=False))
                             if tts_bytes_ready:
                                 try:
                                     await websocket.send_bytes(tts_bytes_ready)

@@ -18,7 +18,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+import io
 import json
+import queue
 import shutil
 import subprocess
 import sys
@@ -27,8 +29,16 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import wave as wavemod
 from pathlib import Path
 from typing import Any
+
+try:
+    from speexdsp import EchoCanceller as _SpeexEC
+    _SPEEX_AVAILABLE = True
+except ImportError:
+    _SpeexEC = None  # type: ignore
+    _SPEEX_AVAILABLE = False
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
@@ -38,10 +48,8 @@ CHUNK_SAMPLES = 512
 CHUNK_BYTES = CHUNK_SAMPLES * 2  # PCM16 mono
 SETTINGS_POLL_INTERVAL = 3.0
 
-# TTS playback mute window: while TTS plays through speaker, send silence to
-# server so the mic echo doesn't re-trigger VAD → ASR → TTS feedback loop.
-_tts_mute_until: float = 0.0
-_TTS_MUTE_MARGIN_SECS: float = 0.8  # extra silence after aplay finishes
+_AEC_FILTER_LENGTH = 4096   # 256 ms at 16 kHz — covers room echo tail
+_AEC_TAIL_FRAMES   = 13     # ~0.8 s of silence after aplay ends
 
 
 # ---------------------------------------------------------------------------
@@ -72,25 +80,107 @@ def get_cloud_settings(server: str, token: str) -> dict[str, Any]:
 # TTS local playback
 # ---------------------------------------------------------------------------
 
-def _play_tts_bytes(wav_bytes: bytes, device: str = "") -> None:
-    global _tts_mute_until
-    player = shutil.which("aplay") or shutil.which("paplay") or ""
-    if not player:
-        print("[WARN] tts_play: no audio player (aplay/paplay)", flush=True)
-        return
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as fh:
-        fh.write(wav_bytes)
-        tmp_path = Path(fh.name)
+def _wav_to_pcm_frames(wav_bytes: bytes) -> list[bytes]:
+    """Strip WAV header and split PCM into CHUNK_BYTES frames."""
     try:
+        with wavemod.open(io.BytesIO(wav_bytes)) as wf:
+            pcm = wf.readframes(wf.getnframes())
+    except Exception:
+        pcm = wav_bytes[44:] if len(wav_bytes) > 44 else b""
+    frames: list[bytes] = []
+    for i in range(0, len(pcm), CHUNK_BYTES):
+        f = pcm[i:i + CHUNK_BYTES]
+        if len(f) < CHUNK_BYTES:
+            f = f + b"\x00" * (CHUNK_BYTES - len(f))
+        frames.append(f)
+    return frames
+
+
+class _AECContext:
+    """Per-session Acoustic Echo Canceller + TTS playback controller."""
+
+    def __init__(self, sample_rate: int = 16000) -> None:
+        self._sample_rate = sample_rate
+        self._frame_secs = CHUNK_SAMPLES / sample_rate
+        self._ref_q: queue.Queue[bytes] = queue.Queue(maxsize=600)
+        self._play_proc: subprocess.Popen | None = None  # type: ignore[type-arg]
+        # speexdsp AEC (None → fallback to mute-during-TTS)
+        if _SPEEX_AVAILABLE:
+            self._ec = _SpeexEC.create(CHUNK_SAMPLES, _AEC_FILTER_LENGTH, sample_rate)
+        else:
+            self._ec = None
+        self._mute_until: float = 0.0
+
+    def process(self, mic_frame: bytes) -> bytes:
+        """Return AEC-cleaned frame (or silence during TTS when no speexdsp)."""
+        if self._ec is not None:
+            try:
+                ref = self._ref_q.get_nowait()
+            except queue.Empty:
+                ref = b"\x00" * CHUNK_BYTES
+            return bytes(self._ec.process(mic_frame, ref))
+        # Fallback: mute while TTS plays
+        if time.time() < self._mute_until:
+            return b"\x00" * CHUNK_BYTES
+        return mic_frame
+
+    def play_tts(self, wav_bytes: bytes, device: str) -> None:
+        """Play TTS audio; feed it as AEC reference in lock-step. Blocking — call in thread."""
+        player = shutil.which("aplay") or shutil.which("paplay") or ""
+        if not player:
+            print("[WARN] tts_play: no audio player", flush=True)
+            return
+        frames = _wav_to_pcm_frames(wav_bytes)
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as fh:
+            fh.write(wav_bytes)
+            tmp_path = Path(fh.name)
         cmd = [player, "-q"]
         if device and Path(player).name == "aplay":
             cmd.extend(["-D", device])
         cmd.append(str(tmp_path))
-        _tts_mute_until = time.time() + 60  # mute mic until playback done
-        subprocess.run(cmd, capture_output=True, timeout=15)
-    finally:
-        _tts_mute_until = time.time() + _TTS_MUTE_MARGIN_SECS
-        tmp_path.unlink(missing_ok=True)
+        try:
+            self._play_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if self._ec is not None:
+                # Feed reference frames at real-time pace so AEC stays in sync
+                for frame in frames:
+                    if self._play_proc.poll() is not None:
+                        break  # interrupted
+                    try:
+                        self._ref_q.put(frame, timeout=0.5)
+                    except queue.Full:
+                        pass
+                    time.sleep(self._frame_secs)
+                # Tail silence for echo decay
+                for _ in range(_AEC_TAIL_FRAMES):
+                    try:
+                        self._ref_q.put(b"\x00" * CHUNK_BYTES, timeout=0.1)
+                    except queue.Full:
+                        break
+            else:
+                self._mute_until = time.time() + 60  # mute fallback
+            try:
+                self._play_proc.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                self._play_proc.kill()
+        finally:
+            if self._ec is None:
+                self._mute_until = time.time() + 0.8  # brief tail silence
+            self._play_proc = None
+            tmp_path.unlink(missing_ok=True)
+
+    def interrupt(self) -> None:
+        """Kill ongoing TTS playback when user starts speaking."""
+        proc = self._play_proc
+        if proc and proc.poll() is None:
+            print("[INFO] TTS interrupted by user speech", flush=True)
+            proc.kill()
+        # Drain stale reference frames so next user speech isn't filtered
+        while not self._ref_q.empty():
+            try:
+                self._ref_q.get_nowait()
+            except queue.Empty:
+                break
+        self._mute_until = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +221,8 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
 
     print(f"[INFO] WS connect {ws_url} session={session_id}", flush=True)
 
+    aec_ctx = _AECContext()
+
     async with websockets.connect(ws_url, additional_headers=extra_headers, ping_interval=None) as ws:
         await ws.send(json.dumps({
             "type": "start_stream",
@@ -158,14 +250,17 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
                 if isinstance(msg, bytes) and len(msg) > 0:
                     # Skip binary frame if tts_audio_base64 already handled for this turn
                     if not last_turn_had_b64:
-                        threading.Thread(target=_play_tts_bytes, args=(msg, tts_device), daemon=True).start()
+                        threading.Thread(target=aec_ctx.play_tts, args=(msg, tts_device), daemon=True).start()
                     last_turn_had_b64 = False
                 elif isinstance(msg, str):
                     try:
                         ev = json.loads(msg)
                     except json.JSONDecodeError:
                         continue
-                    if ev.get("type") == "result":
+                    ev_type = ev.get("type")
+                    if ev_type == "speech_start":
+                        aec_ctx.interrupt()
+                    elif ev_type == "result":
                         print(json.dumps({
                             "text": ev.get("text") or "",
                             "tts_text": ev.get("tts_text") or "",
@@ -175,13 +270,13 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
                         if tts_b64:
                             try:
                                 tts_wav = base64.b64decode(tts_b64)
-                                threading.Thread(target=_play_tts_bytes, args=(tts_wav, tts_device), daemon=True).start()
+                                threading.Thread(target=aec_ctx.play_tts, args=(tts_wav, tts_device), daemon=True).start()
                                 last_turn_had_b64 = True
                             except Exception as exc:
                                 print(f"[WARN] tts_play_failed: {exc}", flush=True)
                         else:
                             last_turn_had_b64 = False
-                    elif ev.get("type") == "stream_stopped":
+                    elif ev_type == "stream_stopped":
                         break
 
         recv_task = asyncio.create_task(_recv_loop())
@@ -194,8 +289,7 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
                     break
                 if len(chunk) < CHUNK_BYTES:
                     chunk = chunk + b"\x00" * (CHUNK_BYTES - len(chunk))
-                if time.time() < _tts_mute_until:
-                    chunk = b"\x00" * CHUNK_BYTES  # silence during TTS playback
+                chunk = aec_ctx.process(chunk)
                 await ws.send(chunk)
         finally:
             proc.kill()

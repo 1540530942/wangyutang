@@ -71,6 +71,7 @@ const sections = {
 };
 let currentMode = "wonder";
 function showMode(mode) {
+  const prev = currentMode;
   currentMode = mode;
   sections.wonder.classList.toggle("hidden", mode !== "wonder");
   sections.browser.classList.toggle("hidden", mode !== "browser");
@@ -83,6 +84,8 @@ function showMode(mode) {
   $("modeReplayBtn").classList.toggle("active", mode === "replay");
   if (mode !== "vad") stopVad();
   if (mode !== "replay") stopReplay();
+  if (mode === "wonder") startWonderSSE();
+  else if (prev === "wonder") stopWonderSSE();
 }
 $("modeWonderBtn").onclick = () => showMode("wonder");
 $("modeBrowserBtn").onclick = () => showMode("browser");
@@ -189,6 +192,7 @@ $("applyWonderBtn").onclick = async () => {
 $("manualStartBtn").onclick = async () => {
   await fetch("./api/manual-recording/start", { method: "POST" });
   setStatus("已开始采集"); loadSettings();
+  startWonderSSE();
 };
 $("manualStopBtn").onclick = async () => {
   await fetch("./api/manual-recording/stop", { method: "POST" });
@@ -398,25 +402,24 @@ $("ttsResetBtn")?.addEventListener("click", () => {
   setStatus("TTS 音色和播报风格已重置为默认值");
 });
 
-// ---- WonderEchoPro result polling ----
-// The browser isn't involved in Pi WebSocket sessions, so poll the sessions
-// API to surface Pi results in the shared result panel.
-let _wepLastSessId = "";
-async function pollWonderResult() {
-  if (currentMode !== "wonder") return;
-  try {
-    const list = await (await fetch("./api/sessions?limit=10", { cache: "no-store" })).json();
-    const latest = (Array.isArray(list) ? list : []).find(s => s.device_id === "turbopi-01");
-    if (!latest || latest.session_id === _wepLastSessId) return;
-    _wepLastSessId = latest.session_id;
-    if (!latest.texts || latest.texts.length === 0) return;
-    const det = await (await fetch(`./api/sessions/${latest.session_id}`, { cache: "no-store" })).json();
-    const utt = (det.utterances || [])[0];
-    if (utt) { renderResult(utt); setStatus(`Pi 识别：${utt.text}`); }
-  } catch {}
+// ---- WonderEchoPro live results via SSE ----
+let wonderSSE = null;
+function startWonderSSE() {
+  if (wonderSSE) return;
+  wonderSSE = new EventSource('./api/live-results');
+  wonderSSE.onmessage = e => {
+    try {
+      const d = JSON.parse(e.data);
+      renderResult(d);
+      if (d.text) setStatus(`Pi 识别：${d.text}`);
+    } catch (_) {}
+  };
+  wonderSSE.onerror = () => { wonderSSE.close(); wonderSSE = null; };
+}
+function stopWonderSSE() {
+  if (wonderSSE) { wonderSSE.close(); wonderSSE = null; }
 }
 
 // ---- init ----
 pollHealth(); loadSettings(); loadTtsConfig(); showMode("wonder");
 setInterval(pollHealth, 15000);
-setInterval(pollWonderResult, 3000);
