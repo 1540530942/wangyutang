@@ -196,6 +196,13 @@ async def audio_ws(websocket: WebSocket) -> None:
                             loop = asyncio.get_event_loop()
                             result = await loop.run_in_executor(None, _process, wav_bytes, device_id, session_id, route_enabled)
                             result["streaming_vad"] = "silero"
+                            tts_text = result.get("tts_text", "")
+                            if tts_text and TTS_URL:
+                                try:
+                                    tts_bytes = await loop.run_in_executor(None, _fetch_tts_audio, tts_text)
+                                    result["tts_audio_base64"] = base64.b64encode(tts_bytes).decode("ascii")
+                                except Exception as exc:
+                                    print(f"[WARN] ws_tts_failed: {exc}", flush=True)
                             await websocket.send_text(json.dumps(result, ensure_ascii=False))
                             # record this utterance's VAD window + ASR/command outcome
                             turn_idx = len(session_utterances)
@@ -215,9 +222,6 @@ async def audio_ws(websocket: WebSocket) -> None:
                                 "route_elapsed_ms": result.get("route_elapsed_ms"),
                             })
                             pending_start = None
-                            tts_text = result.get("tts_text", "")
-                            if tts_text and TTS_URL:
-                                asyncio.create_task(_push_tts(websocket, tts_text, session_id, turn_idx))
                         else:
                             await websocket.send_text(json.dumps(event, ensure_ascii=False))
                 else:
@@ -298,10 +302,14 @@ async def audio_ws(websocket: WebSocket) -> None:
                     audio_buf.clear()
                     loop = asyncio.get_event_loop()
                     result = await loop.run_in_executor(None, _process, wav_bytes, device_id, session_id, route_enabled)
-                    await websocket.send_text(json.dumps(result, ensure_ascii=False))
                     tts_text = result.get("tts_text", "")
                     if tts_text and TTS_URL:
-                        asyncio.create_task(_push_tts(websocket, tts_text))
+                        try:
+                            tts_bytes = await loop.run_in_executor(None, _fetch_tts_audio, tts_text)
+                            result["tts_audio_base64"] = base64.b64encode(tts_bytes).decode("ascii")
+                        except Exception as exc:
+                            print(f"[WARN] ws_tts_failed: {exc}", flush=True)
+                    await websocket.send_text(json.dumps(result, ensure_ascii=False))
 
                 elif frame_type in {"stop_stream", "end_stream"}:
                     if stream_vad is not None:
@@ -317,14 +325,18 @@ async def audio_ws(websocket: WebSocket) -> None:
                             loop = asyncio.get_event_loop()
                             result = await loop.run_in_executor(None, _process, final_wav, device_id, session_id, route_enabled)
                             result["streaming_vad"] = "silero"
-                            await websocket.send_text(json.dumps(result, ensure_ascii=False))
                             tts_text = result.get("tts_text", "")
                             if tts_text and TTS_URL:
-                                asyncio.create_task(_push_tts(websocket, tts_text))
+                                try:
+                                    tts_bytes = await loop.run_in_executor(None, _fetch_tts_audio, tts_text)
+                                    result["tts_audio_base64"] = base64.b64encode(tts_bytes).decode("ascii")
+                                except Exception as exc:
+                                    print(f"[WARN] ws_tts_failed: {exc}", flush=True)
+                            await websocket.send_text(json.dumps(result, ensure_ascii=False))
                     saved = flush_session()
                     await websocket.send_text(json.dumps({"type": "stream_stopped", "session_id": session_id, "recording": saved}))
 
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
         # Persist the full session recording even if the client just disconnected.

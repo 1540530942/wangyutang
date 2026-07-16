@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import json
 import shutil
 import subprocess
@@ -122,7 +123,7 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
 
     print(f"[INFO] WS connect {ws_url} session={session_id}", flush=True)
 
-    async with websockets.connect(ws_url, additional_headers=extra_headers, ping_interval=20, ping_timeout=30) as ws:
+    async with websockets.connect(ws_url, additional_headers=extra_headers, ping_interval=None) as ws:
         await ws.send(json.dumps({
             "type": "start_stream",
             "session_id": session_id,
@@ -158,6 +159,13 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
                             "tts_text": ev.get("tts_text") or "",
                             "wake": ev.get("wake_status") or "—",
                         }, ensure_ascii=False), flush=True)
+                        tts_b64 = ev.get("tts_audio_base64")
+                        if tts_b64:
+                            try:
+                                tts_wav = base64.b64decode(tts_b64)
+                                threading.Thread(target=_play_tts_bytes, args=(tts_wav, tts_device), daemon=True).start()
+                            except Exception as exc:
+                                print(f"[WARN] tts_play_failed: {exc}", flush=True)
                     elif ev.get("type") == "stream_stopped":
                         break
 
