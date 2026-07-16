@@ -197,13 +197,20 @@ async def audio_ws(websocket: WebSocket) -> None:
                             result = await loop.run_in_executor(None, _process, wav_bytes, device_id, session_id, route_enabled)
                             result["streaming_vad"] = "silero"
                             tts_text = result.get("tts_text", "")
+                            tts_bytes_ready: bytes | None = None
                             if tts_text and TTS_URL:
                                 try:
-                                    tts_bytes = await loop.run_in_executor(None, _fetch_tts_audio, tts_text)
-                                    result["tts_audio_base64"] = base64.b64encode(tts_bytes).decode("ascii")
+                                    tts_bytes_ready = await loop.run_in_executor(None, _fetch_tts_audio, tts_text)
+                                    result["tts_audio_base64"] = base64.b64encode(tts_bytes_ready).decode("ascii")
                                 except Exception as exc:
                                     print(f"[WARN] ws_tts_failed: {exc}", flush=True)
                             await websocket.send_text(json.dumps(result, ensure_ascii=False))
+                            if tts_bytes_ready:
+                                try:
+                                    await websocket.send_bytes(tts_bytes_ready)
+                                    await websocket.send_bytes(b"")
+                                except Exception:
+                                    pass
                             # record this utterance's VAD window + ASR/command outcome
                             turn_idx = len(session_utterances)
                             session_utterances.append({
@@ -303,13 +310,20 @@ async def audio_ws(websocket: WebSocket) -> None:
                     loop = asyncio.get_event_loop()
                     result = await loop.run_in_executor(None, _process, wav_bytes, device_id, session_id, route_enabled)
                     tts_text = result.get("tts_text", "")
+                    tts_bytes_ready = None
                     if tts_text and TTS_URL:
                         try:
-                            tts_bytes = await loop.run_in_executor(None, _fetch_tts_audio, tts_text)
-                            result["tts_audio_base64"] = base64.b64encode(tts_bytes).decode("ascii")
+                            tts_bytes_ready = await loop.run_in_executor(None, _fetch_tts_audio, tts_text)
+                            result["tts_audio_base64"] = base64.b64encode(tts_bytes_ready).decode("ascii")
                         except Exception as exc:
                             print(f"[WARN] ws_tts_failed: {exc}", flush=True)
                     await websocket.send_text(json.dumps(result, ensure_ascii=False))
+                    if tts_bytes_ready:
+                        try:
+                            await websocket.send_bytes(tts_bytes_ready)
+                            await websocket.send_bytes(b"")
+                        except Exception:
+                            pass
 
                 elif frame_type in {"stop_stream", "end_stream"}:
                     if stream_vad is not None:
@@ -326,13 +340,20 @@ async def audio_ws(websocket: WebSocket) -> None:
                             result = await loop.run_in_executor(None, _process, final_wav, device_id, session_id, route_enabled)
                             result["streaming_vad"] = "silero"
                             tts_text = result.get("tts_text", "")
+                            tts_bytes_ready = None
                             if tts_text and TTS_URL:
                                 try:
-                                    tts_bytes = await loop.run_in_executor(None, _fetch_tts_audio, tts_text)
-                                    result["tts_audio_base64"] = base64.b64encode(tts_bytes).decode("ascii")
+                                    tts_bytes_ready = await loop.run_in_executor(None, _fetch_tts_audio, tts_text)
+                                    result["tts_audio_base64"] = base64.b64encode(tts_bytes_ready).decode("ascii")
                                 except Exception as exc:
                                     print(f"[WARN] ws_tts_failed: {exc}", flush=True)
                             await websocket.send_text(json.dumps(result, ensure_ascii=False))
+                            if tts_bytes_ready:
+                                try:
+                                    await websocket.send_bytes(tts_bytes_ready)
+                                    await websocket.send_bytes(b"")
+                                except Exception:
+                                    pass
                     saved = flush_session()
                     await websocket.send_text(json.dumps({"type": "stream_stopped", "session_id": session_id, "recording": saved}))
 
