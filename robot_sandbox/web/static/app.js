@@ -38,9 +38,6 @@ const meterContext = meter?.getContext("2d");
 const cameraImageEl = $("#cameraImage");
 const cameraPlaceholderEl = $("#cameraPlaceholder");
 const cameraMetaEl = $("#cameraMeta");
-const voiceVolumeInput = $("#voiceVolumeInput");
-const voiceVolumeText = $("#voiceVolumeText");
-const saveVoiceVolumeBtn = $("#saveVoiceVolumeBtn");
 const startVadBtn = $("#startVadBtn");
 const stopVadBtn = $("#stopVadBtn");
 const vadLiveStateEl = $("#vadLiveState");
@@ -65,7 +62,6 @@ let actionSettings = {
   unit_distance_cm: 10,
   turn_angle_deg: 5,
   sensitivity: 1,
-  voice_volume_percent: 0,
 };
 
 async function api(path) {
@@ -314,26 +310,11 @@ function setPreviewSource(url) {
   }
 }
 
-function renderVoiceVolume(value) {
-  const volume = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
-  voiceVolumeInput.value = String(volume);
-  voiceVolumeText.textContent = `${volume}%`;
-}
-
 async function loadActionSettings() {
   const data = await api("/action/api/settings");
   actionSettings = { ...actionSettings, ...(data.settings || {}) };
-  renderVoiceVolume(actionSettings.voice_volume_percent);
 }
 
-async function saveVoiceVolume() {
-  const volume = Math.max(0, Math.min(100, Number(voiceVolumeInput.value || 0)));
-  const payload = { ...actionSettings, voice_volume_percent: volume };
-  const data = await postJson("/action/api/settings", payload);
-  actionSettings = { ...actionSettings, ...(data.settings || payload) };
-  renderVoiceVolume(actionSettings.voice_volume_percent);
-  statusEl.textContent = `播报音量已保存为 ${Math.round(actionSettings.voice_volume_percent)}%`;
-}
 
 async function callAsr(blob, filename = "recording.wav") {
   const form = new FormData();
@@ -674,9 +655,8 @@ function renderDashboard(data) {
   const displayLatest = latest && latestMatchesInputMode;
   const manualRecording = Boolean(settings.manual_recording_enabled);
   const actionSettingsFromHealth = action.health?.settings || {};
-  if (Number.isFinite(Number(actionSettingsFromHealth.voice_volume_percent))) {
+  if (Object.keys(actionSettingsFromHealth).length) {
     actionSettings = { ...actionSettings, ...actionSettingsFromHealth };
-    if (document.activeElement !== voiceVolumeInput) renderVoiceVolume(actionSettings.voice_volume_percent);
   }
 
   renderInputMode(inputMode);
@@ -953,13 +933,6 @@ document.querySelectorAll(".quick-cmds .chip").forEach((chip) => {
   });
 });
 
-voiceVolumeInput?.addEventListener("input", () => {
-  renderVoiceVolume(voiceVolumeInput.value);
-});
-
-saveVoiceVolumeBtn?.addEventListener("click", () => {
-  saveVoiceVolume().catch(showError);
-});
 
 showResultsBtn.addEventListener("click", () => {
   showResultsBtn.classList.add("active");

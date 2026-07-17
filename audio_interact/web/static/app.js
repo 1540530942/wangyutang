@@ -111,11 +111,14 @@ function renderResult(d) {
   $("rRaw").textContent = JSON.stringify(d, null, 2);
   if (d.tts_audio_base64) playBase64Wav(d.tts_audio_base64);
 }
+let ttsVolume = Math.min(1, Math.max(0, Number(localStorage.getItem("ttsVolume") ?? 0.8)));
+
 function playBase64Wav(b64) {
   try {
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
     const a = new Audio(url);
+    a.volume = ttsVolume;
     a.onended = () => URL.revokeObjectURL(url);
     a.play().catch(() => {});
   } catch (e) { console.error(e); }
@@ -225,7 +228,7 @@ async function startVadStream(ui, route = true) {
     socket.onmessage = (ev) => {
       if (ev.data instanceof ArrayBuffer && ev.data.byteLength > 0) {
         const url = URL.createObjectURL(new Blob([ev.data], { type: "audio/wav" }));
-        const a = new Audio(url); a.onended = () => URL.revokeObjectURL(url); a.play().catch(() => {});
+        const a = new Audio(url); a.volume = ttsVolume; a.onended = () => URL.revokeObjectURL(url); a.play().catch(() => {});
         return;
       }
       let m; try { m = JSON.parse(ev.data); } catch { return; }
@@ -317,7 +320,7 @@ $("replayInput").onchange = async (e) => {
     socket.onmessage = (ev) => {
       if (ev.data instanceof ArrayBuffer && ev.data.byteLength > 0) {
         const url = URL.createObjectURL(new Blob([ev.data], { type: "audio/wav" }));
-        const a = new Audio(url); a.onended = () => URL.revokeObjectURL(url); a.play().catch(() => {});
+        const a = new Audio(url); a.volume = ttsVolume; a.onended = () => URL.revokeObjectURL(url); a.play().catch(() => {});
         return;
       }
       let m; try { m = JSON.parse(ev.data); } catch { return; }
@@ -384,7 +387,7 @@ $("ttsSpeakBtn").onclick = async () => {
     if (!r.ok) { let e = {}; try { e = await r.json(); } catch {} throw new Error(e.detail || `HTTP ${r.status}`); }
     const url = URL.createObjectURL(await r.blob());
     const p = $("ttsSpeakPlayer");
-    p.src = url; p.play().catch(() => {});
+    p.volume = ttsVolume; p.src = url; p.play().catch(() => {});
     $("ttsState").textContent = "已播报";
     setStatus("TTS 播报完成");
   } catch (e) {
@@ -401,6 +404,21 @@ $("ttsResetBtn")?.addEventListener("click", () => {
   $("ttsState").textContent = "已重置";
   setStatus("TTS 音色和播报风格已重置为默认值");
 });
+(function initTtsVolume() {
+  const slider = $("ttsVolumeInput");
+  const label = $("ttsVolumeText");
+  if (!slider) return;
+  const pct = Math.round(ttsVolume * 100);
+  slider.value = String(pct);
+  if (label) label.textContent = pct + "%";
+  slider.addEventListener("input", () => {
+    ttsVolume = Number(slider.value) / 100;
+    if (label) label.textContent = slider.value + "%";
+    localStorage.setItem("ttsVolume", String(ttsVolume));
+    const p = $("ttsSpeakPlayer");
+    if (p) p.volume = ttsVolume;
+  });
+})();
 
 // ---- WonderEchoPro live results via SSE ----
 let wonderSSE = null;
