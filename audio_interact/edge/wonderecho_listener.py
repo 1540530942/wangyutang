@@ -111,29 +111,29 @@ class _AECContext:
             self._ec = None
         self._mute_until: float = 0.0
 
+    def pre_mute(self) -> None:
+        """Mute mic immediately — call from _recv_loop before starting play_tts thread."""
+        self._mute_until = time.time() + 60
+
     def process(self, mic_frame: bytes) -> bytes:
-        """Return AEC-cleaned frame (or silence during TTS when no speexdsp)."""
-        proc = self._play_proc
-        playing = proc is not None and proc.poll() is None
+        """Return silence while muted, AEC-cleaned frame while TTS plays, else raw mic."""
+        # Mute gate: covers TTS playback and brief tail (set by pre_mute / play_tts finally)
+        if time.time() < self._mute_until:
+            return b"\x00" * CHUNK_BYTES
+        # Optional AEC while TTS is still playing (after mute window — shouldn't normally happen)
         if self._ec is not None:
-            if playing:
-                # Only apply AEC while TTS is actively playing — avoids filtering speech
+            proc = self._play_proc
+            if proc is not None and proc.poll() is None:
                 try:
                     ref = self._ref_q.get_nowait()
                 except queue.Empty:
                     ref = b"\x00" * CHUNK_BYTES
                 return bytes(self._ec.process(mic_frame, ref))
-            # Brief tail mute after TTS ends to let AEC settle
-            if time.time() < self._mute_until:
-                return b"\x00" * CHUNK_BYTES
-            return mic_frame
-        # No speexdsp: mute during and briefly after TTS
-        if time.time() < self._mute_until:
-            return b"\x00" * CHUNK_BYTES
         return mic_frame
 
     def play_tts(self, wav_bytes: bytes, device: str) -> None:
-        """Play TTS audio; feed it as AEC reference in lock-step. Blocking — call in thread."""
+        """Play TTS audio; feed it as AEC reference in lock-step. Blocking — call in thread.
+        Caller must call pre_mute() before starting this thread."""
         player = shutil.which("aplay") or shutil.which("paplay") or ""
         if not player:
             print("[WARN] tts_play: no audio player", flush=True)
@@ -164,24 +164,21 @@ class _AECContext:
                         self._ref_q.put(b"\x00" * CHUNK_BYTES, timeout=0.1)
                     except queue.Full:
                         break
-            else:
-                self._mute_until = time.time() + 60  # mute fallback
             try:
                 self._play_proc.wait(timeout=30)
             except subprocess.TimeoutExpired:
                 self._play_proc.kill()
         finally:
-            self._mute_until = time.time() + 0.8  # brief tail silence after TTS ends
+            self._mute_until = time.time() + 0.8  # tail silence after TTS ends
             self._play_proc = None
             tmp_path.unlink(missing_ok=True)
 
     def interrupt(self) -> None:
-        """Kill ongoing TTS playback when user starts speaking."""
+        """Kill ongoing TTS playback — only call when mic is NOT muted (real user speech)."""
         proc = self._play_proc
         if proc and proc.poll() is None:
             print("[INFO] TTS interrupted by user speech", flush=True)
             proc.kill()
-        # Drain stale reference frames so next user speech isn't filtered
         while not self._ref_q.empty():
             try:
                 self._ref_q.get_nowait()
@@ -257,6 +254,7 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
                 if isinstance(msg, bytes) and len(msg) > 0:
                     # Skip binary frame if tts_audio_base64 already handled for this turn
                     if not last_turn_had_b64:
+                        aec_ctx.pre_mute()
                         threading.Thread(target=aec_ctx.play_tts, args=(msg, tts_device), daemon=True).start()
                     last_turn_had_b64 = False
                 elif isinstance(msg, str):
@@ -266,7 +264,9 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
                         continue
                     ev_type = ev.get("type")
                     if ev_type == "speech_start":
-                        aec_ctx.interrupt()
+                        # Only interrupt if mic is unmuted (real user speech, not TTS echo)
+                        if time.time() >= aec_ctx._mute_until:
+                            aec_ctx.interrupt()
                     elif ev_type == "result":
                         print(json.dumps({
                             "text": ev.get("text") or "",
@@ -277,6 +277,7 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
                         if tts_b64:
                             try:
                                 tts_wav = base64.b64decode(tts_b64)
+                                aec_ctx.pre_mute()
                                 threading.Thread(target=aec_ctx.play_tts, args=(tts_wav, tts_device), daemon=True).start()
                                 last_turn_had_b64 = True
                             except Exception as exc:

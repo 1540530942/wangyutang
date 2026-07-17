@@ -410,8 +410,9 @@ function startWonderSSE() {
   wonderSSE.onmessage = e => {
     try {
       const d = JSON.parse(e.data);
+      if (!d.text) return;
       renderResult(d);
-      if (d.text) setStatus(`Pi 识别：${d.text}`);
+      setStatus(`Pi 识别：${d.text}`);
     } catch (_) {}
   };
   wonderSSE.onerror = () => { wonderSSE.close(); wonderSSE = null; };
