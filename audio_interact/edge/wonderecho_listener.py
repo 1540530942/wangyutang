@@ -328,10 +328,19 @@ async def _ws_main(config: dict[str, Any]) -> None:
     server = str(config.get("server") or "")
     token = str(config.get("token") or "")
     session_task: asyncio.Task[None] | None = None
+    tts_device = str(config.get("tts_device") or "")
+    _last_volume: int = -1  # track last applied pi_speaker_volume
 
     while True:
         try:
             settings = get_cloud_settings(server, token)
+
+            # Apply Pi speaker volume if server setting changed
+            pi_volume = int(settings.get("pi_speaker_volume", 80))
+            if pi_volume != _last_volume:
+                _init_alsa_volume(tts_device, pi_volume)
+                _last_volume = pi_volume
+
             should_run = (
                 str(settings.get("input_mode") or "wonderechopro") == "wonderechopro"
                 and bool(settings.get("manual_recording_enabled"))
@@ -360,8 +369,8 @@ async def _ws_main(config: dict[str, Any]) -> None:
 # Entry point
 # ---------------------------------------------------------------------------
 
-def _init_alsa_volume(tts_device: str) -> None:
-    """Set Speaker playback volume on the TTS card so aplay is audible after boot."""
+def _init_alsa_volume(tts_device: str, volume_pct: int = 80) -> None:
+    """Set Speaker playback volume on the TTS card."""
     if not shutil.which("amixer"):
         return
     # Find card index via aplay -l matching the CARD name in tts_device
@@ -383,19 +392,18 @@ def _init_alsa_volume(tts_device: str) -> None:
         except Exception:
             pass
     card_arg = ["-c", card_idx] if card_idx else []
-    # Try both common control name variants
+    vol_str = f"{volume_pct}%"
     for ctrl in ("Speaker Playback Volume", "Speaker", "PCM"):
         try:
             r = subprocess.run(
-                ["amixer"] + card_arg + ["sset", ctrl, "80%", "on"],
+                ["amixer"] + card_arg + ["sset", ctrl, vol_str, "on"],
                 capture_output=True, timeout=3,
             )
             if r.returncode == 0:
-                print(f"[INFO] ALSA '{ctrl}' 80% on card={card_idx or 'default'}", flush=True)
+                print(f"[INFO] ALSA '{ctrl}' {vol_str} on card={card_idx or 'default'}", flush=True)
                 break
         except Exception:
             pass
-    # Unmute switch separately in case it's a separate control
     for ctrl in ("Speaker Playback Switch", "Speaker"):
         try:
             subprocess.run(

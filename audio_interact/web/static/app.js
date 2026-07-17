@@ -186,8 +186,33 @@ async function loadSettings() {
     $("wonderStatus").textContent = `当前输入模式：${s.input_mode || "?"} · 手动采集：${s.manual_recording_enabled ? "开" : "关"}`;
     $("manualStartBtn").disabled = Boolean(s.manual_recording_enabled);
     $("manualStopBtn").disabled = !s.manual_recording_enabled;
+    // Sync Pi speaker volume slider from server settings
+    const piVol = Number(s.pi_speaker_volume ?? 80);
+    const piSlider = $("piVolumeInput");
+    const piLabel = $("piVolumeText");
+    if (piSlider) piSlider.value = String(piVol);
+    if (piLabel) piLabel.textContent = piVol + "%";
   } catch { $("wonderStatus").textContent = "读取设置失败"; }
 }
+(function initPiVolume() {
+  const slider = $("piVolumeInput");
+  const label = $("piVolumeText");
+  if (!slider) return;
+  slider.addEventListener("input", () => {
+    if (label) label.textContent = slider.value + "%";
+  });
+  slider.addEventListener("change", async () => {
+    const vol = Number(slider.value);
+    if (label) label.textContent = vol + "%";
+    try {
+      await fetch("./api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pi_speaker_volume: vol }),
+      });
+    } catch {}
+  });
+})();
 $("applyWonderBtn").onclick = async () => {
   await fetch("./api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ input_mode: "wonderechopro" }) });
   setStatus("已设为 WonderEchoPro 模式"); loadSettings();

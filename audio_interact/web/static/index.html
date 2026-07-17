@@ -41,6 +41,12 @@
         <button id="manualStopBtn" class="secondary" type="button" disabled>停止采集</button>
       </div>
       <div class="statusline" id="wonderStatus">当前输入模式：加载中…</div>
+      <div class="tts-settings">
+        <label class="tts-volume-label">
+          Pi 扬声器音量 <span id="piVolumeText">80%</span>
+          <input id="piVolumeInput" type="range" min="0" max="100" step="5" value="80" />
+        </label>
+      </div>
     </section>
 
     <!-- web mode: browser mic continuous VAD interaction -->
@@ -139,6 +145,6 @@
   </main>
 
   <footer id="status" class="statusbar">就绪</footer>
-  <script src="./app.js?v=9"></script>
+  <script src="./app.js?v=10"></script>
 </body>
 </html>

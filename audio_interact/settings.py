@@ -17,11 +17,13 @@ _LOCK = threading.Lock()
 class AudioSettings(BaseModel):
     input_mode: str = Field("wonderechopro", pattern="^(web_input|wonderechopro|vad_asr)$")
     manual_recording_enabled: bool = False
+    pi_speaker_volume: int = Field(80, ge=0, le=100)
 
 
 DEFAULT_SETTINGS: dict[str, Any] = {
     "input_mode": "wonderechopro",
     "manual_recording_enabled": False,
+    "pi_speaker_volume": 80,
 }
 
 
