@@ -113,13 +113,21 @@ class _AECContext:
 
     def process(self, mic_frame: bytes) -> bytes:
         """Return AEC-cleaned frame (or silence during TTS when no speexdsp)."""
+        proc = self._play_proc
+        playing = proc is not None and proc.poll() is None
         if self._ec is not None:
-            try:
-                ref = self._ref_q.get_nowait()
-            except queue.Empty:
-                ref = b"\x00" * CHUNK_BYTES
-            return bytes(self._ec.process(mic_frame, ref))
-        # Fallback: mute while TTS plays
+            if playing:
+                # Only apply AEC while TTS is actively playing — avoids filtering speech
+                try:
+                    ref = self._ref_q.get_nowait()
+                except queue.Empty:
+                    ref = b"\x00" * CHUNK_BYTES
+                return bytes(self._ec.process(mic_frame, ref))
+            # Brief tail mute after TTS ends to let AEC settle
+            if time.time() < self._mute_until:
+                return b"\x00" * CHUNK_BYTES
+            return mic_frame
+        # No speexdsp: mute during and briefly after TTS
         if time.time() < self._mute_until:
             return b"\x00" * CHUNK_BYTES
         return mic_frame
@@ -163,8 +171,7 @@ class _AECContext:
             except subprocess.TimeoutExpired:
                 self._play_proc.kill()
         finally:
-            if self._ec is None:
-                self._mute_until = time.time() + 0.8  # brief tail silence
+            self._mute_until = time.time() + 0.8  # brief tail silence after TTS ends
             self._play_proc = None
             tmp_path.unlink(missing_ok=True)
 
