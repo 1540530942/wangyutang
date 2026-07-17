@@ -134,6 +134,7 @@ class _AECContext:
     def play_tts(self, wav_bytes: bytes, device: str) -> None:
         """Play TTS audio; feed it as AEC reference in lock-step. Blocking — call in thread.
         Caller must call pre_mute() before starting this thread."""
+        print(f"[DEBUG] play_tts called wav={len(wav_bytes)}B device={device!r}", flush=True)
         player = shutil.which("aplay") or shutil.which("paplay") or ""
         if not player:
             print("[WARN] tts_play: no audio player", flush=True)
@@ -166,8 +167,10 @@ class _AECContext:
                         break
             try:
                 self._play_proc.wait(timeout=30)
+                print(f"[DEBUG] aplay done rc={self._play_proc.returncode}", flush=True)
             except subprocess.TimeoutExpired:
                 self._play_proc.kill()
+                print("[DEBUG] aplay timeout killed", flush=True)
         finally:
             self._mute_until = time.time() + 0.8  # tail silence after TTS ends
             self._play_proc = None
@@ -274,6 +277,7 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
                             "wake": ev.get("wake_status") or "—",
                         }, ensure_ascii=False), flush=True)
                         tts_b64 = ev.get("tts_audio_base64")
+                        print(f"[DEBUG] tts_b64 present={bool(tts_b64)} tts_text={ev.get('tts_text','')!r}", flush=True)
                         if tts_b64:
                             try:
                                 tts_wav = base64.b64decode(tts_b64)
@@ -356,6 +360,52 @@ async def _ws_main(config: dict[str, Any]) -> None:
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _init_alsa_volume(tts_device: str) -> None:
+    """Set Speaker playback volume on the TTS card so aplay is audible after boot."""
+    if not shutil.which("amixer"):
+        return
+    # Find card index via aplay -l matching the CARD name in tts_device
+    # aplay -l format: "card N: SHORTNAME [LONGNAME], device ..."
+    card_idx: str | None = None
+    if "CARD=" in tts_device:
+        card_name = tts_device.split("CARD=")[1].split(",")[0].lower()
+        try:
+            out = subprocess.run(["aplay", "-l"], capture_output=True, text=True, timeout=3).stdout
+            for line in out.splitlines():
+                if not line.startswith("card "):
+                    continue
+                parts = line.split()
+                # parts[0]="card", parts[1]="N:", parts[2]="SHORTNAME" (may have trailing comma)
+                short_name = parts[2].rstrip(",").lower() if len(parts) > 2 else ""
+                if short_name == card_name:
+                    card_idx = parts[1].rstrip(":")
+                    break
+        except Exception:
+            pass
+    card_arg = ["-c", card_idx] if card_idx else []
+    # Try both common control name variants
+    for ctrl in ("Speaker Playback Volume", "Speaker", "PCM"):
+        try:
+            r = subprocess.run(
+                ["amixer"] + card_arg + ["sset", ctrl, "80%", "on"],
+                capture_output=True, timeout=3,
+            )
+            if r.returncode == 0:
+                print(f"[INFO] ALSA '{ctrl}' 80% on card={card_idx or 'default'}", flush=True)
+                break
+        except Exception:
+            pass
+    # Unmute switch separately in case it's a separate control
+    for ctrl in ("Speaker Playback Switch", "Speaker"):
+        try:
+            subprocess.run(
+                ["amixer"] + card_arg + ["sset", ctrl, "on"],
+                capture_output=True, timeout=3,
+            )
+        except Exception:
+            pass
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="WonderEchoPro Pi-side listener.")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
@@ -366,6 +416,7 @@ def main() -> int:
         return 1
 
     config = json.loads(args.config.read_text(encoding="utf-8"))
+    _init_alsa_volume(str(config.get("tts_device") or ""))
     asyncio.run(_ws_main(config))
     return 0
 
