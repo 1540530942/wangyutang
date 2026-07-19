@@ -248,7 +248,7 @@ def _run_exact_action_sequence(
 
 
 def _exact_observation_alias_call(transcript: str, *, registry_path: Path, catalog_path: Path) -> ToolCall | None:
-    normalized = transcript.strip().casefold()
+    normalized = _normalized_exact_text(transcript)
     if not normalized:
         return None
     registry = load_skill_registry(registry_path, catalog_path)
@@ -256,7 +256,7 @@ def _exact_observation_alias_call(transcript: str, *, registry_path: Path, catal
         if spec.tool not in OBSERVATION_TOOLS:
             continue
         aliases = {spec.skill_id, spec.tool, *spec.aliases}
-        if normalized in {alias.strip().casefold() for alias in aliases if alias.strip()}:
+        if normalized in {_normalized_exact_text(alias) for alias in aliases if alias.strip()}:
             return ToolCall(
                 tool=spec.tool,
                 args={"skill_id": spec.skill_id, "order": 0, "confidence": 1.0, "text": transcript.strip()},
