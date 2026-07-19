@@ -303,6 +303,15 @@ class RpicamStillBackend(CameraBackend):
             if not data.startswith(b"\xff\xd8"):
                 raise RuntimeError("rpicam-still did not produce JPEG data")
             return data
+        except subprocess.CalledProcessError as exc:
+            # capture_error is truncated to 300 chars server-side; the decisive
+            # rpicam/libcamera message (e.g. "no cameras available") is at the
+            # tail of stderr, so keep that instead of the full command line.
+            detail = (exc.stderr or exc.stdout or "").strip()[-220:]
+            raise RuntimeError(f"{self.command} exit {exc.returncode}: {detail or 'no stderr output'}") from exc
+        except subprocess.TimeoutExpired as exc:
+            detail = ((exc.stderr or b"").decode(errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")).strip()[-220:]
+            raise RuntimeError(f"{self.command} timeout after {self.timeout}s: {detail or 'no stderr output'}") from exc
         finally:
             try:
                 jpg_path.unlink()
