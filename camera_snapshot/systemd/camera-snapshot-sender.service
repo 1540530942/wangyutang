@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 User=pi
 WorkingDirectory=/home/pi
-ExecStart=/usr/bin/python3 /home/pi/pi_camera_sender.py --server https://www.wangyutang.cn/camera --device-id turbopi-01 --backend auto --camera-index 1
+ExecStart=/usr/bin/python3 /home/pi/pi_camera_sender.py --server https://www.wangyutang.cn/camera --device-id turbopi-01 --backend auto --camera-index 1 --ros-usb-cam-autostart
 Restart=always
 RestartSec=5
 
