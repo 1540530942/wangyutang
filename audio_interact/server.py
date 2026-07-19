@@ -27,6 +27,25 @@ from runtime.session_writer import (
 from settings import load_settings, save_settings
 from wake_state import WakeDecision, WakeStateStore
 
+# Observation queries that bypass the wake-word gate (they don't move the robot).
+# Mirrors the aliases for inspect_scene / front_distance / camera_snapshot in registry.yaml.
+_OBSERVATION_BYPASS_PHRASES: frozenset[str] = frozenset({
+    # inspect_scene
+    "前面有什么", "前方有什么", "前面是什么", "帮我看看前面",
+    "前面有没有人", "有没有人", "前面有人吗", "前方有人吗",
+    "看看前面有没有人", "前面有障碍物吗", "前面有什么障碍", "分析一下前面",
+    # camera_snapshot
+    "看一下前面", "看看前面", "看一下前方", "看看前方", "拍照", "拍一张", "拍一下",
+    # front_distance
+    "前方距离", "前面距离", "测距", "看看距离", "前面有多远",
+})
+
+def _is_observation_bypass(text: str) -> bool:
+    """Return True if the text is a pure observation query that bypasses the wake gate."""
+    import re
+    normalized = re.sub(r"[\s,，.。!！?？:：;；、\"'""''\-_\(\)（）\[\]【】]+", "", text.lower().strip())
+    return normalized in _OBSERVATION_BYPASS_PHRASES
+
 _STATIC_DIR = Path(__file__).resolve().parent / "web" / "static"
 
 
@@ -702,15 +721,20 @@ def _process(wav_bytes: bytes, device_id: str, session_id: str, route_action: bo
             "elapsed_ms": elapsed_ms(started),
         }
     if not wake.should_route:
-        return wake_only_result(session_id=session_id, text=text, wake=wake, started=started,
-                                asr_elapsed_ms=asr_elapsed)
+        if not _is_observation_bypass(text):
+            return wake_only_result(session_id=session_id, text=text, wake=wake, started=started,
+                                    asr_elapsed_ms=asr_elapsed)
+        # Observation query: route without waking, keep device sleep state unchanged
+        route_text = text.strip()
+    else:
+        route_text = wake.route_text
 
     try:
         resp = requests.post(
             f"{ROBOT_SANDBOX_URL}/api/recognize-text",
             json={
                 "device_id": device_id,
-                "text": wake.route_text,
+                "text": route_text,
                 "source": "audio-interact",
                 "route_action": True,
                 "raw": {
@@ -733,7 +757,7 @@ def _process(wav_bytes: bytes, device_id: str, session_id: str, route_action: bo
             "type": "result",
             "session_id": session_id,
             "text": text,
-            "route_text": wake.route_text,
+            "route_text": route_text,
             "wake_status": wake.status,
             "skill_id": "",
             "status": "route_error",
@@ -746,7 +770,7 @@ def _process(wav_bytes: bytes, device_id: str, session_id: str, route_action: bo
         "type": "result",
         "session_id": session_id,
         "text": text,
-        "route_text": wake.route_text,
+        "route_text": route_text,
         "wake_status": wake.status,
         "skill_id": route.get("skill_id", ""),
         "action_task": route.get("action_task"),
@@ -936,31 +960,35 @@ async def audio_segment(
     # Wake-state gate
     wake = WAKE_STATES.decide(device_id, text)
     if not wake.should_route:
-        session_package = safe_write_segment_session_package(
-            data_root=AUDIO_DATA_DIR,
-            session_id=sess,
-            device_id=device_id,
-            wav_bytes=wav_bytes,
-            asr_text=text,
-            wake_status=wake.status,
-        )
-        return {
-            "ok": True,
-            "session_id": sess,
-            "text": text,
-            "wake_status": wake.status,
-            "command": None,
-            "tts_text": "",
-            "tts_audio_base64": None,
-            "audio_url": audio_url,
-            "session_package": session_package,
-            "elapsed_ms": elapsed_ms(started),
-        }
+        if not _is_observation_bypass(text):
+            session_package = safe_write_segment_session_package(
+                data_root=AUDIO_DATA_DIR,
+                session_id=sess,
+                device_id=device_id,
+                wav_bytes=wav_bytes,
+                asr_text=text,
+                wake_status=wake.status,
+            )
+            return {
+                "ok": True,
+                "session_id": sess,
+                "text": text,
+                "wake_status": wake.status,
+                "command": None,
+                "tts_text": "",
+                "tts_audio_base64": None,
+                "audio_url": audio_url,
+                "session_package": session_package,
+                "elapsed_ms": elapsed_ms(started),
+            }
+        seg_route_text = text.strip()
+    else:
+        seg_route_text = wake.route_text
 
     # robot_sandbox /api/command
     try:
         command = _call_robot_sandbox(
-            text=wake.route_text,
+            text=seg_route_text,
             device_id=device_id,
             audio_url=audio_url,
             asr_meta=asr_payload,
