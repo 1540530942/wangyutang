@@ -112,23 +112,30 @@ class _AECContext:
         self._mute_until: float = 0.0
 
     def pre_mute(self) -> None:
-        """Mute mic immediately — call from _recv_loop before starting play_tts thread."""
-        self._mute_until = time.time() + 60
+        """Brief startup mute to absorb the initial aplay transient before AEC adapts."""
+        self._mute_until = time.time() + 0.5
 
     def process(self, mic_frame: bytes) -> bytes:
-        """Return silence while muted, AEC-cleaned frame while TTS plays, else raw mic."""
-        # Mute gate: covers TTS playback and brief tail (set by pre_mute / play_tts finally)
-        if time.time() < self._mute_until:
-            return b"\x00" * CHUNK_BYTES
-        # Optional AEC while TTS is still playing (after mute window — shouldn't normally happen)
-        if self._ec is not None:
-            proc = self._play_proc
-            if proc is not None and proc.poll() is None:
+        """AEC-clean mic frame while TTS plays; raw frame otherwise."""
+        proc = self._play_proc
+        tts_active = proc is not None and proc.poll() is None
+
+        if tts_active:
+            # Startup window: zero mic until aplay output is audible and AEC can track it
+            if time.time() < self._mute_until:
+                return b"\x00" * CHUNK_BYTES
+            if self._ec is not None:
                 try:
                     ref = self._ref_q.get_nowait()
                 except queue.Empty:
                     ref = b"\x00" * CHUNK_BYTES
                 return bytes(self._ec.process(mic_frame, ref))
+            # No AEC available: mute throughout TTS to prevent echo loop
+            return b"\x00" * CHUNK_BYTES
+
+        # TTS not playing: enforce brief post-TTS tail silence, then pass raw mic
+        if time.time() < self._mute_until:
+            return b"\x00" * CHUNK_BYTES
         return mic_frame
 
     def play_tts(self, wav_bytes: bytes, device: str) -> None:
