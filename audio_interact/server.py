@@ -50,7 +50,7 @@ _OBSERVATION_BYPASS_PHRASES: frozenset[str] = frozenset({
 def _is_observation_bypass(text: str) -> bool:
     """Return True if the text is a pure observation query that bypasses the wake gate."""
     import re
-    normalized = re.sub(r"[\s,，.。!！?？:：;；、\"'""''_\-\(\)（）\[\]【】]+", "", text.lower().strip())
+    normalized = re.sub(r"[\s,，.。!！?？:：;；、\"'""''_\(\)（）\[\]【】-]+", "", text.lower().strip())
     return normalized in _OBSERVATION_BYPASS_PHRASES
 
 _STATIC_DIR = Path(__file__).resolve().parent / "web" / "static"
