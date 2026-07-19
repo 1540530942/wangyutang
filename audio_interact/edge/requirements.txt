@@ -1,0 +1,5 @@
+# WonderEchoPro Pi-side full-duplex listener (wonderecho_listener.py)
+# Install on the Pi:  python3 -m pip install -r requirements.txt
+websockets>=10        # WS streaming to /ws/audio
+pyalsaaudio           # self-hosted frame-level playback: duck/kill + AEC reference feed
+speexdsp              # acoustic echo cancellation — required for barge-in during TTS

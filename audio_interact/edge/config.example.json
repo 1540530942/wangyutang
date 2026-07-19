@@ -3,6 +3,9 @@
   "token": "",
   "device_id": "turbopi-01",
   "tts_device": "",
+  "hardware_aec": false,
+  "duck_rms_threshold": 800,
+  "aec_debug": false,
   "recorder": {
     "device": "plughw:CARD=Device,DEV=0",
     "sample_rate": 16000,
