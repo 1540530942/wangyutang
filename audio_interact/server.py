@@ -30,10 +30,17 @@ from wake_state import WakeDecision, WakeStateStore
 # Observation queries that bypass the wake-word gate (they don't move the robot).
 # Mirrors the aliases for inspect_scene / front_distance / camera_snapshot in registry.yaml.
 _OBSERVATION_BYPASS_PHRASES: frozenset[str] = frozenset({
-    # inspect_scene
+    # inspect_scene — 标准
     "前面有什么", "前方有什么", "前面是什么", "帮我看看前面",
     "前面有没有人", "有没有人", "前面有人吗", "前方有人吗",
     "看看前面有没有人", "前面有障碍物吗", "前面有什么障碍", "分析一下前面",
+    # inspect_scene — 口语变体
+    "前面有什么呀", "前面有什么啊", "前面有什么呢",
+    "前面都有什么", "前面有些什么", "前方都有什么",
+    "前面是什么呀", "前面是什么啊", "前方是什么",
+    "帮我看一下前面", "看看前面有什么", "看一下前面有什么",
+    "你看前面有什么", "前面有什么东西", "前方有什么东西",
+    "前面情况怎么样", "前面怎么样",
     # camera_snapshot
     "看一下前面", "看看前面", "看一下前方", "看看前方", "拍照", "拍一张", "拍一下",
     # front_distance
