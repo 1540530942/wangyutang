@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>链路查询</title>
+  <link rel="stylesheet" href="/audio_interact/dashboard.css" />
+  <style>
+    .query-bar { display:flex; gap:8px; align-items:center; padding:14px 20px; background:var(--card,#fff); border-bottom:1px solid var(--border,#e5e7eb); }
+    .query-bar input { flex:0 1 420px; padding:8px 12px; border:1px solid var(--border,#d1d5db); border-radius:8px; font-size:14px; font-family:monospace; }
+    .query-bar button { padding:8px 18px; border:none; border-radius:8px; background:var(--accent,#2563eb); color:#fff; font-size:14px; cursor:pointer; }
+    .query-bar .hint { font-size:12px; color:#6b7280; }
+    .trace-main { padding:16px 20px 60px; max-width:1200px; }
+    .card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:16px 18px; margin-bottom:16px; }
+    .card h2 { margin:0 0 10px; font-size:15px; }
+    .meta-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:8px 20px; font-size:13px; }
+    .meta-grid .k { color:#6b7280; margin-right:6px; }
+    .turn { border:1px solid #e5e7eb; border-radius:10px; padding:12px 14px; margin-bottom:12px; background:#fafafa; }
+    .turn-head { display:flex; gap:12px; align-items:baseline; margin-bottom:10px; flex-wrap:wrap; }
+    .turn-head .txt { font-size:15px; font-weight:600; }
+    .turn-head .tag { font-size:11px; padding:2px 8px; border-radius:10px; background:#e5e7eb; color:#374151; }
+    .tag.awake { background:#dcfce7; color:#166534; } .tag.sleeping,.tag.empty { background:#f3f4f6; color:#9ca3af; }
+    .tag.err { background:#fee2e2; color:#991b1b; }
+    .pipeline { display:flex; flex-wrap:wrap; gap:6px; align-items:stretch; }
+    .stage { flex:1 1 130px; min-width:130px; border-radius:8px; padding:8px 10px; font-size:12px; border:1px solid #e5e7eb; background:#fff; position:relative; }
+    .stage.done { border-color:#86efac; background:#f0fdf4; }
+    .stage.skip { opacity:.5; }
+    .stage.error { border-color:#fca5a5; background:#fef2f2; }
+    .stage .sname { font-weight:600; margin-bottom:3px; }
+    .stage .sms { color:#2563eb; font-family:monospace; }
+    .stage .sval { color:#374151; word-break:break-all; }
+    .events-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .events-table th, .events-table td { text-align:left; padding:4px 8px; border-bottom:1px solid #f3f4f6; vertical-align:top; }
+    .events-table th { color:#6b7280; font-weight:500; position:sticky; top:0; background:#fff; }
+    .events-table td.ts { font-family:monospace; color:#2563eb; white-space:nowrap; }
+    .events-table td.etype { font-family:monospace; white-space:nowrap; }
+    details.raw { font-size:12px; } details.raw pre { background:#f9fafb; border-radius:6px; padding:8px; overflow:auto; max-height:320px; }
+    .recent { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+    .recent a { font-size:12px; font-family:monospace; padding:3px 8px; border-radius:6px; background:#eef2ff; color:#3730a3; text-decoration:none; }
+    .empty { color:#9ca3af; padding:30px 0; text-align:center; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <h1>链路查询</h1>
+      <span class="sub">按 Session 查询全量时序链路：网关 · VAD · ASR · 唤醒 · 沙盒 · 执行 · TTS</span>
+    </div>
+    <div class="topbar-nav">
+      <a href="/dashboard/sessions">数据日志</a>
+      <a href="/dashboard/golden">金标测试集</a>
+      <a href="/dashboard/query" class="active">链路查询</a>
+    </div>
+  </div>
+  <div class="query-bar">
+    <input id="sid" list="recent-sessions" placeholder="输入 Session ID，例如 pi-1784431190900" />
+    <datalist id="recent-sessions"></datalist>
+    <button onclick="runQuery()">查询</button>
+    <span class="hint" id="hint">最近会话可从下拉选择</span>
+  </div>
+  <div class="trace-main" id="main">
+    <div class="card"><h2>最近会话</h2><div class="recent" id="recent"></div></div>
+    <div class="empty" id="placeholder">输入或选择一个 Session 开始查询</div>
+    <div id="result" style="display:none">
+      <div class="card"><h2>会话概览（网关接入）</h2><div class="meta-grid" id="meta"></div><div id="player" style="margin-top:10px"></div></div>
+      <div class="card"><h2>分轮次时序链路</h2><div id="turns"></div></div>
+      <div class="card"><h2>全量事件流</h2><div style="max-height:420px;overflow:auto"><table class="events-table"><thead><tr><th>ts(ms)</th><th>类型</th><th>segment/turn</th><th>摘要</th><th>原始</th></tr></thead><tbody id="events"></tbody></table></div></div>
+    </div>
+  </div>
+  <script src="/audio_interact/query.js"></script>
+</body>
+</html>
