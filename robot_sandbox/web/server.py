@@ -1016,8 +1016,10 @@ def recognize_text(payload: TextCommand, x_audio_token: Annotated[str | None, He
             "reported_at": time.time(),
         }
     )
+    envelope_id = ""
     if isinstance(routed.get("envelope"), dict):
         save_envelope(DATA_DIR, DecisionEnvelope(**routed["envelope"]))
+        envelope_id = str(routed["envelope"].get("envelope_id") or "")
     raw_asr = payload.raw.get("asr") if isinstance(payload.raw.get("asr"), dict) else payload.raw
     case = record_intermediate_case(
         source=payload.source,
@@ -1041,6 +1043,7 @@ def recognize_text(payload: TextCommand, x_audio_token: Annotated[str | None, He
         "face_error": routed.get("face_error", ""),
         "plan": plan,
         "tts_text": str(routed.get("tts_text") or ""),
+        "envelope_id": envelope_id,
     }
 
 

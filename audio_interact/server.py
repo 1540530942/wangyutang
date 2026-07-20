@@ -390,6 +390,7 @@ async def audio_ws(websocket: WebSocket) -> None:
                 "action_task": result.get("action_task"),
                 "tts_text": result.get("tts_text", ""),
                 "action_error": result.get("action_error", ""),
+                "envelope_id": result.get("envelope_id", ""),
                 "asr_elapsed_ms": result.get("asr_elapsed_ms"),
                 "route_elapsed_ms": result.get("route_elapsed_ms"),
                 "barged_in": ts.cancelled,
@@ -870,6 +871,7 @@ def _process(wav_bytes: bytes, device_id: str, session_id: str, route_action: bo
         "face_task": route.get("face_task"),
         "plan": route.get("plan"),
         "tts_text": str(route.get("tts_text") or ""),
+        "envelope_id": str(route.get("envelope_id") or ""),
         "status": "ok",
         "asr_elapsed_ms": asr_elapsed,
         "route_elapsed_ms": int((route_done_at - asr_done_at) * 1000),
@@ -1460,6 +1462,7 @@ def get_session_route(session_id: str) -> dict[str, Any]:
                 robot_cmds[turn] = {"skill_id": (ev.get("command") or {}).get("skill_id") or ev.get("skill_id", ""),
                                      "action_task": ev.get("action_task"), "tts_text": ev.get("tts_text", ""),
                                      "action_error": ev.get("action_error", ""),
+                                     "envelope_id": ev.get("envelope_id", ""),
                                      "route_elapsed_ms": ev.get("route_elapsed_ms")}
             elif etype == "tts.audio_ready":
                 tts_ready[turn] = ev.get("tts_elapsed_ms")
@@ -1487,6 +1490,7 @@ def get_session_route(session_id: str) -> dict[str, Any]:
                 "action_task": cmd.get("action_task"),
                 "tts_text": cmd.get("tts_text", ""),
                 "action_error": cmd.get("action_error", ""),
+                "envelope_id": cmd.get("envelope_id", ""),
                 "asr_elapsed_ms": asr.get("asr_elapsed_ms"),
                 "route_elapsed_ms": cmd.get("route_elapsed_ms"),
                 "tts_elapsed_ms": tts_ready.get(turn_id),
@@ -1546,22 +1550,42 @@ def _parse_iso_epoch(value: str) -> float:
         return 0.0
 
 
-def _match_envelopes_for_trace(session_epoch: float, duration_ms: int, utterances: list[dict[str, Any]]) -> dict[str, Any]:
-    """Best-effort join of robot_sandbox decision envelopes onto session turns.
+def _fetch_envelope_detail(envelope_id: str) -> dict[str, Any] | None:
+    try:
+        payload = requests.get(f"{ROBOT_SANDBOX_URL}/api/envelopes/{envelope_id}", timeout=3).json()
+        detail = payload.get("envelope") or payload
+        return detail if isinstance(detail, dict) else None
+    except Exception:
+        return None
 
-    Envelopes carry no session/turn id, so match by identical transcript within
-    the session's wall-clock window (with slack for clock skew and processing).
+
+def _match_envelopes_for_trace(session_epoch: float, duration_ms: int, utterances: list[dict[str, Any]]) -> dict[str, Any]:
+    """Join robot_sandbox decision envelopes onto session turns.
+
+    Preferred path: the exact envelope_id recorded on the turn at route time.
+    Fallback for older sessions without envelope_id: match by identical
+    transcript within the session's wall-clock window.
     """
+    matched: dict[str, Any] = {}
+    for u in utterances:
+        envelope_id = str(u.get("envelope_id") or "")
+        turn_id = str(u.get("turn_id") or "")
+        if envelope_id and turn_id:
+            detail = _fetch_envelope_detail(envelope_id)
+            if detail:
+                matched[turn_id] = detail
     wanted: dict[str, list[str]] = {}
     for u in utterances:
         text = str(u.get("text") or "").strip()
+        turn_id = str(u.get("turn_id") or "")
+        if turn_id in matched:
+            continue
         if text and (u.get("skill_id") or u.get("status") == "ok"):
-            wanted.setdefault(text, []).append(str(u.get("turn_id") or ""))
+            wanted.setdefault(text, []).append(turn_id)
     if not wanted or session_epoch <= 0:
-        return {}
+        return matched
     lo = session_epoch - 30
     hi = session_epoch + duration_ms / 1000 + 300
-    matched: dict[str, Any] = {}
     try:
         rows = requests.get(f"{ROBOT_SANDBOX_URL}/api/envelopes", params={"limit": 200}, timeout=3).json().get("envelopes") or []
         for row in rows:
@@ -1570,12 +1594,7 @@ def _match_envelopes_for_trace(session_epoch: float, duration_ms: int, utterance
             turn_ids = wanted.get(transcript)
             if not turn_ids or not (lo <= t_created <= hi):
                 continue
-            envelope_id = str(row.get("envelope_id") or "")
-            try:
-                payload = requests.get(f"{ROBOT_SANDBOX_URL}/api/envelopes/{envelope_id}", timeout=3).json()
-                detail = payload.get("envelope") or payload
-            except Exception:
-                detail = row
+            detail = _fetch_envelope_detail(str(row.get("envelope_id") or "")) or row
             # oldest unclaimed turn first so repeated transcripts pair up in order
             for turn_id in turn_ids:
                 if turn_id and turn_id not in matched:
