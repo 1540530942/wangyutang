@@ -1086,6 +1086,11 @@ def dashboard_golden_page() -> FileResponse:
     return FileResponse(str(_STATIC_DIR / "golden.html"))
 
 
+@app.api_route("/dashboard/query", methods=["GET", "HEAD"], include_in_schema=False)
+def dashboard_query_page() -> FileResponse:
+    return FileResponse(str(_STATIC_DIR / "query.html"))
+
+
 from golden import (
     iter_golden_session_cases as _iter_golden_session_cases,
     list_golden_cases,
@@ -1445,6 +1450,69 @@ def get_session_route(session_id: str) -> dict[str, Any]:
         "utterances": utterances,
         "manifest": m or None,
     }
+
+
+def _parse_iso_epoch(value: str) -> float:
+    try:
+        from datetime import datetime
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%S%z").timestamp()
+    except Exception:
+        return 0.0
+
+
+def _match_envelopes_for_trace(session_epoch: float, duration_ms: int, utterances: list[dict[str, Any]]) -> dict[str, Any]:
+    """Best-effort join of robot_sandbox decision envelopes onto session turns.
+
+    Envelopes carry no session/turn id, so match by identical transcript within
+    the session's wall-clock window (with slack for clock skew and processing).
+    """
+    wanted: dict[str, list[str]] = {}
+    for u in utterances:
+        text = str(u.get("text") or "").strip()
+        if text and (u.get("skill_id") or u.get("status") == "ok"):
+            wanted.setdefault(text, []).append(str(u.get("turn_id") or ""))
+    if not wanted or session_epoch <= 0:
+        return {}
+    lo = session_epoch - 30
+    hi = session_epoch + duration_ms / 1000 + 300
+    matched: dict[str, Any] = {}
+    try:
+        rows = requests.get(f"{ROBOT_SANDBOX_URL}/api/envelopes", params={"limit": 200}, timeout=3).json().get("envelopes") or []
+        for row in rows:
+            transcript = str(row.get("transcript") or "").strip()
+            t_created = float(row.get("t_created") or 0)
+            turn_ids = wanted.get(transcript)
+            if not turn_ids or not (lo <= t_created <= hi):
+                continue
+            envelope_id = str(row.get("envelope_id") or "")
+            try:
+                detail = requests.get(f"{ROBOT_SANDBOX_URL}/api/envelopes/{envelope_id}", timeout=3).json()
+            except Exception:
+                detail = row
+            # oldest unclaimed turn first so repeated transcripts pair up in order
+            for turn_id in turn_ids:
+                if turn_id and turn_id not in matched:
+                    matched[turn_id] = detail
+                    break
+    except Exception:
+        return matched
+    return matched
+
+
+@app.get("/api/sessions/{session_id}/trace")
+def get_session_trace_route(session_id: str) -> dict[str, Any]:
+    """Full timeline for one session: raw ordered events, per-turn pipeline
+    stages, and joined robot_sandbox decision envelopes."""
+    detail = get_session_route(session_id)
+    events: list[dict[str, Any]] = []
+    entries = _list_sessions(AUDIO_DATA_DIR, 500)
+    match = next((e for e in entries if e["session_id"] == session_id), None)
+    if match and match.get("package_dir"):
+        events = _load_events_for_session(Path(match["package_dir"]))
+        events.sort(key=lambda ev: (float(ev.get("ts_ms") or 0), str(ev.get("type") or "")))
+    session_epoch = _parse_iso_epoch(str(detail.get("created_at") or ""))
+    envelopes = _match_envelopes_for_trace(session_epoch, int(detail.get("duration_ms") or 0), detail.get("utterances") or [])
+    return {**detail, "events": events, "envelopes": envelopes}
 
 
 @app.get("/api/sessions/{session_id}/audio/{filename}")
