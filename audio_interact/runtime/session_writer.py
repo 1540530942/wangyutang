@@ -217,7 +217,9 @@ def write_streaming_session_package(
         action_task = item.get("action_task")
         tts_text = str(item.get("tts_text") or "")
         action_error = str(item.get("action_error") or "")
-        if skill_id and item.get("status") == "ok":
+        # any routed outcome counts: motion skills carry skill_id, but
+        # observation/chat turns only produce tts_text (and an envelope)
+        if item.get("status") == "ok" and (skill_id or tts_text or action_task or action_error):
             cmd_event: dict[str, Any] = dict(
                 ts_ms=end_ms,
                 type="robot.command",
@@ -227,6 +229,9 @@ def write_streaming_session_package(
                 tts_text=tts_text,
                 action_error=action_error,
             )
+            envelope_id = str(item.get("envelope_id") or "")
+            if envelope_id:
+                cmd_event["envelope_id"] = envelope_id
             if route_elapsed_ms is not None:
                 cmd_event["route_elapsed_ms"] = route_elapsed_ms
             writer.emit("runtime", **cmd_event)
