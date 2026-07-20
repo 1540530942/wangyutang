@@ -1572,7 +1572,8 @@ def _match_envelopes_for_trace(session_epoch: float, duration_ms: int, utterance
                 continue
             envelope_id = str(row.get("envelope_id") or "")
             try:
-                detail = requests.get(f"{ROBOT_SANDBOX_URL}/api/envelopes/{envelope_id}", timeout=3).json()
+                payload = requests.get(f"{ROBOT_SANDBOX_URL}/api/envelopes/{envelope_id}", timeout=3).json()
+                detail = payload.get("envelope") or payload
             except Exception:
                 detail = row
             # oldest unclaimed turn first so repeated transcripts pair up in order
