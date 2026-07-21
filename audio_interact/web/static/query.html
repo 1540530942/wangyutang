@@ -54,6 +54,10 @@
     .wf-bar.exec { background:#0891b2; } .wf-bar.exec.err { background:#dc2626; } .wf-bar.tts { background:#db2777; }
     .wf-mark { position:absolute; top:7px; width:12px; height:12px; margin-left:-6px; transform:rotate(45deg); border-radius:2px; box-shadow:0 1px 2px rgba(0,0,0,.2); cursor:default; }
     .wf-mark.wake { background:#7c3aed; } .wf-mark.wake.miss { background:#cbd5e1; }
+    .wf-bar.active { outline:2px solid #dc2626; outline-offset:1px; filter:brightness(1.12); z-index:4; }
+    .wf-playhead { position:absolute; top:0; bottom:0; width:2px; background:#dc2626; z-index:6; pointer-events:none; box-shadow:0 0 4px rgba(220,38,38,.5); }
+    .wf-playhead::before { content:''; position:absolute; top:-1px; left:-5px; border-left:6px solid transparent; border-right:6px solid transparent; border-top:7px solid #dc2626; }
+    .wf-track { cursor:pointer; }
     .wf-detail { background:#f9fafb; border-radius:6px; margin:2px 0 8px var(--lbl); padding:8px 10px; font-size:12px; }
     .wf-detail pre { background:#fff; border:1px solid #eef0f2; border-radius:6px; padding:8px; overflow:auto; max-height:300px; margin:6px 0 0; }
     .recent { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }

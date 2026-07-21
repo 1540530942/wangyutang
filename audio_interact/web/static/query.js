@@ -91,7 +91,7 @@ function renderWaterfall(utterances, envs) {
 
   const body = rows.map((r, i) => {
     const bars = r.bars.map((b) =>
-      `<div class="wf-bar ${b.cls}" style="left:${px(b.start)}px;width:${Math.max(b.dur * pxPerMs, 2)}px" title="${b.tip}">${esc(b.label)}</div>`
+      `<div class="wf-bar ${b.cls}" data-start="${b.start}" data-end="${b.start + b.dur}" style="left:${px(b.start)}px;width:${Math.max(b.dur * pxPerMs, 2)}px" title="${b.tip}">${esc(b.label)}</div>`
     ).join("");
     const marks = r.marks.map((m) =>
       `<div class="wf-mark ${m.cls}" style="left:${px(m.at)}px" title="${m.tip}"></div>`
@@ -100,13 +100,39 @@ function renderWaterfall(utterances, envs) {
     const short = (u.text || "(空)").slice(0, 12);
     return `<div class="wf-row" data-turn="${i}">
       <div class="wf-label" onclick="toggleDetail(${i})"><div class="lt">${esc(short)}</div><div class="ls">${esc(u.turn_id || u.segment_id)}</div></div>
-      <div class="wf-track">${bars}${marks}</div>
+      <div class="wf-track" onclick="seekFromClick(event)">${bars}${marks}</div>
     </div>
     <div class="wf-detail" id="wf-detail-${i}" style="display:none"></div>`;
   }).join("");
 
-  el.innerHTML = `<div class="wf" style="--lbl:${labelW}px"><div class="wf-ruler">${ruler}</div>${body}</div>`;
+  el.innerHTML = `<div class="wf" style="--lbl:${labelW}px"><div class="wf-ruler">${ruler}</div>${body}<div class="wf-playhead" id="wf-playhead" style="display:none;left:${labelW}px"></div></div>`;
   window._wfRows = rows;
+  window._wf = { minStart, pxPerMs, labelW };
+}
+
+// Move the red playhead to an absolute session-time position (ms) and
+// highlight whichever module bars are under it.
+function updatePlayhead(ms) {
+  const w = window._wf;
+  const head = document.getElementById("wf-playhead");
+  if (!w || !head) return;
+  head.style.display = "block";
+  head.style.left = `${w.labelW + (ms - w.minStart) * w.pxPerMs}px`;
+  document.querySelectorAll(".wf-bar").forEach((el) => {
+    const s = parseFloat(el.dataset.start), e = parseFloat(el.dataset.end);
+    el.classList.toggle("active", ms >= s && ms <= e);
+  });
+}
+
+// Click anywhere on a track to seek the audio to that session time.
+function seekFromClick(ev) {
+  const w = window._wf;
+  const audio = document.querySelector("#player audio");
+  if (!w || !audio) return;
+  const track = ev.currentTarget;
+  const x = ev.clientX - track.getBoundingClientRect().left;
+  const ms = w.minStart + x / w.pxPerMs;
+  audio.currentTime = Math.max(0, ms / 1000);
 }
 
 function toggleDetail(i) {
@@ -169,6 +195,13 @@ async function runQuery() {
   $("turns").innerHTML = "";
   if ((t.utterances || []).length) {
     renderWaterfall(t.utterances, envs);
+    const audio = document.querySelector("#player audio");
+    if (audio) {
+      const sync = () => updatePlayhead(audio.currentTime * 1000);
+      audio.addEventListener("timeupdate", sync);
+      audio.addEventListener("seeked", sync);
+      audio.addEventListener("play", sync);
+    }
   } else {
     document.getElementById("waterfall").innerHTML = '<div class="empty">无轮次数据</div>';
   }
