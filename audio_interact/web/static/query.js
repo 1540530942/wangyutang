@@ -16,16 +16,6 @@ async function loadRecent() {
 
 function pick(sid) { $("sid").value = sid; runQuery(); }
 
-function wakeTag(u) {
-  const w = u.wake_status || "unknown";
-  return `<span class="tag ${esc(w)}">${esc(w)}</span>`;
-}
-
-function stage(name, ok, msVal, val, extraCls) {
-  const cls = extraCls || (ok ? "done" : "skip");
-  return `<div class="stage ${cls}"><div class="sname">${esc(name)}</div><div class="sms">${esc(msVal)}</div><div class="sval">${val || ""}</div></div>`;
-}
-
 function envLatency(env) {
   const lat = (env && env.latency_ms) || {};
   const order = ["ingest", "agent", "validate", "safety", "dispatch", "execution", "total"];
@@ -33,30 +23,105 @@ function envLatency(env) {
   return parts.join(" · ");
 }
 
-function renderTurn(u, env) {
-  const vadMs = u.vad_start_ms != null && u.vad_end_ms != null ? `${u.vad_start_ms}→${u.vad_end_ms}` : "—";
-  const hasCmd = !!u.skill_id;
+// Build the ordered stage bars for one turn on the absolute session timeline.
+// VAD sits where the speech actually was; processing stages cascade after it
+// using their measured durations (ASR → sandbox → execution → TTS).
+function turnStages(u, env) {
+  const bars = [];
+  const marks = [];
+  const vs = u.vad_start_ms != null ? u.vad_start_ms : u.audio_start_ms;
+  const ve = u.vad_end_ms != null ? u.vad_end_ms : u.audio_end_ms;
+  if (vs != null && ve != null && ve > vs) {
+    bars.push({ cls: "vad", start: vs, dur: ve - vs, label: "VAD", tip: `VAD 说话段 ${vs}→${ve}ms (${esc(u.vad_source || "")})` });
+  }
+  let cursor = ve != null ? ve : (vs != null ? vs : 0);
+  if (u.asr_elapsed_ms != null) {
+    bars.push({ cls: "asr", start: cursor, dur: u.asr_elapsed_ms, label: `ASR ${Math.round(u.asr_elapsed_ms)}ms`, tip: `ASR ${Math.round(u.asr_elapsed_ms)}ms · “${esc(u.text)}”` });
+    cursor += u.asr_elapsed_ms;
+  }
+  marks.push({ cls: "wake" + (u.wake_status === "awake" ? "" : " miss"), at: cursor, tip: `唤醒判定: ${esc(u.wake_status || "unknown")} (${esc(u.status || "")})` });
+  const lat = (env && env.latency_ms) || {};
+  const planDur = lat.agent != null ? lat.agent : u.route_elapsed_ms;
+  const hasPlan = u.skill_id || u.tts_text || env;
+  if (planDur != null && hasPlan) {
+    bars.push({ cls: "plan", start: cursor, dur: planDur, label: `沙盒 ${Math.round(planDur)}ms`, tip: `沙盒规划 ${Math.round(planDur)}ms · ${u.skill_id ? "skill:" + esc(u.skill_id) : "对话/观察应答"}${env ? " · " + esc(env.envelope_id || "") : ""}` });
+    cursor += planDur;
+  }
   const task = u.action_task || {};
   const taskInner = task.task || task;
   const taskId = taskInner && taskInner.id ? taskInner.id : "";
   const execErr = u.action_error;
-  const stages = [
-    stage("① 网关/切分 VAD", u.vad_start_ms != null || u.audio_start_ms != null, vadMs, esc(u.vad_source || "")),
-    stage("② ASR 识别", !!u.text, ms(u.asr_elapsed_ms), `“${esc(u.text)}”`),
-    stage("③ 唤醒判定", u.wake_status === "awake", u.wake_status === "awake" ? "命中" : "未命中", esc(u.status || "")),
-    stage("④ 沙盒规划", hasCmd || !!u.tts_text || !!env, env ? envLatency(env) || ms(u.route_elapsed_ms) : ms(u.route_elapsed_ms),
-      hasCmd ? `skill: <b>${esc(u.skill_id)}</b>` : (u.tts_text || env ? "对话/观察应答" : "未产生指令")),
-    stage("⑤ 车端执行", !!taskId && !execErr, env && env.latency_ms && env.latency_ms.execution != null ? ms(env.latency_ms.execution) : (taskId ? "已下发" : "—"),
-      execErr ? `错误: ${esc(execErr)}` : (taskId ? `task: ${esc(taskId)}` : "无动作"), execErr ? "error" : undefined),
-    stage("⑥ TTS 播报", !!u.tts_text, ms(u.tts_elapsed_ms), u.tts_text ? `“${esc(u.tts_text)}”` : "无播报"),
-  ];
-  const envBlock = env
-    ? `<details class="raw" style="margin-top:8px"><summary>DecisionEnvelope ${esc(env.envelope_id || "")}（沙盒决策详情）</summary><pre>${esc(JSON.stringify(env, null, 2))}</pre></details>`
-    : "";
-  return `<div class="turn">
-    <div class="turn-head"><span class="tag">${esc(u.turn_id || u.segment_id)}</span><span class="txt">${esc(u.text || "(空)")}</span>${wakeTag(u)}${u.skill_id ? `<span class="tag awake">skill:${esc(u.skill_id)}</span>` : ""}</div>
-    <div class="pipeline">${stages.join("")}</div>${envBlock}
-  </div>`;
+  if (lat.execution != null && (taskId || execErr)) {
+    bars.push({ cls: "exec" + (execErr ? " err" : ""), start: cursor, dur: lat.execution, label: `执行 ${Math.round(lat.execution)}ms`, tip: execErr ? `车端执行错误: ${esc(execErr)}` : `车端执行 ${Math.round(lat.execution)}ms · task:${esc(taskId)}` });
+    cursor += lat.execution;
+  } else if (taskId && !execErr) {
+    marks.push({ cls: "wake", at: cursor, tip: `车端已下发 task:${esc(taskId)}` });
+  }
+  if (u.tts_elapsed_ms != null && u.tts_text) {
+    bars.push({ cls: "tts", start: cursor, dur: u.tts_elapsed_ms, label: `TTS ${Math.round(u.tts_elapsed_ms)}ms`, tip: `TTS 播报 ${Math.round(u.tts_elapsed_ms)}ms · “${esc(u.tts_text)}”` });
+    cursor += u.tts_elapsed_ms;
+  }
+  return { bars, marks, end: cursor };
+}
+
+function niceStep(totalMs) {
+  const targetTicks = 8;
+  const raw = totalMs / targetTicks;
+  const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+  for (const m of [1, 2, 5, 10]) if (m * pow >= raw) return m * pow;
+  return 10 * pow;
+}
+
+function renderWaterfall(utterances, envs) {
+  const el = document.getElementById("waterfall");
+  const rows = utterances.map((u) => ({ u, ...turnStages(u, envs[u.turn_id]) }));
+  const minStart = Math.min(...rows.map((r) => (r.bars[0] ? r.bars[0].start : 0)), 0);
+  const maxEnd = Math.max(...rows.map((r) => r.end), 1);
+  const span = Math.max(maxEnd - minStart, 1);
+  const labelW = 150;
+  const avail = Math.max((el.parentElement.clientWidth || 900) - labelW - 24, 480);
+  const pxPerMs = avail / span;
+  const px = (ms) => (ms - minStart) * pxPerMs;
+
+  const step = niceStep(span);
+  let ruler = "";
+  for (let t = Math.ceil(minStart / step) * step; t <= maxEnd; t += step) {
+    ruler += `<div class="wf-tick" style="left:${px(t)}px">${Math.round(t)}</div>`;
+  }
+
+  const body = rows.map((r, i) => {
+    const bars = r.bars.map((b) =>
+      `<div class="wf-bar ${b.cls}" style="left:${px(b.start)}px;width:${Math.max(b.dur * pxPerMs, 2)}px" title="${b.tip}">${esc(b.label)}</div>`
+    ).join("");
+    const marks = r.marks.map((m) =>
+      `<div class="wf-mark ${m.cls}" style="left:${px(m.at)}px" title="${m.tip}"></div>`
+    ).join("");
+    const u = r.u;
+    const short = (u.text || "(空)").slice(0, 12);
+    return `<div class="wf-row" data-turn="${i}">
+      <div class="wf-label" onclick="toggleDetail(${i})"><div class="lt">${esc(short)}</div><div class="ls">${esc(u.turn_id || u.segment_id)}</div></div>
+      <div class="wf-track">${bars}${marks}</div>
+    </div>
+    <div class="wf-detail" id="wf-detail-${i}" style="display:none"></div>`;
+  }).join("");
+
+  el.innerHTML = `<div class="wf" style="--lbl:${labelW}px"><div class="wf-ruler">${ruler}</div>${body}</div>`;
+  window._wfRows = rows;
+}
+
+function toggleDetail(i) {
+  const box = document.getElementById(`wf-detail-${i}`);
+  if (!box) return;
+  if (box.style.display !== "none") { box.style.display = "none"; return; }
+  const r = window._wfRows[i];
+  const u = r.u;
+  const env = (window._wfEnvs || {})[u.turn_id];
+  const seq = r.bars.map((b) => `${b.cls}:${Math.round(b.dur)}ms`).join(" → ");
+  box.innerHTML = `<div><b>${esc(u.turn_id)}</b> · 文本：“${esc(u.text)}” · 唤醒：${esc(u.wake_status)} · 状态：${esc(u.status || "")}${u.skill_id ? " · skill:" + esc(u.skill_id) : ""}</div>
+    <div style="margin-top:4px;color:#6b7280">时序：${esc(seq) || "无处理阶段"}</div>
+    ${u.tts_text ? `<div style="margin-top:4px">TTS：“${esc(u.tts_text)}”</div>` : ""}
+    ${env ? `<div style="margin-top:4px;color:#6b7280">DecisionEnvelope ${esc(env.envelope_id || "")} · ${esc(envLatency(env))}</div><pre>${esc(JSON.stringify(env, null, 2))}</pre>` : ""}`;
+  box.style.display = "block";
 }
 
 function summarizeEvent(ev) {
@@ -100,7 +165,13 @@ async function runQuery() {
   $("player").innerHTML = t.audio_url ? `<audio controls src="${esc(t.audio_url)}" style="width:100%"></audio>` : "";
 
   const envs = t.envelopes || {};
-  $("turns").innerHTML = (t.utterances || []).map((u) => renderTurn(u, envs[u.turn_id])).join("") || '<div class="empty">无轮次数据</div>';
+  window._wfEnvs = envs;
+  $("turns").innerHTML = "";
+  if ((t.utterances || []).length) {
+    renderWaterfall(t.utterances, envs);
+  } else {
+    document.getElementById("waterfall").innerHTML = '<div class="empty">无轮次数据</div>';
+  }
 
   $("events").innerHTML = (t.events || []).map((ev) => `<tr>
       <td class="ts">${esc(ev.ts_ms)}</td><td class="etype">${esc(ev.type)}</td>

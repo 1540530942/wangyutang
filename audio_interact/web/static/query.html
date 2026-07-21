@@ -35,6 +35,27 @@
     .events-table td.ts { font-family:monospace; color:#2563eb; white-space:nowrap; }
     .events-table td.etype { font-family:monospace; white-space:nowrap; }
     details.raw { font-size:12px; } details.raw pre { background:#f9fafb; border-radius:6px; padding:8px; overflow:auto; max-height:320px; }
+    /* waterfall / gantt */
+    .wf-legend { display:flex; flex-wrap:wrap; gap:12px; font-size:12px; margin-bottom:10px; }
+    .wf-legend span { display:inline-flex; align-items:center; gap:5px; color:#374151; }
+    .wf-legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+    .wf-scroll { overflow-x:auto; border:1px solid #eef0f2; border-radius:8px; }
+    .wf { position:relative; min-width:640px; --lbl:150px; }
+    .wf-ruler { position:relative; height:22px; margin-left:var(--lbl); border-bottom:1px solid #e5e7eb; background:#fbfbfc; }
+    .wf-tick { position:absolute; top:0; height:100%; border-left:1px solid #eef0f2; font-size:10px; color:#9ca3af; padding-left:3px; line-height:22px; }
+    .wf-row { position:relative; height:34px; border-bottom:1px solid #f6f7f8; }
+    .wf-row:hover { background:#fbfdff; }
+    .wf-label { position:absolute; left:0; top:0; width:var(--lbl); height:100%; padding:0 8px; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; border-right:1px solid #eef0f2; cursor:pointer; }
+    .wf-label .lt { font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .wf-label .ls { font-size:10px; color:#9ca3af; font-family:monospace; }
+    .wf-track { position:absolute; left:var(--lbl); right:0; top:0; height:100%; }
+    .wf-bar { position:absolute; top:8px; height:18px; border-radius:4px; font-size:10px; color:#fff; line-height:18px; padding:0 4px; box-sizing:border-box; white-space:nowrap; overflow:hidden; box-shadow:0 1px 2px rgba(0,0,0,.12); cursor:default; }
+    .wf-bar.vad { background:#64748b; } .wf-bar.asr { background:#16a34a; } .wf-bar.plan { background:#ea580c; }
+    .wf-bar.exec { background:#0891b2; } .wf-bar.exec.err { background:#dc2626; } .wf-bar.tts { background:#db2777; }
+    .wf-mark { position:absolute; top:7px; width:12px; height:12px; margin-left:-6px; transform:rotate(45deg); border-radius:2px; box-shadow:0 1px 2px rgba(0,0,0,.2); cursor:default; }
+    .wf-mark.wake { background:#7c3aed; } .wf-mark.wake.miss { background:#cbd5e1; }
+    .wf-detail { background:#f9fafb; border-radius:6px; margin:2px 0 8px var(--lbl); padding:8px 10px; font-size:12px; }
+    .wf-detail pre { background:#fff; border:1px solid #eef0f2; border-radius:6px; padding:8px; overflow:auto; max-height:300px; margin:6px 0 0; }
     .recent { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
     .recent a { font-size:12px; font-family:monospace; padding:3px 8px; border-radius:6px; background:#eef2ff; color:#3730a3; text-decoration:none; }
     .empty { color:#9ca3af; padding:30px 0; text-align:center; }
@@ -63,7 +84,18 @@
     <div class="empty" id="placeholder">输入或选择一个 Session 开始查询</div>
     <div id="result" style="display:none">
       <div class="card"><h2>会话概览（网关接入）</h2><div class="meta-grid" id="meta"></div><div id="player" style="margin-top:10px"></div></div>
-      <div class="card"><h2>分轮次时序链路</h2><div id="turns"></div></div>
+      <div class="card"><h2>时序瀑布图（横轴=会话时间 ms，每行=一个轮次，色块=各模块实际时刻与耗时）</h2>
+        <div class="wf-legend">
+          <span><i style="background:#64748b"></i>VAD 说话段</span>
+          <span><i style="background:#16a34a"></i>ASR 识别</span>
+          <span><i style="background:#7c3aed;transform:rotate(45deg)"></i>唤醒判定</span>
+          <span><i style="background:#ea580c"></i>沙盒规划</span>
+          <span><i style="background:#0891b2"></i>车端执行</span>
+          <span><i style="background:#db2777"></i>TTS 播报</span>
+        </div>
+        <div class="wf-scroll"><div id="waterfall"></div></div>
+        <div id="turns"></div>
+      </div>
       <div class="card"><h2>全量事件流</h2><div style="max-height:420px;overflow:auto"><table class="events-table"><thead><tr><th>ts(ms)</th><th>类型</th><th>segment/turn</th><th>摘要</th><th>原始</th></tr></thead><tbody id="events"></tbody></table></div></div>
     </div>
   </div>
