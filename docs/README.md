@@ -26,6 +26,7 @@ docs live under each module (e.g. `robot_sandbox/docs/`, `pi5_robot/docs/`,
 
 - [git-push-remote-branch.md](git-push-remote-branch.md) — safe push runbook for this repo
 - [github-push-troubleshooting.md](github-push-troubleshooting.md) — git push failure recovery
+- [spark-exit-node-novnc-runbook.md](spark-exit-node-novnc-runbook.md) — Spark Korea exit-node networking and noVNC virtual desktop runbook
 - [www-wangyutang-cn-fix.md](www-wangyutang-cn-fix.md) — public gateway domain fix
 
 ## Module-specific notes
