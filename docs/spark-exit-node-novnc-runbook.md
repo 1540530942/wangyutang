@@ -40,6 +40,262 @@ Windows 浏览器
 
 选择虚拟桌面的原因：Spark 的物理显示器状态不稳定，曾出现所有 HDMI/USB-C 输出均为 `disconnected`，GDM 只提供黑屏或 `640x480`，导致 noVNC 看起来正常连接但画面不可用。虚拟桌面不依赖物理显示器，适合远程查资料和临时网页操作。
 
+## 设计取舍
+
+### 为什么用虚拟桌面，而不是 Spark 真实浏览器
+
+真实浏览器依赖 Spark 当前物理 GNOME 会话、GDM 登录状态和显示器输出。实测过程中出现过：
+
+```text
+GNOME 出现“系统出错无法恢复”
+GDM 重启后物理显示输出全部 disconnected
+noVNC 只能看到 640x480 黑屏
+x11vnc 绑定真实 :0/:1 会随登录、注销、显示器状态切换而断开
+```
+
+因此，真实桌面适合本地有人接显示器时操作，不适合长期无人值守远程入口。当前改用 `Xvfb :99` 虚拟桌面，是为了让远程入口具备这些性质：
+
+- 不依赖物理显示器或 HDMI dummy plug。
+- 不依赖 GDM 是否停在登录页。
+- 不依赖 GNOME Shell 是否稳定。
+- noVNC 后端固定连接 `:99`，不随 `:0`、`:1` 切换。
+- 机器重启后可由 systemd 自动恢复。
+
+### 为什么后续要改成非 Snap Chromium
+
+当前虚拟桌面里临时使用 `epiphany-browser`。它能打开普通网页和 Google 首页，但 WebKit/Epiphany 对 Google、ChatGPT、Cloudflare 这类高风控站点的兼容性和指纹表现不如主流 Chromium。
+
+后续建议使用非 Snap Chromium，原因：
+
+1. 更接近真实桌面浏览器环境，对 Google、ChatGPT、Cloudflare 兼容性更好。
+2. 避免 Snap cgroup 限制。Snap Firefox 在虚拟 systemd 桌面中曾报错：
+
+```text
+/system.slice/spark-virtual-desktop.service is not a snap cgroup for tag snap.firefox.firefox
+```
+
+3. 便于持久化 profile。Chromium 可固定 `--user-data-dir`，保存 Cookie、登录态、语言、缓存和站点权限。
+4. 便于调试和自动化。Chromium 支持 DevTools Protocol，后续可以用 Playwright 或脚本做截图、页面状态检测和登录流程验证。
+5. 启动参数可控，适合无 GPU 虚拟桌面：
+
+```bash
+chromium \
+  --user-data-dir=/home/archer/.config/chromium-spark-vnc \
+  --disable-gpu \
+  --disable-dev-shm-usage \
+  --no-first-run \
+  --no-default-browser-check \
+  https://www.google.com
+```
+
+注意：非 Snap Chromium 只能降低浏览器兼容性问题，不能保证绕过 Google/OpenAI 的 IP 风控。若仍触发 `/sorry/index` 或 `403`，下一步应从出口 IP 质量、持久登录 profile、Cookie、语言/时区一致性排查。
+
+## 按顺序部署
+
+本节记录从空白 Spark 远程桌面能力到可访问 `http://192.168.1.98:6080/vnc.html` 的顺序。实际执行前需确认 Spark 和韩国出口机器都已加入同一个 Tailscale tailnet。
+
+### 1. 配置韩国出口机器为 Exit Node
+
+在 `VM-0-5-ubuntu` 上启用转发并声明 exit node：
+
+```bash
+sudo mkdir -p /etc/sysctl.d
+printf '%s\n' \
+  'net.ipv4.ip_forward = 1' \
+  'net.ipv6.conf.all.forwarding = 1' |
+  sudo tee /etc/sysctl.d/99-tailscale.conf
+sudo sysctl -p /etc/sysctl.d/99-tailscale.conf
+sudo tailscale set --advertise-exit-node
+```
+
+然后在 Tailscale Admin Console 中批准该机器作为 exit node：
+
+```text
+Machines -> VM-0-5-ubuntu -> Edit route settings -> Use as exit node
+```
+
+### 2. 在 Spark 上启用 Exit Node
+
+在 `spark-c9a7` 上选择韩国出口：
+
+```bash
+sudo tailscale set --exit-node=100.116.142.44 --exit-node-allow-lan-access
+```
+
+验证：
+
+```bash
+tailscale exit-node list
+curl --noproxy "*" -sS https://ipinfo.io/json
+```
+
+期望：
+
+```text
+100.116.142.44 ... selected
+"ip": "43.155.169.6"
+"country": "KR"
+```
+
+### 3. 安装 noVNC 与虚拟桌面依赖
+
+在 Spark 上安装：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  novnc websockify x11vnc xvfb openbox tint2 xterm dbus-x11 scrot epiphany-browser
+```
+
+其中：
+
+- `novnc` / `websockify` 提供浏览器访问入口 `:6080`。
+- `x11vnc` 将 X 桌面暴露为 VNC `:5900`。
+- `xvfb` 提供不依赖物理显示器的虚拟 X 桌面。
+- `openbox` / `tint2` / `xterm` 提供最小可用桌面。
+- `dbus-x11` 提供浏览器所需 DBus 会话工具。
+- `epiphany-browser` 是当前临时浏览器；后续替换为非 Snap Chromium。
+
+### 4. 设置 VNC 密码
+
+```bash
+mkdir -p ~/.vnc
+x11vnc -storepasswd ~/.vnc/passwd
+```
+
+此密码是访问 noVNC 后连接 VNC 桌面时输入的密码，不应写入仓库。
+
+### 5. 创建虚拟桌面启动脚本
+
+`/usr/local/bin/spark-virtual-desktop-start`：
+
+```sh
+#!/bin/sh
+set -eu
+export DISPLAY=:99
+export HOME=/home/archer
+export USER=archer
+export XDG_RUNTIME_DIR=/tmp/spark-runtime-archer
+mkdir -p "$HOME/.cache" "$HOME/.config/openbox" "$XDG_RUNTIME_DIR/at-spi"
+chmod 700 "$XDG_RUNTIME_DIR"
+rm -f /tmp/.X99-lock
+Xvfb :99 -screen 0 1280x800x24 -nolisten tcp >"$HOME/.cache/xvfb-99.log" 2>&1 &
+sleep 2
+exec dbus-run-session -- /bin/sh -lc '
+  export DISPLAY=:99 HOME=/home/archer USER=archer XDG_RUNTIME_DIR=/tmp/spark-runtime-archer
+  mkdir -p "$XDG_RUNTIME_DIR/at-spi" "$HOME/.cache"
+  chmod 700 "$XDG_RUNTIME_DIR"
+  openbox >/home/archer/.cache/openbox-99.log 2>&1 &
+  tint2 >/home/archer/.cache/tint2-99.log 2>&1 &
+  xterm -geometry 100x30+40+60 -title Spark-Virtual-Desktop -e "echo Spark virtual desktop is running.; echo Public IP:; curl --noproxy \"*\" -sS https://ipinfo.io/ip || true; echo; echo Browser: epiphany-browser; bash" >/home/archer/.cache/xterm-99.log 2>&1 &
+  sleep 3
+  epiphany-browser https://www.google.com >/home/archer/.cache/epiphany-99.log 2>&1 &
+  wait
+'
+```
+
+安装：
+
+```bash
+sudo install -m 0755 /tmp/spark-virtual-desktop-start /usr/local/bin/spark-virtual-desktop-start
+```
+
+### 6. 创建 systemd 服务
+
+`/etc/systemd/system/spark-virtual-desktop.service`：
+
+```ini
+[Unit]
+Description=Spark virtual desktop on Xvfb :99
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=archer
+Environment=DISPLAY=:99
+Environment=HOME=/home/archer
+Environment=USER=archer
+Environment=XDG_RUNTIME_DIR=/tmp/spark-runtime-archer
+ExecStart=/usr/local/bin/spark-virtual-desktop-start
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`/etc/systemd/system/x11vnc-spark.service`：
+
+```ini
+[Unit]
+Description=x11vnc for Spark virtual desktop
+After=spark-virtual-desktop.service
+Wants=spark-virtual-desktop.service
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sleep 4
+ExecStart=/usr/bin/x11vnc -display :99 -rfbauth /home/archer/.vnc/passwd -rfbport 5900 -forever -shared -noshm -noxdamage -repeat -o /home/archer/.cache/x11vnc.log
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`/etc/systemd/system/novnc-spark.service`：
+
+```ini
+[Unit]
+Description=noVNC web access for Spark desktop
+After=network-online.target x11vnc-spark.service
+Wants=network-online.target x11vnc-spark.service
+
+[Service]
+Type=simple
+User=archer
+ExecStart=/usr/bin/websockify --web=/usr/share/novnc 0.0.0.0:6080 localhost:5900
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启用并启动：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable spark-virtual-desktop.service x11vnc-spark.service novnc-spark.service
+sudo systemctl restart spark-virtual-desktop.service x11vnc-spark.service novnc-spark.service
+```
+
+### 7. 验证 noVNC URL
+
+Spark 本机验证：
+
+```bash
+curl -I http://127.0.0.1:6080/vnc.html
+ss -ltnp | grep -E ":(5900|6080)"
+DISPLAY=:99 scrot /tmp/spark-virtual-desktop.png
+```
+
+Windows 浏览器访问：
+
+```text
+http://192.168.1.98:6080/vnc.html
+```
+
+浏览器打开后点击 Connect，输入本地运维保存的 VNC 密码。正常画面应包括：
+
+```text
+黑色虚拟桌面背景
+底部 tint2 面板
+左侧 xterm 终端
+浏览器窗口
+```
+
 ## Tailscale Exit Node 配置
 
 韩国出口机器已执行：
