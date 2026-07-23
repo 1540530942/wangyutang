@@ -1,11 +1,13 @@
 [Unit]
 # WonderEchoPro -> audio_interact edge listener (Raspberry Pi / turbopi-01).
 # Poll-daemon: when the audio_interact page sets input_mode=wonderechopro and
-# manual_recording_enabled=true, this records a fixed WAV via arecord and uploads
-# it to /audio_interact/api/audio/segment (ASR -> wake -> robot_sandbox command ->
-# execute -> TTS), then plays the returned TTS on the Pi speaker.
+# manual_recording_enabled=true, this streams mic PCM over WebSocket /ws/audio
+# (server Silero VAD -> ASR -> wake -> robot_sandbox -> streaming TTS) and plays
+# the returned TTS sentence-by-sentence on the Pi speaker. Full duplex: mic keeps
+# streaming during playback with echo cancellation + two-level barge-in.
 #
 # Install on the Pi:
+#   python3 -m pip install -r requirements.txt
 #   sudo cp wonderecho-listener.service /etc/systemd/system/
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now wonderecho-listener.service

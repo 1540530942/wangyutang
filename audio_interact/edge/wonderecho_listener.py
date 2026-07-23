@@ -1,14 +1,22 @@
-"""WonderEchoPro Pi-side listener — WebSocket streaming mode.
+"""WonderEchoPro Pi-side listener — full-duplex via PipeWire echo-cancel (v3).
+
+Instead of grabbing the ALSA card directly (which fought wireplumber and gave a
+useless 0.6 dB speexdsp AEC on this hardware), we route audio through PipeWire's
+WebRTC echo canceller. `module-echo-cancel` exposes a virtual mic `ec_source`
+(echo already removed, ~30 dB on this device) and a virtual speaker `ec_sink`.
 
 Flow:
   poll /api/settings  ->  when manual_recording_enabled + input_mode==wonderechopro
-  ->  arecord raw PCM16 pipe  ->  WebSocket /ws/audio (512-sample chunks, 16 kHz)
-  ->  server Silero VAD cuts sentences  ->  ASR -> wake -> robot_sandbox -> TTS
-  ->  binary TTS WAV frames back  ->  aplay local speaker
+  ->  pw-record ec_source (clean PCM16 16k)  ->  WS /ws/audio (server VAD/ASR/route)
+  ->  streaming TTS WAV chunks back  ->  pw-play each to ec_sink
+  ->  mic stays streaming during TTS (echo cancelled) → true barge-in.
 
-Identical pipeline to browser web-mode.
+Because the upstream is clean even while TTS plays, the server's VAD hears real
+user speech (not echo) and drives barge-in: speech_start/tts_cancel -> kill.
 
-Requirements: websockets>=10 (pip install websockets)
+No speexdsp, no keeper, no half-duplex, no direct ALSA — PipeWire owns the card.
+
+Requirements: websockets>=10; PipeWire with module-echo-cancel (pw-record/pw-play/pactl/wpctl).
 
 Run:
   python3 wonderecho_listener.py --config config.json
@@ -16,40 +24,60 @@ Run:
 from __future__ import annotations
 
 import argparse
+import array
 import asyncio
-import base64
-import io
 import json
-import queue
-import shutil
+import os
 import subprocess
-import sys
 import tempfile
 import threading
 import time
+import queue
 import urllib.error
 import urllib.request
-import wave as wavemod
 from pathlib import Path
 from typing import Any
 
-try:
-    from speexdsp import EchoCanceller as _SpeexEC
-    _SPEEX_AVAILABLE = True
-except ImportError:
-    _SpeexEC = None  # type: ignore
-    _SPEEX_AVAILABLE = False
-
 SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(SCRIPT_DIR))
-
 DEFAULT_CONFIG = SCRIPT_DIR / "config.example.json"
-CHUNK_SAMPLES = 512
-CHUNK_BYTES = CHUNK_SAMPLES * 2  # PCM16 mono
-SETTINGS_POLL_INTERVAL = 3.0
 
-_AEC_FILTER_LENGTH = 4096   # 256 ms at 16 kHz — covers room echo tail
-_AEC_TAIL_FRAMES   = 13     # ~0.8 s of silence after aplay ends
+CHUNK_SAMPLES = 512
+CHUNK_BYTES = CHUNK_SAMPLES * 2          # PCM16 mono
+WAV_HEADER_BYTES = 44                    # pw-record writes a canonical WAV header first
+SETTINGS_POLL_INTERVAL = 3.0
+PROTO_VERSION = 2
+
+EC_SOURCE = "ec_source"
+EC_SINK = "ec_sink"
+# module-echo-cancel load args (validated: WebRTC AEC → ~31 dB ERLE on this card)
+_EC_LOAD_ARGS = [
+    "aec_method=webrtc",
+    f"source_name={EC_SOURCE}",
+    f"sink_name={EC_SINK}",
+    "aec_args=webrtc.extended_filter=1 webrtc.high_pass_filter=1 webrtc.noise_suppression=1 webrtc.gain_control=0",
+]
+ONSET_GRACE_S = 0.5  # ignore barge-in for the first 0.5 s of a turn (AEC convergence)
+# Local barge-in: the AEC leaves ~400 RMS residual echo (robot's own voice), which
+# keeps the server's speech VAD busy so it can't segment a barge-in. So we detect the
+# user locally — their voice on the clean ec_source spikes well above the residual —
+# and kill the TTS; once playback stops the echo vanishes and the server cleanly
+# recognizes the rest of the user's speech.
+BARGEIN_RMS = 3200.0   # above the TTS residual echo (p95 ~2800 at 45% vol), config-tunable
+BARGEIN_FRAMES = 5     # sustained frames (~160 ms) — avoids brief residual spikes
+
+
+def _rms(pcm16: bytes) -> float:
+    a = array.array("h")
+    a.frombytes(pcm16)
+    if not a:
+        return 0.0
+    return (sum(v * v for v in a) / len(a)) ** 0.5
+
+
+def _pw_env() -> dict[str, str]:
+    env = dict(os.environ)
+    env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    return env
 
 
 # ---------------------------------------------------------------------------
@@ -69,132 +97,140 @@ def _get_json(url: str, token: str, timeout: float = 8.0) -> dict[str, Any] | No
         return None
 
 
-def get_cloud_settings(server: str, token: str) -> dict[str, Any]:
+def get_cloud_settings(server: str, token: str) -> dict[str, Any] | None:
+    """Return settings, or None on a failed poll (caller must NOT treat that as
+    manual_recording=False, or a transient network blip would kill the session)."""
     result = _get_json(f"{server.rstrip('/')}/api/settings", token)
     if result is None:
-        return {"manual_recording_enabled": False, "input_mode": "wonderechopro"}
-    return result.get("settings", result) if isinstance(result, dict) else {"manual_recording_enabled": False}
+        return None
+    return result.get("settings", result) if isinstance(result, dict) else None
 
 
 # ---------------------------------------------------------------------------
-# TTS local playback
+# PipeWire helpers
 # ---------------------------------------------------------------------------
 
-def _wav_to_pcm_frames(wav_bytes: bytes) -> list[bytes]:
-    """Strip WAV header and split PCM into CHUNK_BYTES frames."""
+def _ensure_echo_cancel() -> bool:
+    """Load module-echo-cancel if ec_source/ec_sink aren't already present."""
+    env = _pw_env()
     try:
-        with wavemod.open(io.BytesIO(wav_bytes)) as wf:
-            pcm = wf.readframes(wf.getnframes())
-    except Exception:
-        pcm = wav_bytes[44:] if len(wav_bytes) > 44 else b""
-    frames: list[bytes] = []
-    for i in range(0, len(pcm), CHUNK_BYTES):
-        f = pcm[i:i + CHUNK_BYTES]
-        if len(f) < CHUNK_BYTES:
-            f = f + b"\x00" * (CHUNK_BYTES - len(f))
-        frames.append(f)
-    return frames
+        out = subprocess.run(["pactl", "list", "sources", "short"], env=env,
+                             capture_output=True, text=True, timeout=6).stdout
+        if EC_SOURCE in out:
+            return True
+        subprocess.run(["pactl", "load-module", "module-echo-cancel"] + _EC_LOAD_ARGS,
+                       env=env, capture_output=True, timeout=10)
+        time.sleep(1.5)
+        out = subprocess.run(["pactl", "list", "sources", "short"], env=env,
+                             capture_output=True, text=True, timeout=6).stdout
+        ok = EC_SOURCE in out
+        print(f"[INFO] echo-cancel module {'ready' if ok else 'FAILED to load'}", flush=True)
+        return ok
+    except Exception as exc:  # noqa: BLE001
+        print(f"[WARN] ensure_echo_cancel failed: {exc}", flush=True)
+        return False
 
 
-class _AECContext:
-    """Per-session Acoustic Echo Canceller + TTS playback controller."""
+def _real_usb_sink(env: dict[str, str]) -> str | None:
+    try:
+        out = subprocess.run(["pactl", "list", "sinks", "short"], env=env,
+                             capture_output=True, text=True, timeout=6).stdout
+        for line in out.splitlines():
+            parts = line.split("\t")
+            name = parts[1] if len(parts) > 1 else ""
+            if name.startswith("alsa_output") and "usb" in name.lower():
+                return name
+    except Exception:  # noqa: BLE001
+        pass
+    return None
 
-    def __init__(self, sample_rate: int = 16000) -> None:
-        self._sample_rate = sample_rate
-        self._frame_secs = CHUNK_SAMPLES / sample_rate
-        self._ref_q: queue.Queue[bytes] = queue.Queue(maxsize=600)
-        self._play_proc: subprocess.Popen | None = None  # type: ignore[type-arg]
-        # speexdsp AEC (None → fallback to mute-during-TTS)
-        if _SPEEX_AVAILABLE:
-            self._ec = _SpeexEC.create(CHUNK_SAMPLES, _AEC_FILTER_LENGTH, sample_rate)
-        else:
-            self._ec = None
-        self._mute_until: float = 0.0
 
-    def pre_mute(self) -> None:
-        """Brief startup mute to absorb the initial aplay transient before AEC adapts."""
-        self._mute_until = time.time() + 0.5
-
-    def process(self, mic_frame: bytes) -> bytes:
-        """AEC-clean mic frame while TTS plays; raw frame otherwise."""
-        proc = self._play_proc
-        tts_active = proc is not None and proc.poll() is None
-
-        if tts_active:
-            # Startup window: zero mic until aplay output is audible and AEC can track it
-            if time.time() < self._mute_until:
-                return b"\x00" * CHUNK_BYTES
-            if self._ec is not None:
-                try:
-                    ref = self._ref_q.get_nowait()
-                except queue.Empty:
-                    ref = b"\x00" * CHUNK_BYTES
-                return bytes(self._ec.process(mic_frame, ref))
-            # No AEC available: mute throughout TTS to prevent echo loop
-            return b"\x00" * CHUNK_BYTES
-
-        # TTS not playing: enforce brief post-TTS tail silence, then pass raw mic
-        if time.time() < self._mute_until:
-            return b"\x00" * CHUNK_BYTES
-        return mic_frame
-
-    def play_tts(self, wav_bytes: bytes, device: str) -> None:
-        """Play TTS audio; feed it as AEC reference in lock-step. Blocking — call in thread.
-        Caller must call pre_mute() before starting this thread."""
-        print(f"[DEBUG] play_tts called wav={len(wav_bytes)}B device={device!r}", flush=True)
-        player = shutil.which("aplay") or shutil.which("paplay") or ""
-        if not player:
-            print("[WARN] tts_play: no audio player", flush=True)
-            return
-        frames = _wav_to_pcm_frames(wav_bytes)
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as fh:
-            fh.write(wav_bytes)
-            tmp_path = Path(fh.name)
-        cmd = [player, "-q"]
-        if device and Path(player).name == "aplay":
-            cmd.extend(["-D", device])
-        cmd.append(str(tmp_path))
+def apply_speaker_volume(volume_pct: int) -> None:
+    """Master volume = real USB sink volume (PipeWire drives the ALSA mixer)."""
+    env = _pw_env()
+    sink = _real_usb_sink(env)
+    if not sink:
+        return
+    v = max(0, min(150, volume_pct))
+    for cmd in (["pactl", "set-sink-mute", sink, "0"],
+                ["pactl", "set-sink-volume", sink, f"{v}%"]):
         try:
-            self._play_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            if self._ec is not None:
-                # Feed reference frames at real-time pace so AEC stays in sync
-                for frame in frames:
-                    if self._play_proc.poll() is not None:
-                        break  # interrupted
-                    try:
-                        self._ref_q.put(frame, timeout=0.5)
-                    except queue.Full:
-                        pass
-                    time.sleep(self._frame_secs)
-                # Tail silence for echo decay
-                for _ in range(_AEC_TAIL_FRAMES):
-                    try:
-                        self._ref_q.put(b"\x00" * CHUNK_BYTES, timeout=0.1)
-                    except queue.Full:
-                        break
-            try:
-                self._play_proc.wait(timeout=30)
-                print(f"[DEBUG] aplay done rc={self._play_proc.returncode}", flush=True)
-            except subprocess.TimeoutExpired:
-                self._play_proc.kill()
-                print("[DEBUG] aplay timeout killed", flush=True)
-        finally:
-            self._mute_until = time.time() + 0.8  # tail silence after TTS ends
-            self._play_proc = None
-            tmp_path.unlink(missing_ok=True)
+            subprocess.run(cmd, env=env, capture_output=True, timeout=4)
+        except Exception:  # noqa: BLE001
+            pass
 
-    def interrupt(self) -> None:
-        """Kill ongoing TTS playback — only call when mic is NOT muted (real user speech)."""
-        proc = self._play_proc
-        if proc and proc.poll() is None:
-            print("[INFO] TTS interrupted by user speech", flush=True)
-            proc.kill()
-        while not self._ref_q.empty():
-            try:
-                self._ref_q.get_nowait()
-            except queue.Empty:
+
+# ---------------------------------------------------------------------------
+# Playback: one killable pw-play per TTS WAV chunk, to ec_sink
+# ---------------------------------------------------------------------------
+
+class _Playback:
+    def __init__(self) -> None:
+        self._q: queue.Queue[bytes | None] = queue.Queue()
+        self._cur: subprocess.Popen | None = None  # type: ignore[type-arg]
+        self._busy = False
+        self._lock = threading.Lock()
+        self._env = _pw_env()
+        self._stop = False
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    @property
+    def playing(self) -> bool:
+        return self._busy or not self._q.empty()
+
+    def enqueue_wav(self, wav: bytes) -> None:
+        self._q.put(wav)
+
+    def kill(self) -> None:
+        """Barge-in: drop queued chunks and stop the current pw-play immediately."""
+        try:
+            while True:
+                self._q.get_nowait()
+        except queue.Empty:
+            pass
+        with self._lock:
+            p = self._cur
+        if p is not None and p.poll() is None:
+            p.kill()
+
+    def close(self) -> None:
+        self._stop = True
+        self.kill()
+        self._q.put(None)
+        self._thread.join(timeout=2.0)
+
+    def _run(self) -> None:
+        while not self._stop:
+            wav = self._q.get()
+            if wav is None:
                 break
-        self._mute_until = 0.0
+            self._busy = True
+            try:
+                self._play(wav)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[WARN] playback error: {exc}", flush=True)
+            finally:
+                self._busy = False
+
+    def _play(self, wav: bytes) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as fh:
+            fh.write(wav)
+            tmp = fh.name
+        try:
+            print(f"[DBG] pw-play start wav={len(wav)}B", flush=True)
+            p = subprocess.Popen(
+                ["pw-play", "--target", EC_SINK, tmp],
+                env=self._env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            )
+            with self._lock:
+                self._cur = p
+            _, err = p.communicate()
+            print(f"[DBG] pw-play done rc={p.returncode} err={(err or b'')[:80]!r}", flush=True)
+        finally:
+            with self._lock:
+                self._cur = None
+            Path(tmp).unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -217,104 +253,155 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
         print("[ERROR] websockets not installed. Run: pip install websockets", flush=True)
         return
 
+    if not _ensure_echo_cancel():
+        print("[ERROR] echo-cancel unavailable — aborting session", flush=True)
+        await asyncio.sleep(3)
+        return
+
+    apply_speaker_volume(int(config.get("pi_speaker_volume", 80)))
+
     server = str(config.get("server") or "")
     token = str(config.get("token") or "")
     device_id = str(config.get("device_id") or "turbopi-01")
-    tts_device = str(config.get("tts_device") or "")
-    alsa_device = str((config.get("recorder") or {}).get("device") or "")
-
     ws_url = _ws_url(server)
     session_id = f"pi-{int(time.time() * 1000)}"
-
-    arecord_cmd = ["arecord", "-f", "S16_LE", "-r", "16000", "-c", "1", "-t", "raw"]
-    if alsa_device:
-        arecord_cmd += ["-D", alsa_device]
-    arecord_cmd.append("-")
-
     extra_headers = {"X-Audio-Token": token} if token else {}
 
-    print(f"[INFO] WS connect {ws_url} session={session_id}", flush=True)
+    print(f"[INFO] WS connect {ws_url} session={session_id} proto={PROTO_VERSION} (PipeWire ec)", flush=True)
 
-    aec_ctx = _AECContext()
+    playback = _Playback()
+    turn_begin_at = [0.0]  # shared: when the current TTS turn started (onset grace)
+    bargein_rms = float(config.get("bargein_rms", BARGEIN_RMS))
+    bargein_frames = int(config.get("bargein_frames", BARGEIN_FRAMES))
+    # Barge-in during TTS needs the mic upstream to cleanly separate the user's
+    # voice from the robot's echo. On this USB card the AEC residual overlaps user
+    # speech, so energy detection false-triggers — disable to keep clean turn-taking.
+    bargein_enabled = bool(config.get("bargein_enabled", True))
 
-    async with websockets.connect(ws_url, additional_headers=extra_headers, ping_interval=None) as ws:
+    # ping_interval keepalive is essential: through the public gateway the WS can
+    # half-drop silently; without pings the client would block on recv/send forever
+    # and the session would freeze (no logs, no restart). Pings surface the drop as
+    # ConnectionClosed → session ends → _ws_main restarts it.
+    async with websockets.connect(
+        ws_url, additional_headers=extra_headers, ping_interval=20, ping_timeout=20, close_timeout=5,
+    ) as ws:
         await ws.send(json.dumps({
             "type": "start_stream",
             "session_id": session_id,
             "device_id": device_id,
             "sample_rate": 16000,
             "route": True,
+            "proto": PROTO_VERSION,
         }))
 
         while True:
             msg = await asyncio.wait_for(ws.recv(), timeout=10.0)
             if isinstance(msg, str) and json.loads(msg).get("type") == "stream_ready":
-                print("[INFO] stream_ready — streaming audio", flush=True)
+                print("[INFO] stream_ready — streaming clean mic (ec_source)", flush=True)
                 break
 
-        proc = await asyncio.create_subprocess_exec(
-            *arecord_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
+        rec = await asyncio.create_subprocess_exec(
+            "pw-record", "--target", EC_SOURCE, "--rate", "16000",
+            "--channels", "1", "--format", "s16", "-",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+            env=_pw_env(),
         )
 
+        st = {"discarding": False, "barge_run": 0}
+
         async def _recv_loop() -> None:
-            last_turn_had_b64 = False
-            async for msg in ws:
-                if isinstance(msg, bytes) and len(msg) > 0:
-                    # Skip binary frame if tts_audio_base64 already handled for this turn
-                    if not last_turn_had_b64:
-                        aec_ctx.pre_mute()
-                        threading.Thread(target=aec_ctx.play_tts, args=(msg, tts_device), daemon=True).start()
-                    last_turn_had_b64 = False
-                elif isinstance(msg, str):
+            async for m in ws:
+                if isinstance(m, bytes):
+                    if len(m) == 0:
+                        continue  # stream-end sentinel
+                    if st["discarding"]:
+                        continue  # belongs to a cancelled turn
+                    playback.enqueue_wav(m)
+                elif isinstance(m, str):
                     try:
-                        ev = json.loads(msg)
+                        ev = json.loads(m)
                     except json.JSONDecodeError:
                         continue
-                    ev_type = ev.get("type")
-                    if ev_type == "speech_start":
-                        # Only interrupt if mic is unmuted (real user speech, not TTS echo)
-                        if time.time() >= aec_ctx._mute_until:
-                            aec_ctx.interrupt()
-                    elif ev_type == "result":
+                    et = ev.get("type")
+                    if et == "tts_begin":
+                        print("[DBG] tts_begin", flush=True)
+                        st["discarding"] = False
+                        turn_begin_at[0] = time.time()
+                    elif et == "tts_cancel":
+                        print("[DBG] tts_cancel -> kill", flush=True)
+                        playback.kill()
+                        st["discarding"] = True
+                    elif et == "speech_start":
+                        # Server-side barge-in confirmation.
+                        if bargein_enabled and playback.playing and (time.time() - turn_begin_at[0]) > ONSET_GRACE_S:
+                            print("[DBG] speech_start -> barge-in kill", flush=True)
+                            playback.kill()
+                            st["discarding"] = True
+                    elif et == "result":
+                        # A new turn's result always precedes its TTS — accept the
+                        # upcoming audio even if a prior barge-in left discarding set
+                        # and no tts_begin arrives to clear it (proto<2 path).
+                        st["discarding"] = False
                         print(json.dumps({
                             "text": ev.get("text") or "",
                             "tts_text": ev.get("tts_text") or "",
                             "wake": ev.get("wake_status") or "—",
                         }, ensure_ascii=False), flush=True)
-                        tts_b64 = ev.get("tts_audio_base64")
-                        print(f"[DEBUG] tts_b64 present={bool(tts_b64)} tts_text={ev.get('tts_text','')!r}", flush=True)
-                        if tts_b64:
-                            try:
-                                tts_wav = base64.b64decode(tts_b64)
-                                aec_ctx.pre_mute()
-                                threading.Thread(target=aec_ctx.play_tts, args=(tts_wav, tts_device), daemon=True).start()
-                                last_turn_had_b64 = True
-                            except Exception as exc:
-                                print(f"[WARN] tts_play_failed: {exc}", flush=True)
-                        else:
-                            last_turn_had_b64 = False
-                    elif ev_type == "stream_stopped":
+                    elif et == "stream_stopped":
                         break
 
         recv_task = asyncio.create_task(_recv_loop())
 
+        prev_playing = False
         try:
-            assert proc.stdout is not None
+            assert rec.stdout is not None
+            await asyncio.wait_for(rec.stdout.readexactly(WAV_HEADER_BYTES), timeout=10.0)  # skip WAV header
             while True:
-                chunk = await proc.stdout.read(CHUNK_BYTES)
-                if not chunk:
+                try:
+                    # 15 s guard: if the capture stalls (alive but no data) the read
+                    # would block forever; time out so the session restarts.
+                    chunk = await asyncio.wait_for(rec.stdout.readexactly(CHUNK_BYTES), timeout=15.0)
+                except (asyncio.IncompleteReadError, asyncio.TimeoutError):
+                    print("[WARN] capture stalled/ended — restarting session", flush=True)
                     break
-                if len(chunk) < CHUNK_BYTES:
-                    chunk = chunk + b"\x00" * (CHUNK_BYTES - len(chunk))
-                chunk = aec_ctx.process(chunk)
+                # Full duplex: always send the (echo-cancelled) mic upstream.
                 await ws.send(chunk)
+
+                # Local energy barge-in: while TTS plays, a sustained spike above the
+                # residual echo means the user is talking → kill TTS so the server can
+                # then cleanly hear (and recognize) the rest of their speech.
+                if bargein_enabled and playback.playing and (time.time() - turn_begin_at[0]) > ONSET_GRACE_S:
+                    if _rms(chunk) > bargein_rms:
+                        st["barge_run"] += 1
+                        if st["barge_run"] >= bargein_frames:
+                            print("[DBG] local barge-in (energy) -> kill", flush=True)
+                            playback.kill()
+                            st["discarding"] = True
+                            st["barge_run"] = 0
+                    else:
+                        st["barge_run"] = 0
+                else:
+                    st["barge_run"] = 0
+
+                playing_now = playback.playing
+                if playing_now != prev_playing:
+                    prev_playing = playing_now
+                    try:
+                        await ws.send(json.dumps({
+                            "type": "tts_state",
+                            "playing": playing_now,
+                            "ts_ms": int(time.time() * 1000),
+                        }))
+                    except Exception:
+                        pass
         finally:
-            proc.kill()
-            await proc.wait()
             try:
-                await ws.send(json.dumps({"type": "stop_stream"}))
+                rec.kill()
+                await rec.wait()
+            except Exception:
+                pass
+            try:
+                await asyncio.wait_for(ws.send(json.dumps({"type": "stop_stream"})), timeout=3.0)
                 await asyncio.sleep(0.3)
             except Exception:
                 pass
@@ -323,6 +410,7 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
                 await recv_task
             except (asyncio.CancelledError, Exception):
                 pass
+            playback.close()
 
     print("[INFO] WS session ended", flush=True)
 
@@ -335,18 +423,22 @@ async def _ws_main(config: dict[str, Any]) -> None:
     server = str(config.get("server") or "")
     token = str(config.get("token") or "")
     session_task: asyncio.Task[None] | None = None
-    tts_device = str(config.get("tts_device") or "")
-    _last_volume: int = -1  # track last applied pi_speaker_volume
+    _last_volume: int = -1
 
     while True:
         try:
             settings = get_cloud_settings(server, token)
+            if settings is None:
+                # Transient poll failure — keep the current session as-is.
+                await asyncio.sleep(SETTINGS_POLL_INTERVAL)
+                continue
 
-            # Apply Pi speaker volume if server setting changed
             pi_volume = int(settings.get("pi_speaker_volume", 80))
-            if pi_volume != _last_volume:
-                _init_alsa_volume(tts_device, pi_volume)
-                _last_volume = pi_volume
+            config["pi_speaker_volume"] = pi_volume
+            # Re-assert every poll: the PipeWire sink can get muted (wireplumber
+            # then mirrors the mute to the ALSA hardware mixer → silence). Self-heal.
+            apply_speaker_volume(pi_volume)
+            _last_volume = pi_volume
 
             should_run = (
                 str(settings.get("input_mode") or "wonderechopro") == "wonderechopro"
@@ -376,53 +468,8 @@ async def _ws_main(config: dict[str, Any]) -> None:
 # Entry point
 # ---------------------------------------------------------------------------
 
-def _init_alsa_volume(tts_device: str, volume_pct: int = 80) -> None:
-    """Set Speaker playback volume on the TTS card."""
-    if not shutil.which("amixer"):
-        return
-    # Find card index via aplay -l matching the CARD name in tts_device
-    # aplay -l format: "card N: SHORTNAME [LONGNAME], device ..."
-    card_idx: str | None = None
-    if "CARD=" in tts_device:
-        card_name = tts_device.split("CARD=")[1].split(",")[0].lower()
-        try:
-            out = subprocess.run(["aplay", "-l"], capture_output=True, text=True, timeout=3).stdout
-            for line in out.splitlines():
-                if not line.startswith("card "):
-                    continue
-                parts = line.split()
-                # parts[0]="card", parts[1]="N:", parts[2]="SHORTNAME" (may have trailing comma)
-                short_name = parts[2].rstrip(",").lower() if len(parts) > 2 else ""
-                if short_name == card_name:
-                    card_idx = parts[1].rstrip(":")
-                    break
-        except Exception:
-            pass
-    card_arg = ["-c", card_idx] if card_idx else []
-    vol_str = f"{volume_pct}%"
-    for ctrl in ("Speaker Playback Volume", "Speaker", "PCM"):
-        try:
-            r = subprocess.run(
-                ["amixer"] + card_arg + ["sset", ctrl, vol_str, "on"],
-                capture_output=True, timeout=3,
-            )
-            if r.returncode == 0:
-                print(f"[INFO] ALSA '{ctrl}' {vol_str} on card={card_idx or 'default'}", flush=True)
-                break
-        except Exception:
-            pass
-    for ctrl in ("Speaker Playback Switch", "Speaker"):
-        try:
-            subprocess.run(
-                ["amixer"] + card_arg + ["sset", ctrl, "on"],
-                capture_output=True, timeout=3,
-            )
-        except Exception:
-            pass
-
-
 def main() -> int:
-    parser = argparse.ArgumentParser(description="WonderEchoPro Pi-side listener.")
+    parser = argparse.ArgumentParser(description="WonderEchoPro Pi-side listener (PipeWire echo-cancel).")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     args = parser.parse_args()
 
@@ -430,8 +477,10 @@ def main() -> int:
         print(f"[ERROR] config not found: {args.config}", flush=True)
         return 1
 
+    os.environ.setdefault("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
     config = json.loads(args.config.read_text(encoding="utf-8"))
-    _init_alsa_volume(str(config.get("tts_device") or ""))
+    _ensure_echo_cancel()
+    apply_speaker_volume(int(config.get("pi_speaker_volume", 80)))
     asyncio.run(_ws_main(config))
     return 0
 

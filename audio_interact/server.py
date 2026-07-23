@@ -80,6 +80,10 @@ SILERO_START_FRAMES = int(os.getenv("SILERO_START_FRAMES", "3"))
 SILERO_END_FRAMES = int(os.getenv("SILERO_END_FRAMES", "20"))
 SILERO_PRE_FRAMES = int(os.getenv("SILERO_PRE_FRAMES", "8"))
 SILERO_MAX_SECONDS = float(os.getenv("SILERO_MAX_SECONDS", "12"))
+# Barge-in profile: while TTS is playing on the Pi, mic picks up residual echo,
+# so require a higher speech probability + longer onset before firing speech_start.
+SILERO_BARGEIN_THRESHOLD = float(os.getenv("SILERO_BARGEIN_THRESHOLD", "0.70"))
+SILERO_BARGEIN_START_FRAMES = int(os.getenv("SILERO_BARGEIN_START_FRAMES", "5"))
 
 # Audio file storage (P3)
 from settings import DATA_DIR as _SETTINGS_DATA_DIR
@@ -207,6 +211,22 @@ def health() -> dict[str, Any]:
     }
 
 
+@dataclass
+class _TurnState:
+    """One queued utterance flowing through ASR -> route -> TTS off the recv loop.
+
+    `cancelled` is flipped by a barge-in; the TTS stage checks it before every
+    send so an interrupted turn stops emitting audio without unwinding actions
+    that were already dispatched during routing.
+    """
+    gen: int
+    wav_bytes: bytes
+    vad_start: float | None = None
+    vad_end: float | None = None
+    reason: str | None = None
+    cancelled: bool = False
+
+
 @app.websocket("/ws/audio")
 async def audio_ws(websocket: WebSocket) -> None:
     await websocket.accept()
@@ -219,6 +239,36 @@ async def audio_ws(websocket: WebSocket) -> None:
     session_utterances: list[dict[str, Any]] = []
     pending_start: float | None = None
     route_enabled = True  # web模式 dispatches actions; VAD_ASR_TTS debug does ASR-only
+    proto = 1             # start_stream may bump to 2 (streaming TTS + tts_state)
+
+    # --- full-duplex turn pipeline (P0-A) -------------------------------------
+    # The recv loop only feeds VAD and emits events; ASR/route/TTS for each
+    # utterance run in a background worker so a multi-second turn never stalls
+    # ingestion — the pre-condition for sub-second barge-in.
+    send_lock = asyncio.Lock()
+    turn_queue: asyncio.Queue[_TurnState] = asyncio.Queue()
+    worker_task: asyncio.Task[None] | None = None
+    turn_gen = 0
+    current_turn: _TurnState | None = None
+    server_tts_sending = False   # server is streaming TTS bytes right now
+    pi_tts_playing = False       # Pi reports its speaker is active (covers playback tail)
+
+    async def _send_text(payload: str) -> None:
+        async with send_lock:
+            await websocket.send_text(payload)
+
+    async def _send_bytes(payload: bytes) -> None:
+        async with send_lock:
+            await websocket.send_bytes(payload)
+
+    def _refresh_tts_active() -> None:
+        # VAD switches to the echo-resistant profile whenever audio is on the wire
+        # or still coming out of the Pi speaker.
+        if stream_vad is not None:
+            stream_vad.tts_active = server_tts_sending or pi_tts_playing
+
+    def _tts_playing() -> bool:
+        return server_tts_sending or pi_tts_playing
 
     def flush_session() -> str | None:
         nonlocal session_full, session_utterances, pending_start
@@ -233,6 +283,143 @@ async def audio_ws(websocket: WebSocket) -> None:
         pending_start = None
         return rel
 
+    def _broadcast_result(result: dict[str, Any]) -> None:
+        _sse_broadcast(json.dumps({
+            "type": "result",
+            "text": result.get("text", ""),
+            "wake_status": result.get("wake_status", ""),
+            "skill_id": result.get("skill_id", ""),
+            "tts_text": result.get("tts_text", ""),
+            "status": result.get("status", ""),
+        }, ensure_ascii=False))
+
+    async def _stream_tts(text: str, ts: _TurnState, turn_idx: int) -> None:
+        """proto>=2: synth sentence-by-sentence and push each WAV chunk immediately.
+
+        Stops as soon as ts.cancelled flips (barge-in). The upstream synth thread
+        finishes on its own in the background; we simply stop reading/forwarding.
+        """
+        nonlocal server_tts_sending
+        loop = asyncio.get_running_loop()
+        q: asyncio.Queue[bytes | BaseException | None] = asyncio.Queue()
+
+        def _produce() -> None:
+            try:
+                for chunk in _iter_tts_stream(text):
+                    loop.call_soon_threadsafe(q.put_nowait, chunk)
+            except Exception as exc:  # noqa: BLE001
+                loop.call_soon_threadsafe(q.put_nowait, exc)
+            finally:
+                loop.call_soon_threadsafe(q.put_nowait, None)
+
+        await _send_text(json.dumps({"type": "tts_begin", "turn": ts.gen, "session_id": session_id}, ensure_ascii=False))
+        server_tts_sending = True
+        _refresh_tts_active()
+        tts_started = time.time()
+        first_chunk = True
+        asyncio.ensure_future(loop.run_in_executor(None, _produce))
+        try:
+            while True:
+                if ts.cancelled:
+                    break
+                item = await q.get()
+                if item is None:
+                    break
+                if isinstance(item, BaseException):
+                    print(f"[WARN] ws_tts_stream_failed: {item}", flush=True)
+                    break
+                if ts.cancelled:
+                    break
+                if first_chunk:
+                    first_chunk = False
+                    _tts_timing_store[f"{session_id}:{turn_idx}"] = int((time.time() - tts_started) * 1000)
+                await _send_bytes(item)
+            if not ts.cancelled:
+                await _send_bytes(b"")  # stream-end sentinel
+        finally:
+            server_tts_sending = False
+            _refresh_tts_active()
+
+    async def _run_turn(ts: _TurnState) -> None:
+        nonlocal current_turn
+        current_turn = ts
+        try:
+            turn_idx = len(session_utterances)
+            await _send_text(json.dumps(
+                {"type": "asr_started", "session_id": session_id, "device_id": device_id},
+                ensure_ascii=False,
+            ))
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, _process, ts.wav_bytes, device_id, session_id, route_enabled)
+            result["streaming_vad"] = "silero"
+            tts_text = result.get("tts_text", "")
+
+            if proto < 2:
+                # Legacy path: full synth, base64 in result + one binary frame.
+                tts_bytes_ready: bytes | None = None
+                if tts_text and TTS_URL:
+                    try:
+                        tts_bytes_ready = await loop.run_in_executor(None, _fetch_tts_audio, tts_text)
+                        result["tts_audio_base64"] = base64.b64encode(tts_bytes_ready).decode("ascii")
+                    except Exception as exc:  # noqa: BLE001
+                        print(f"[WARN] ws_tts_failed: {exc}", flush=True)
+                await _send_text(json.dumps(result, ensure_ascii=False))
+                _broadcast_result(result)
+                if tts_bytes_ready and not ts.cancelled:
+                    try:
+                        await _send_bytes(tts_bytes_ready)
+                        await _send_bytes(b"")
+                    except Exception:
+                        pass
+            else:
+                # Streaming path: result carries no audio; TTS follows as binary frames.
+                await _send_text(json.dumps(result, ensure_ascii=False))
+                _broadcast_result(result)
+                if tts_text and TTS_URL and not ts.cancelled:
+                    await _stream_tts(tts_text, ts, turn_idx)
+
+            session_utterances.append({
+                "index": turn_idx,
+                "vad_start_seconds": ts.vad_start,
+                "vad_end_seconds": ts.vad_end,
+                "reason": ts.reason,
+                "text": result.get("text", ""),
+                "wake_status": result.get("wake_status", ""),
+                "skill_id": result.get("skill_id", ""),
+                "status": result.get("status", ""),
+                "action_task": result.get("action_task"),
+                "tts_text": result.get("tts_text", ""),
+                "action_error": result.get("action_error", ""),
+                "envelope_id": result.get("envelope_id", ""),
+                "asr_elapsed_ms": result.get("asr_elapsed_ms"),
+                "route_elapsed_ms": result.get("route_elapsed_ms"),
+                "barged_in": ts.cancelled,
+            })
+        finally:
+            current_turn = None
+
+    async def _turn_worker() -> None:
+        while True:
+            ts = await turn_queue.get()
+            try:
+                await _run_turn(ts)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[WARN] turn_worker_failed: {exc}", flush=True)
+            finally:
+                turn_queue.task_done()
+
+    def _enqueue_turn(wav_bytes: bytes, vad_end: float | None, reason: str | None) -> None:
+        nonlocal turn_gen, pending_start
+        turn_gen += 1
+        turn_queue.put_nowait(_TurnState(
+            gen=turn_gen,
+            wav_bytes=wav_bytes,
+            vad_start=pending_start,
+            vad_end=vad_end,
+            reason=reason,
+        ))
+        pending_start = None
+
     try:
         while True:
             msg = await websocket.receive()
@@ -245,66 +432,24 @@ async def audio_ws(websocket: WebSocket) -> None:
                     session_full.extend(msg["bytes"])  # keep the full, un-truncated stream
                     events = stream_vad.feed(msg["bytes"])
                     for event in events:
-                        if event.get("type") == "speech_start":
+                        etype = event.get("type")
+                        if etype == "speech_start":
                             pending_start = event.get("offset_seconds")
-                            await websocket.send_text(json.dumps(event, ensure_ascii=False))
-                        elif event.get("type") == "speech_end" and event.get("wav_bytes"):
-                            wav_bytes = event.pop("wav_bytes")
-                            end_offset = event.get("offset_seconds")
-                            await websocket.send_text(json.dumps(event, ensure_ascii=False))
-                            await websocket.send_text(
-                                json.dumps(
-                                    {"type": "asr_started", "session_id": session_id, "device_id": device_id},
+                            await _send_text(json.dumps(event, ensure_ascii=False))
+                            # Barge-in: only fire while TTS is actually playing. Speech
+                            # during ASR/route is a follow-up, not an interruption.
+                            if current_turn is not None and _tts_playing():
+                                current_turn.cancelled = True
+                                await _send_text(json.dumps(
+                                    {"type": "tts_cancel", "session_id": session_id, "turn": current_turn.gen},
                                     ensure_ascii=False,
-                                )
-                            )
-                            loop = asyncio.get_event_loop()
-                            result = await loop.run_in_executor(None, _process, wav_bytes, device_id, session_id, route_enabled)
-                            result["streaming_vad"] = "silero"
-                            tts_text = result.get("tts_text", "")
-                            tts_bytes_ready: bytes | None = None
-                            if tts_text and TTS_URL:
-                                try:
-                                    tts_bytes_ready = await loop.run_in_executor(None, _fetch_tts_audio, tts_text)
-                                    result["tts_audio_base64"] = base64.b64encode(tts_bytes_ready).decode("ascii")
-                                except Exception as exc:
-                                    print(f"[WARN] ws_tts_failed: {exc}", flush=True)
-                            await websocket.send_text(json.dumps(result, ensure_ascii=False))
-                            _sse_broadcast(json.dumps({
-                                "type": "result",
-                                "text": result.get("text", ""),
-                                "wake_status": result.get("wake_status", ""),
-                                "skill_id": result.get("skill_id", ""),
-                                "tts_text": result.get("tts_text", ""),
-                                "status": result.get("status", ""),
-                            }, ensure_ascii=False))
-                            if tts_bytes_ready:
-                                try:
-                                    await websocket.send_bytes(tts_bytes_ready)
-                                    await websocket.send_bytes(b"")
-                                except Exception:
-                                    pass
-                            # record this utterance's VAD window + ASR/command outcome
-                            turn_idx = len(session_utterances)
-                            session_utterances.append({
-                                "index": turn_idx,
-                                "vad_start_seconds": pending_start,
-                                "vad_end_seconds": end_offset,
-                                "reason": event.get("reason"),
-                                "text": result.get("text", ""),
-                                "wake_status": result.get("wake_status", ""),
-                                "skill_id": result.get("skill_id", ""),
-                                "status": result.get("status", ""),
-                                "action_task": result.get("action_task"),
-                                "tts_text": result.get("tts_text", ""),
-                                "action_error": result.get("action_error", ""),
-                                "envelope_id": result.get("envelope_id", ""),
-                                "asr_elapsed_ms": result.get("asr_elapsed_ms"),
-                                "route_elapsed_ms": result.get("route_elapsed_ms"),
-                            })
-                            pending_start = None
+                                ))
+                        elif etype == "speech_end" and event.get("wav_bytes"):
+                            wav_bytes = event.pop("wav_bytes")
+                            await _send_text(json.dumps(event, ensure_ascii=False))
+                            _enqueue_turn(wav_bytes, event.get("offset_seconds"), event.get("reason"))
                         else:
-                            await websocket.send_text(json.dumps(event, ensure_ascii=False))
+                            await _send_text(json.dumps(event, ensure_ascii=False))
                 else:
                     audio_buf.extend(msg["bytes"])
 
@@ -317,66 +462,66 @@ async def audio_ws(websocket: WebSocket) -> None:
                     device_id = str(frame.get("device_id") or device_id)
                     stream_vad = None
                     audio_buf.clear()
-                    await websocket.send_text(json.dumps({"type": "ready", "session_id": session_id}))
+                    await _send_text(json.dumps({"type": "ready", "session_id": session_id}))
 
                 elif frame_type == "start_stream":
                     session_id = str(frame.get("session_id") or session_id)
                     device_id = str(frame.get("device_id") or device_id)
                     route_enabled = bool(frame.get("route", True))
+                    proto = int(frame.get("proto") or 1)
                     sample_rate = int(frame.get("sample_rate") or STREAM_SAMPLE_RATE)
                     if sample_rate != STREAM_SAMPLE_RATE:
-                        await websocket.send_text(
-                            json.dumps(
-                                {
-                                    "type": "error",
-                                    "stage": "vad",
-                                    "message": f"stream sample_rate must be {STREAM_SAMPLE_RATE}",
-                                    "session_id": session_id,
-                                },
-                                ensure_ascii=False,
-                            )
-                        )
+                        await _send_text(json.dumps(
+                            {
+                                "type": "error",
+                                "stage": "vad",
+                                "message": f"stream sample_rate must be {STREAM_SAMPLE_RATE}",
+                                "session_id": session_id,
+                            },
+                            ensure_ascii=False,
+                        ))
                         continue
                     try:
                         stream_vad = StreamingSileroVad(session_id=session_id, device_id=device_id)
                     except Exception as exc:
-                        await websocket.send_text(
-                            json.dumps(
-                                {
-                                    "type": "error",
-                                    "stage": "vad",
-                                    "message": str(exc),
-                                    "session_id": session_id,
-                                },
-                                ensure_ascii=False,
-                            )
-                        )
-                        continue
-                    audio_buf.clear()
-                    await websocket.send_text(
-                        json.dumps(
+                        await _send_text(json.dumps(
                             {
-                                "type": "stream_ready",
+                                "type": "error",
+                                "stage": "vad",
+                                "message": str(exc),
                                 "session_id": session_id,
-                                "device_id": device_id,
-                                "vad": "silero",
-                                "sample_rate": STREAM_SAMPLE_RATE,
                             },
                             ensure_ascii=False,
-                        )
-                    )
+                        ))
+                        continue
+                    audio_buf.clear()
+                    if worker_task is None or worker_task.done():
+                        worker_task = asyncio.create_task(_turn_worker())
+                    await _send_text(json.dumps(
+                        {
+                            "type": "stream_ready",
+                            "session_id": session_id,
+                            "device_id": device_id,
+                            "vad": "silero",
+                            "sample_rate": STREAM_SAMPLE_RATE,
+                            "proto": proto,
+                        },
+                        ensure_ascii=False,
+                    ))
+
+                elif frame_type == "tts_state":
+                    pi_tts_playing = bool(frame.get("playing"))
+                    _refresh_tts_active()
 
                 elif frame_type == "end":
                     if not audio_buf:
-                        await websocket.send_text(
-                            json.dumps(
-                                {
-                                    "type": "error",
-                                    "message": "no audio received",
-                                    "session_id": session_id,
-                                }
-                            )
-                        )
+                        await _send_text(json.dumps(
+                            {
+                                "type": "error",
+                                "message": "no audio received",
+                                "session_id": session_id,
+                            }
+                        ))
                         continue
 
                     wav_bytes = bytes(audio_buf)
@@ -391,19 +536,12 @@ async def audio_ws(websocket: WebSocket) -> None:
                             result["tts_audio_base64"] = base64.b64encode(tts_bytes_ready).decode("ascii")
                         except Exception as exc:
                             print(f"[WARN] ws_tts_failed: {exc}", flush=True)
-                    await websocket.send_text(json.dumps(result, ensure_ascii=False))
-                    _sse_broadcast(json.dumps({
-                        "type": "result",
-                        "text": result.get("text", ""),
-                        "wake_status": result.get("wake_status", ""),
-                        "skill_id": result.get("skill_id", ""),
-                        "tts_text": result.get("tts_text", ""),
-                        "status": result.get("status", ""),
-                    }, ensure_ascii=False))
+                    await _send_text(json.dumps(result, ensure_ascii=False))
+                    _broadcast_result(result)
                     if tts_bytes_ready:
                         try:
-                            await websocket.send_bytes(tts_bytes_ready)
-                            await websocket.send_bytes(b"")
+                            await _send_bytes(tts_bytes_ready)
+                            await _send_bytes(b"")
                         except Exception:
                             pass
 
@@ -412,50 +550,26 @@ async def audio_ws(websocket: WebSocket) -> None:
                         final_wav = stream_vad.finish()
                         stream_vad = None
                         if final_wav:
-                            await websocket.send_text(
-                                json.dumps(
-                                    {"type": "asr_started", "session_id": session_id, "device_id": device_id},
-                                    ensure_ascii=False,
-                                )
-                            )
-                            loop = asyncio.get_event_loop()
-                            result = await loop.run_in_executor(None, _process, final_wav, device_id, session_id, route_enabled)
-                            result["streaming_vad"] = "silero"
-                            tts_text = result.get("tts_text", "")
-                            tts_bytes_ready = None
-                            if tts_text and TTS_URL:
-                                try:
-                                    tts_bytes_ready = await loop.run_in_executor(None, _fetch_tts_audio, tts_text)
-                                    result["tts_audio_base64"] = base64.b64encode(tts_bytes_ready).decode("ascii")
-                                except Exception as exc:
-                                    print(f"[WARN] ws_tts_failed: {exc}", flush=True)
-                            await websocket.send_text(json.dumps(result, ensure_ascii=False))
-                            _sse_broadcast(json.dumps({
-                                "type": "result",
-                                "text": result.get("text", ""),
-                                "wake_status": result.get("wake_status", ""),
-                                "skill_id": result.get("skill_id", ""),
-                                "tts_text": result.get("tts_text", ""),
-                                "status": result.get("status", ""),
-                            }, ensure_ascii=False))
-                            if tts_bytes_ready:
-                                try:
-                                    await websocket.send_bytes(tts_bytes_ready)
-                                    await websocket.send_bytes(b"")
-                                except Exception:
-                                    pass
+                            _enqueue_turn(final_wav, None, "stop_stream")
+                    # Drain all queued turns so their results land before stream_stopped.
+                    await turn_queue.join()
                     saved = flush_session()
-                    await websocket.send_text(json.dumps({"type": "stream_stopped", "session_id": session_id, "recording": saved}))
+                    await _send_text(json.dumps({"type": "stream_stopped", "session_id": session_id, "recording": saved}))
 
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
+        if worker_task is not None:
+            worker_task.cancel()
+            try:
+                await worker_task
+            except (asyncio.CancelledError, Exception):
+                pass
         # Persist the full session recording even if the client just disconnected.
         try:
             flush_session()
         except Exception:
             pass
-
 
 def load_silero_vad() -> tuple[Any, Any]:
     global SILERO_TORCH, SILERO_VAD_MODEL
@@ -494,6 +608,9 @@ class StreamingSileroVad:
     speaking: bool = False
     started_at: float = 0.0
     total_frames: int = 0
+    # Set True by the connection while TTS is being sent / played back on the Pi,
+    # so onset detection switches to the echo-resistant barge-in profile.
+    tts_active: bool = False
 
     def __post_init__(self) -> None:
         self.torch, self.model = load_silero_vad()
@@ -520,7 +637,10 @@ class StreamingSileroVad:
 
     def _consume_frame(self, frame: bytes) -> list[dict[str, Any]]:
         probability = self._speech_probability(frame)
-        is_speech = probability >= SILERO_THRESHOLD
+        # Echo-resistant profile while TTS plays; normal profile when idle.
+        threshold = SILERO_BARGEIN_THRESHOLD if self.tts_active else SILERO_THRESHOLD
+        start_frames = SILERO_BARGEIN_START_FRAMES if self.tts_active else SILERO_START_FRAMES
+        is_speech = probability >= threshold
         self.total_frames += 1
         now_offset = self.total_frames * self.frame_samples / self.sample_rate
         events: list[dict[str, Any]] = [
@@ -536,7 +656,7 @@ class StreamingSileroVad:
         if not self.speaking:
             self.pre_frames.append(frame)
             self.speech_count = self.speech_count + 1 if is_speech else 0
-            if self.speech_count >= SILERO_START_FRAMES:
+            if self.speech_count >= start_frames:
                 self.speaking = True
                 self.started_at = time.time()
                 self.speech_frames = list(self.pre_frames)
@@ -547,7 +667,7 @@ class StreamingSileroVad:
                         "session_id": self.session_id,
                         "device_id": self.device_id,
                         "probability": round(probability, 4),
-                        "offset_seconds": round(max(0.0, now_offset - SILERO_START_FRAMES * self.frame_samples / self.sample_rate), 3),
+                        "offset_seconds": round(max(0.0, now_offset - start_frames * self.frame_samples / self.sample_rate), 3),
                     }
                 )
             return events
@@ -639,40 +759,6 @@ def _iter_tts_stream(text: str, *, voice: str | None = None, instructions: str |
                     break
                 yield buf[4 : 4 + length]
                 buf = buf[4 + length :]
-
-
-async def _push_tts(ws: WebSocket, text: str, session_id: str = "", turn_idx: int = -1) -> None:
-    """流式 TTS：每句生成完立即推给 WebSocket 客户端，首句到达即记录耗时。"""
-    tts_started = time.time()
-    first_chunk = True
-    loop = asyncio.get_running_loop()
-    q: asyncio.Queue[bytes | BaseException | None] = asyncio.Queue()
-
-    def _produce() -> None:
-        try:
-            for chunk in _iter_tts_stream(text):
-                loop.call_soon_threadsafe(q.put_nowait, chunk)
-        except Exception as exc:
-            loop.call_soon_threadsafe(q.put_nowait, exc)
-        finally:
-            loop.call_soon_threadsafe(q.put_nowait, None)
-
-    try:
-        asyncio.ensure_future(loop.run_in_executor(None, _produce))
-        while True:
-            item = await q.get()
-            if item is None:
-                break
-            if isinstance(item, BaseException):
-                raise item
-            if first_chunk:
-                first_chunk = False
-                if session_id and turn_idx >= 0:
-                    _tts_timing_store[f"{session_id}:{turn_idx}"] = int((time.time() - tts_started) * 1000)
-            await ws.send_bytes(item)
-        await ws.send_bytes(b"")  # 通知客户端流式结束
-    except Exception as exc:
-        print(f"[WARN] tts_failed: {exc}", flush=True)
 
 
 def _process(wav_bytes: bytes, device_id: str, session_id: str, route_action: bool = True) -> dict[str, Any]:
