@@ -1,0 +1,129 @@
+name: Deploy audio_interact Pi edge listener
+
+# The tang deploy-modules pipeline only updates the cloud containers. This one
+# ships the WonderEchoPro Pi-side listener (audio_interact/edge) to the Raspberry
+# Pi, reached via ProxyJump through the Tencent host (same pattern as
+# deploy-action-move). Best-effort: a Pi that is offline (Tailscale) only warns.
+# config.json on the Pi is never touched — only code + service + deps.
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - "feature/**"
+      - "codex/**"
+    paths:
+      - "audio_interact/edge/**"
+      - ".github/workflows/deploy-audio-edge.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy-pi-edge:
+    runs-on: ubuntu-latest
+    env:
+      TENCENT_HOST: ${{ secrets.TENCENT_HOST }}
+      TENCENT_USER: ${{ secrets.TENCENT_USER }}
+      TENCENT_SSH_PRIVATE_KEY: ${{ secrets.TENCENT_SSH_PRIVATE_KEY }}
+      PI_HOST: ${{ secrets.PI_HOST }}
+      PI_USER: ${{ secrets.PI_USER }}
+      PI_SSH_PRIVATE_KEY: ${{ secrets.PI_SSH_PRIVATE_KEY }}
+      PI_PORT: ${{ secrets.PI_PORT || '10022' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check secrets
+        id: check
+        run: |
+          if [ -n "$TENCENT_HOST" ] && [ -n "$TENCENT_SSH_PRIVATE_KEY" ] \
+             && [ -n "$PI_HOST" ] && [ -n "$PI_USER" ] && [ -n "$PI_SSH_PRIVATE_KEY" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Pi/Tencent secrets not fully configured; skipping Pi edge deploy."
+          fi
+
+      - name: Syntax check listener
+        if: steps.check.outputs.ready == 'true'
+        run: python3 -m py_compile audio_interact/edge/wonderecho_listener.py audio_interact/edge/aec_probe.py
+
+      - name: Configure SSH
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$TENCENT_SSH_PRIVATE_KEY" > ~/.ssh/tencent_key
+          chmod 600 ~/.ssh/tencent_key
+          printf '%s\n' "$PI_SSH_PRIVATE_KEY" > ~/.ssh/pi_key
+          chmod 600 ~/.ssh/pi_key
+          {
+            echo "Host tencent-prod"
+            echo "  HostName $TENCENT_HOST"
+            echo "  User $TENCENT_USER"
+            echo "  IdentityFile ~/.ssh/tencent_key"
+            echo "  StrictHostKeyChecking accept-new"
+            echo "Host pi-edge"
+            echo "  HostName $PI_HOST"
+            echo "  User $PI_USER"
+            echo "  Port $PI_PORT"
+            echo "  IdentityFile ~/.ssh/pi_key"
+            echo "  ProxyJump tencent-prod"
+            echo "  StrictHostKeyChecking accept-new"
+          } > ~/.ssh/config
+
+      - name: Deploy listener to Pi
+        if: steps.check.outputs.ready == 'true'
+        id: pi_deploy
+        continue-on-error: true
+        run: |
+          retry_pi() {
+            local attempt
+            for attempt in 1 2 3; do
+              if "$@"; then return 0; fi
+              echo "Pi command failed on attempt ${attempt}; retrying..."
+              sleep $((attempt * 10))
+            done
+            "$@"
+          }
+          ssh_opts=(-o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
+          tar -czf audio-edge-${GITHUB_SHA}.tgz -C audio_interact/edge \
+            wonderecho_listener.py aec_probe.py requirements.txt wonderecho-listener.service
+          retry_pi scp "${ssh_opts[@]}" audio-edge-${GITHUB_SHA}.tgz pi-edge:/tmp/audio-edge-${GITHUB_SHA}.tgz
+          retry_pi ssh "${ssh_opts[@]}" pi-edge "bash -s -- '${GITHUB_SHA}'" <<'SH'
+          set -euo pipefail
+          commit_sha="${1:?commit sha required}"
+          archive="/tmp/audio-edge-${commit_sha}.tgz"
+          work="/tmp/audio_edge_deploy_${commit_sha}"
+          dest="/home/pi/audio_interact_edge"
+
+          rm -rf "$work"
+          mkdir -p "$work"
+          tar -xzf "$archive" -C "$work"
+
+          # Code + tool (config.json is intentionally NOT overwritten)
+          install -d -o pi -g pi "$dest"
+          install -m 0644 -o pi -g pi "$work/wonderecho_listener.py" "$dest/wonderecho_listener.py"
+          install -m 0644 -o pi -g pi "$work/aec_probe.py" "$dest/aec_probe.py"
+          python3 -m py_compile "$dest/wonderecho_listener.py"
+
+          # Dependencies (idempotent; PEP668 needs --break-system-packages on Pi OS)
+          python3 -m pip install --break-system-packages -r "$work/requirements.txt" >/dev/null 2>&1 \
+            || python3 -m pip install -r "$work/requirements.txt" >/dev/null 2>&1 || true
+
+          # Systemd unit + restart
+          sudo install -m 0644 "$work/wonderecho-listener.service" /etc/systemd/system/wonderecho-listener.service
+          printf 'commit_sha=%s\n%s\n' "$commit_sha" "$(date -Is)" > "$dest/RELEASE_INFO"
+          chown pi:pi "$dest/RELEASE_INFO"
+          sudo systemctl daemon-reload
+          sudo systemctl enable wonderecho-listener.service
+          sudo systemctl restart wonderecho-listener.service
+          sleep 3
+          systemctl is-active --quiet wonderecho-listener.service
+
+          rm -rf "$work" "$archive"
+          echo "Pi edge deploy OK: ${commit_sha}"
+          SH
+
+      - name: Warn if Pi offline
+        if: steps.check.outputs.ready == 'true' && steps.pi_deploy.outcome == 'failure'
+        run: echo "::warning::Pi edge deploy failed — Pi may be offline (Tailscale). Re-run this workflow when the Pi is online."
