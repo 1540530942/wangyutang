@@ -9,6 +9,7 @@ docs live under each module (e.g. `robot_sandbox/docs/`, `pi5_robot/docs/`,
 - [audio-interact-robot-sandbox-design.md](audio-interact-robot-sandbox-design.md) — split architecture of the voice pipeline
 - [audio-interact-robot-sandbox-implementation-plan.md](audio-interact-robot-sandbox-implementation-plan.md) — P1–P5 plan with acceptance criteria
 - [audio-interact-golden-sessions.md](audio-interact-golden-sessions.md) — session-shaped golden data, dashboard compatibility, and layered CI guards
+- [audio-interact-fullduplex-golden-spec.md](audio-interact-fullduplex-golden-spec.md) — required full-duplex/barge-in golden data, labels, events, and metrics
 - [test-cases-and-expected-results.md](test-cases-and-expected-results.md) — verified test cases with real results
 
 ## Migrations
@@ -17,6 +18,7 @@ docs live under each module (e.g. `robot_sandbox/docs/`, `pi5_robot/docs/`,
 
 ## Audits & reviews
 
+- [project-review-2026-07-27.md](project-review-2026-07-27.md) — current-state re-review: production evidence, security/release risks, full-duplex gaps, and next-generation roadmap
 - [project-review-2026-07-16.md](project-review-2026-07-16.md) — full-project module review: mission, strengths, issues (P0–P2), and 3-phase evolution plan
 - [module-compliance-audit.md](module-compliance-audit.md) — module merge-criteria compliance
 - [module-functional-review-2026-05-26.md](module-functional-review-2026-05-26.md) — cross-module functional review
@@ -27,6 +29,7 @@ docs live under each module (e.g. `robot_sandbox/docs/`, `pi5_robot/docs/`,
 - [git-push-remote-branch.md](git-push-remote-branch.md) — safe push runbook for this repo
 - [github-push-troubleshooting.md](github-push-troubleshooting.md) — git push failure recovery
 - [spark-exit-node-novnc-runbook.md](spark-exit-node-novnc-runbook.md) — Spark Korea exit-node networking and noVNC virtual desktop runbook
+- [korea-novnc-desktop.md](korea-novnc-desktop.md) — public noVNC virtual desktop on VM-0-5 via korea.wangyutang.com (Caddy HTTPS + basic auth, Chrome)
 - [www-wangyutang-cn-fix.md](www-wangyutang-cn-fix.md) — public gateway domain fix
 
 ## Module-specific notes
