@@ -1,6 +1,9 @@
 # GitHub Push Troubleshooting
 
-This note records the Git push failure pattern seen on 2026-05-06 and the recovery steps to use before changing repository state.
+This note records the Git HTTPS failure pattern seen on 2026-05-06 and the
+recovery steps to use before changing repository state. It is historical: the
+current Linux workspace has a GitHub-authorized SSH key and the normal push
+path is documented in [git-push-remote-branch.md](git-push-remote-branch.md).
 
 ## Symptom
 
@@ -25,7 +28,8 @@ At the same time, browser-style HTTPS can still work:
 Invoke-WebRequest -Uri 'https://github.com' -UseBasicParsing -TimeoutSec 20
 ```
 
-SSH may also reach GitHub port 22, but this machine currently does not have a GitHub-authorized SSH key:
+At the time, SSH also reached GitHub port 22 but that Windows machine did not
+have a GitHub-authorized SSH key:
 
 ```text
 git@github.com: Permission denied (publickey).
@@ -96,14 +100,19 @@ git push -u origin feature/llm-manager
 
 Do not switch to SSH while `ssh -T git@github.com` returns `Permission denied (publickey)`.
 
-## Current Known Constraint
+## Current Transport Status
 
-The local machine has SSH keys for other hosts, but not a GitHub-authorized SSH key. HTTPS is therefore the only currently usable Git transport.
+On the current Linux workspace, `origin` uses
+`git@github.com:1540530942/wangyutang.git` and the configured
+`~/.ssh/github_id_ed25519` key successfully pushed `53a1e46` on 2026-07-27.
+Use SSH by default there. The HTTPS guidance in this document applies only when
+working from a machine where SSH has not been authorized or is temporarily
+unavailable.
 
 ## Avoiding Future Stalls
 
 - Keep this runbook linked from incident logs when a push fails.
-- Install and authenticate GitHub CLI if PR or auth diagnostics are needed:
+- Install and authenticate GitHub CLI only if PR or auth diagnostics are needed:
 
 ```powershell
 gh auth status
