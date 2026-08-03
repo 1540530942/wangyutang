@@ -1,0 +1,2 @@
+{"ts_ms":5287,"type":"bargein.commit","segment_id":"seg_002","turn_id":"turn_002","tts_id":"tts_001","cause":"evt_000009","session_id":"fdx-bargein-synthetic-001","event_id":"evt_000010"}
+{"ts_ms":5300,"type":"bargein.tts_cancel_recv","tts_id":"tts_001","session_id":"fdx-bargein-synthetic-001","source":"edge","event_id":"edge_fdx-bargein-synthetic-001_000002"}

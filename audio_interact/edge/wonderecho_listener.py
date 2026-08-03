@@ -97,6 +97,87 @@ def _get_json(url: str, token: str, timeout: float = 8.0) -> dict[str, Any] | No
         return None
 
 
+def _post_json(url: str, token: str, payload: dict[str, Any], timeout: float = 8.0) -> dict[str, Any] | None:
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["X-Audio-Token"] = token
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
+        print(f"[WARN] POST {url} failed: {exc}", flush=True)
+        return None
+
+
+class EdgeJournal:
+    """Append-only Pi-side event ledger on a monotonic clock.
+
+    Records facts only the edge knows — TTS playback start/stop, barge-in kills,
+    capture stalls — durably to disk the instant they happen, then uploads them to
+    the cloud session package on session end. The uplink can drop without losing
+    the cancel_delay / post_cancel_tail evidence, and re-uploads dedup by event_id.
+    """
+
+    def __init__(self, session_id: str, device_id: str, root: Path | None = None) -> None:
+        self.session_id = session_id
+        self.device_id = device_id
+        self._t0 = time.monotonic()
+        self._seq = 0
+        self._pending: list[dict[str, Any]] = []
+        self._lock = threading.Lock()
+        base = Path(root or (SCRIPT_DIR / "edge_journal"))
+        try:
+            base.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        self.path = base / f"{session_id}.jsonl"
+
+    def now_ms(self) -> int:
+        return max(0, int((time.monotonic() - self._t0) * 1000))
+
+    def emit(self, etype: str, **data: Any) -> dict[str, Any]:
+        with self._lock:
+            self._seq += 1
+            event = {
+                "event_id": f"edge_{self.session_id}_{self._seq:06d}",
+                "ts_ms": self.now_ms(),
+                "type": etype,
+                "session_id": self.session_id,
+                "source": "edge",
+                **data,
+            }
+            self._pending.append(event)
+            try:
+                with self.path.open("a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(event, ensure_ascii=False) + "\n")
+            except OSError:
+                pass
+            return event
+
+    def drain(self) -> list[dict[str, Any]]:
+        with self._lock:
+            out = list(self._pending)
+            self._pending = []
+            return out
+
+
+def upload_edge_journal(server: str, token: str, journal: "EdgeJournal") -> None:
+    events = journal.drain()
+    if not events:
+        return
+    url = f"{server.rstrip('/')}/api/sessions/{journal.session_id}/edge-events"
+    resp = _post_json(url, token, {"events": events})
+    if resp is None:
+        # Uplink failed: put them back so a later attempt (or the next session's
+        # end) can retry. The local JSONL remains as the durable fallback.
+        with journal._lock:
+            journal._pending = events + journal._pending
+    else:
+        print(f"[INFO] edge-events uploaded merged={resp.get('merged')} skipped={resp.get('skipped')}", flush=True)
+
+
 def get_cloud_settings(server: str, token: str) -> dict[str, Any] | None:
     """Return settings, or None on a failed poll (caller must NOT treat that as
     manual_recording=False, or a transient network blip would kill the session)."""
@@ -165,15 +246,25 @@ def apply_speaker_volume(volume_pct: int) -> None:
 # ---------------------------------------------------------------------------
 
 class _Playback:
-    def __init__(self) -> None:
+    def __init__(self, on_event: Any = None) -> None:
         self._q: queue.Queue[bytes | None] = queue.Queue()
         self._cur: subprocess.Popen | None = None  # type: ignore[type-arg]
         self._busy = False
         self._lock = threading.Lock()
         self._env = _pw_env()
         self._stop = False
+        # Called (from the playback thread) with (etype, **data) for play_start /
+        # play_stop so the edge journal can measure post-cancel playback tail.
+        self._on_event = on_event
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
+
+    def _emit(self, etype: str, **data: Any) -> None:
+        if self._on_event is not None:
+            try:
+                self._on_event(etype, **data)
+            except Exception:  # noqa: BLE001
+                pass
 
     @property
     def playing(self) -> bool:
@@ -219,6 +310,7 @@ class _Playback:
             tmp = fh.name
         try:
             print(f"[DBG] pw-play start wav={len(wav)}B", flush=True)
+            self._emit("playback.play_start", bytes=len(wav))
             p = subprocess.Popen(
                 ["pw-play", "--target", EC_SINK, tmp],
                 env=self._env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
@@ -226,6 +318,10 @@ class _Playback:
             with self._lock:
                 self._cur = p
             _, err = p.communicate()
+            rc = p.returncode or 0
+            # pw-play killed by barge-in exits on a signal (negative rc); a clean
+            # play returns 0. This distinguishes tail-cut from natural end.
+            self._emit("playback.play_stop", reason="killed" if rc < 0 else "ended", rc=rc)
             print(f"[DBG] pw-play done rc={p.returncode} err={(err or b'')[:80]!r}", flush=True)
         finally:
             with self._lock:
@@ -269,7 +365,8 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
 
     print(f"[INFO] WS connect {ws_url} session={session_id} proto={PROTO_VERSION} (PipeWire ec)", flush=True)
 
-    playback = _Playback()
+    journal = EdgeJournal(session_id, device_id)
+    playback = _Playback(on_event=journal.emit)
     turn_begin_at = [0.0]  # shared: when the current TTS turn started (onset grace)
     bargein_rms = float(config.get("bargein_rms", BARGEIN_RMS))
     bargein_frames = int(config.get("bargein_frames", BARGEIN_FRAMES))
@@ -327,14 +424,20 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
                         print("[DBG] tts_begin", flush=True)
                         st["discarding"] = False
                         turn_begin_at[0] = time.time()
+                        journal.emit("tts.begin_recv", tts_id=ev.get("tts_id"), turn_id=ev.get("turn_id"))
                     elif et == "tts_cancel":
                         print("[DBG] tts_cancel -> kill", flush=True)
+                        # Mark receipt before killing so post_cancel_tail =
+                        # play_stop − tts.cancel_recv is measurable on the edge clock.
+                        journal.emit("bargein.tts_cancel_recv", tts_id=ev.get("tts_id"), turn_id=ev.get("turn_id"))
                         playback.kill()
                         st["discarding"] = True
                     elif et == "speech_start":
                         # Server-side barge-in confirmation.
                         if bargein_enabled and playback.playing and (time.time() - turn_begin_at[0]) > ONSET_GRACE_S:
                             print("[DBG] speech_start -> barge-in kill", flush=True)
+                            journal.emit("bargein.playback_killed", reason="server_speech_start",
+                                         segment_id=ev.get("segment_id"))
                             playback.kill()
                             st["discarding"] = True
                     elif et == "result":
@@ -353,6 +456,7 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
         recv_task = asyncio.create_task(_recv_loop())
 
         prev_playing = False
+        journal.emit("capture.start", ec_source=EC_SOURCE)
         try:
             assert rec.stdout is not None
             await asyncio.wait_for(rec.stdout.readexactly(WAV_HEADER_BYTES), timeout=10.0)  # skip WAV header
@@ -363,6 +467,7 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
                     chunk = await asyncio.wait_for(rec.stdout.readexactly(CHUNK_BYTES), timeout=15.0)
                 except (asyncio.IncompleteReadError, asyncio.TimeoutError):
                     print("[WARN] capture stalled/ended — restarting session", flush=True)
+                    journal.emit("capture.stall")
                     break
                 # Full duplex: always send the (echo-cancelled) mic upstream.
                 await ws.send(chunk)
@@ -373,8 +478,12 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
                 if bargein_enabled and playback.playing and (time.time() - turn_begin_at[0]) > ONSET_GRACE_S:
                     if _rms(chunk) > bargein_rms:
                         st["barge_run"] += 1
+                        if st["barge_run"] == 1:
+                            journal.emit("bargein.local_duck", rms=round(_rms(chunk), 1))
                         if st["barge_run"] >= bargein_frames:
                             print("[DBG] local barge-in (energy) -> kill", flush=True)
+                            journal.emit("bargein.playback_killed", reason="local_energy",
+                                         rms=round(_rms(chunk), 1))
                             playback.kill()
                             st["discarding"] = True
                             st["barge_run"] = 0
@@ -411,6 +520,18 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
             except (asyncio.CancelledError, Exception):
                 pass
             playback.close()
+            journal.emit("capture.end")
+            # Upload the edge ledger so cancel/tail metrics land in the cloud
+            # session package. Runs off the loop; a failed uplink keeps the local
+            # JSONL and re-queues the events for the next attempt.
+            try:
+                loop = asyncio.get_event_loop()
+                await asyncio.wait_for(
+                    loop.run_in_executor(None, upload_edge_journal, server, token, journal),
+                    timeout=10.0,
+                )
+            except Exception as exc:  # noqa: BLE001
+                print(f"[WARN] edge-events upload failed: {exc}", flush=True)
 
     print("[INFO] WS session ended", flush=True)
 

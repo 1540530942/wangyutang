@@ -1,0 +1,24 @@
+{
+  "session_id": "fdx-bargein-synthetic-001",
+  "tts_segments": [
+    {
+      "tts_id": "tts_001",
+      "turn_id": "turn_001",
+      "text": "好的，我现在往前走",
+      "play_start_ms": 3120,
+      "expected_play_end_ms": 6200,
+      "actual_stop_ms": 5388,
+      "interrupted": true,
+      "stop_reason": "barge_in"
+    },
+    {
+      "tts_id": "tts_002",
+      "turn_id": "turn_002",
+      "text": "好的，停下",
+      "play_start_ms": 7020,
+      "expected_play_end_ms": 8010,
+      "actual_stop_ms": 8010,
+      "interrupted": false
+    }
+  ]
+}

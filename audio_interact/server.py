@@ -20,7 +20,18 @@ from fastapi import Body, FastAPI, File, Form, Header, HTTPException, Request, U
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from runtime.event_logger import EventLogger
+from runtime.id_generator import ordinal_id, safe_id
 from runtime.session_writer import (
+    SessionWriter,
+    emit_bargein_commit,
+    emit_tts_cancel,
+    emit_turn_result,
+    emit_vad_end,
+    emit_vad_start,
+    finalize_streaming_session,
+    open_streaming_journal,
+    seconds_to_ms,
     write_segment_session_package as _write_segment_session_package,
     write_streaming_session_package as _write_streaming_session_package,
 )
@@ -116,7 +127,33 @@ def safe_write_segment_session_package(**kwargs: Any) -> str:
         return ""
 
 
-def save_session_recording(session_id: str, device_id: str, sample_rate: int, full_pcm: bytes, utterances: list[dict[str, Any]]) -> str | None:
+def _wav_to_pcm16(wav_bytes: bytes) -> bytes:
+    """Strip the WAV container and return raw little-endian PCM16 frames."""
+    try:
+        with wave.open(io.BytesIO(wav_bytes), "rb") as wav_file:
+            return wav_file.readframes(wav_file.getnframes())
+    except (wave.Error, EOFError, struct.error):
+        return b""
+
+
+def safe_finalize_streaming_session(journal: SessionWriter, *, full_pcm: bytes, tts_pcm: bytes | None) -> str | None:
+    try:
+        return finalize_streaming_session(journal, full_pcm=full_pcm, tts_pcm=tts_pcm)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[WARN] journal_finalize_failed: {exc}", flush=True)
+        return None
+
+
+def save_session_recording(
+    session_id: str,
+    device_id: str,
+    sample_rate: int,
+    full_pcm: bytes,
+    utterances: list[dict[str, Any]],
+    *,
+    journal: SessionWriter | None = None,
+    tts_pcm: bytes = b"",
+) -> str | None:
     """Persist a full streaming session in legacy and standard layouts.
 
     Legacy layout:
@@ -125,18 +162,29 @@ def save_session_recording(session_id: str, device_id: str, sample_rate: int, fu
 
     Standard replay/eval layout:
       <AUDIO_DATA_DIR>/sessions/<YYYY-MM-DD>/<session_id>/{manifest,audio,events,labels,replay,reports}
+
+    When a live ``journal`` is supplied, its events were already appended in real
+    time, so the standard package is completed by laying down the audio + manifest
+    instead of rebuilding the event stream (which would duplicate every line).
     """
-    if not full_pcm:
+    if journal is not None:
+        # Finalize the live journal even for an empty capture so the on-disk
+        # session stays internally consistent (events + a valid, possibly-empty wav).
+        standard_rel = safe_finalize_streaming_session(journal, full_pcm=full_pcm, tts_pcm=tts_pcm or None)
+        if not full_pcm:
+            return standard_rel
+    elif not full_pcm:
         return None
-    standard_rel = safe_write_streaming_session_package(
-        data_root=AUDIO_DATA_DIR,
-        session_id=session_id,
-        device_id=device_id,
-        sample_rate=sample_rate,
-        full_pcm=full_pcm,
-        utterances=utterances,
-        chunk_ms=int(1000 * 512 / sample_rate),
-    )
+    else:
+        standard_rel = safe_write_streaming_session_package(
+            data_root=AUDIO_DATA_DIR,
+            session_id=session_id,
+            device_id=device_id,
+            sample_rate=sample_rate,
+            full_pcm=full_pcm,
+            utterances=utterances,
+            chunk_ms=int(1000 * 512 / sample_rate),
+        )
     day = time.strftime("%Y-%m-%d")
     safe_session = "".join(c for c in session_id if c.isalnum() or c in "-_") or uuid.uuid4().hex[:12]
     out_dir = RECORDINGS_DIR / day / safe_session
@@ -225,6 +273,10 @@ class _TurnState:
     vad_end: float | None = None
     reason: str | None = None
     cancelled: bool = False
+    # Stable ledger IDs assigned at enqueue time so VAD edges, ASR, TTS and
+    # barge-in events for this utterance all cross-reference the same turn.
+    turn_idx: int = 0
+    segment_id: str = "seg_001"
 
 
 @app.websocket("/ws/audio")
@@ -236,8 +288,15 @@ async def audio_ws(websocket: WebSocket) -> None:
     stream_vad: StreamingSileroVad | None = None
     # Full un-truncated streaming audio + per-utterance VAD/ASR markers.
     session_full = bytearray()
+    session_tts_pcm = bytearray()   # concatenated TTS PCM actually delivered → tts_ref
     session_utterances: list[dict[str, Any]] = []
     pending_start: float | None = None
+    # Live interaction event journal (account one). Created on start_stream so
+    # every VAD edge / ASR final / barge-in / TTS event is durable the instant it
+    # happens, not rebuilt from memory at session end (crash-safe).
+    journal: SessionWriter | None = None
+    seg_seq = 0                       # next VAD segment / turn index
+    last_speech_start_evt: str | None = None  # event_id of the most recent speech_start (barge-in cause)
     route_enabled = True  # web模式 dispatches actions; VAD_ASR_TTS debug does ASR-only
     proto = 1             # start_stream may bump to 2 (streaming TTS + tts_state)
 
@@ -271,16 +330,21 @@ async def audio_ws(websocket: WebSocket) -> None:
         return server_tts_sending or pi_tts_playing
 
     def flush_session() -> str | None:
-        nonlocal session_full, session_utterances, pending_start
+        nonlocal session_full, session_tts_pcm, session_utterances, pending_start, journal
         utts = list(session_utterances)
         for i, utt in enumerate(utts):
             tts_ms = _tts_timing_store.pop(f"{session_id}:{i}", None)
             if tts_ms is not None:
                 utt["tts_elapsed_ms"] = tts_ms
-        rel = save_session_recording(session_id, device_id, STREAM_SAMPLE_RATE, bytes(session_full), utts)
+        rel = save_session_recording(
+            session_id, device_id, STREAM_SAMPLE_RATE, bytes(session_full), utts,
+            journal=journal, tts_pcm=bytes(session_tts_pcm),
+        )
         session_full = bytearray()
+        session_tts_pcm = bytearray()
         session_utterances = []
         pending_start = None
+        journal = None
         return rel
 
     def _broadcast_result(result: dict[str, Any]) -> None:
@@ -312,9 +376,18 @@ async def audio_ws(websocket: WebSocket) -> None:
             finally:
                 loop.call_soon_threadsafe(q.put_nowait, None)
 
-        await _send_text(json.dumps({"type": "tts_begin", "turn": ts.gen, "session_id": session_id}, ensure_ascii=False))
+        turn_id = ordinal_id("turn", turn_idx)
+        tts_id = ordinal_id("tts", turn_idx)
+        if journal is not None:
+            journal.emit("tts", type="tts.request", tts_id=tts_id, turn_id=turn_id, text=text)
+        await _send_text(json.dumps(
+            {"type": "tts_begin", "turn": ts.gen, "turn_id": turn_id, "tts_id": tts_id, "session_id": session_id},
+            ensure_ascii=False,
+        ))
         server_tts_sending = True
         _refresh_tts_active()
+        if journal is not None:
+            journal.emit("tts", type="tts.begin", tts_id=tts_id, turn_id=turn_id)
         tts_started = time.time()
         first_chunk = True
         asyncio.ensure_future(loop.run_in_executor(None, _produce))
@@ -332,10 +405,18 @@ async def audio_ws(websocket: WebSocket) -> None:
                     break
                 if first_chunk:
                     first_chunk = False
-                    _tts_timing_store[f"{session_id}:{turn_idx}"] = int((time.time() - tts_started) * 1000)
+                    first_ms = int((time.time() - tts_started) * 1000)
+                    _tts_timing_store[f"{session_id}:{turn_idx}"] = first_ms
+                    if journal is not None:
+                        journal.emit("tts", type="tts.first_chunk", tts_id=tts_id, turn_id=turn_id,
+                                     tts_first_ms=first_ms)
+                session_tts_pcm.extend(_wav_to_pcm16(item))  # tee for tts_ref evidence
                 await _send_bytes(item)
             if not ts.cancelled:
                 await _send_bytes(b"")  # stream-end sentinel
+                if journal is not None:
+                    journal.emit("tts", type="tts.done", tts_id=tts_id, turn_id=turn_id,
+                                 tts_elapsed_ms=int((time.time() - tts_started) * 1000))
         finally:
             server_tts_sending = False
             _refresh_tts_active()
@@ -344,9 +425,12 @@ async def audio_ws(websocket: WebSocket) -> None:
         nonlocal current_turn
         current_turn = ts
         try:
-            turn_idx = len(session_utterances)
+            turn_idx = ts.turn_idx
+            turn_id = ordinal_id("turn", turn_idx)
+            tts_id = ordinal_id("tts", turn_idx)
             await _send_text(json.dumps(
-                {"type": "asr_started", "session_id": session_id, "device_id": device_id},
+                {"type": "asr_started", "session_id": session_id, "device_id": device_id,
+                 "turn_id": turn_id, "segment_id": ts.segment_id},
                 ensure_ascii=False,
             ))
             loop = asyncio.get_event_loop()
@@ -354,18 +438,50 @@ async def audio_ws(websocket: WebSocket) -> None:
             result["streaming_vad"] = "silero"
             tts_text = result.get("tts_text", "")
 
+            # Journal the ASR final + routed command the moment routing returns,
+            # so the fact is durable before any (cancellable) TTS is attempted.
+            if journal is not None:
+                emit_turn_result(
+                    journal,
+                    {
+                        "vad_start_seconds": ts.vad_start,
+                        "vad_end_seconds": ts.vad_end,
+                        "reason": ts.reason,
+                        "text": result.get("text", ""),
+                        "wake_status": result.get("wake_status", ""),
+                        "skill_id": result.get("skill_id", ""),
+                        "status": result.get("status", ""),
+                        "action_task": result.get("action_task"),
+                        "tts_text": tts_text,
+                        "action_error": result.get("action_error", ""),
+                        "envelope_id": result.get("envelope_id", ""),
+                        "asr_elapsed_ms": result.get("asr_elapsed_ms"),
+                        "route_elapsed_ms": result.get("route_elapsed_ms"),
+                    },
+                    segment_id=ts.segment_id,
+                    turn_id=turn_id,
+                    emit_tts=False,
+                )
+
             if proto < 2:
                 # Legacy path: full synth, base64 in result + one binary frame.
                 tts_bytes_ready: bytes | None = None
                 if tts_text and TTS_URL:
                     try:
+                        if journal is not None:
+                            journal.emit("tts", type="tts.request", tts_id=tts_id, turn_id=turn_id, text=tts_text)
+                        tts_started = time.time()
                         tts_bytes_ready = await loop.run_in_executor(None, _fetch_tts_audio, tts_text)
                         result["tts_audio_base64"] = base64.b64encode(tts_bytes_ready).decode("ascii")
+                        if journal is not None:
+                            journal.emit("tts", type="tts.audio_ready", tts_id=tts_id, turn_id=turn_id,
+                                         tts_elapsed_ms=int((time.time() - tts_started) * 1000))
                     except Exception as exc:  # noqa: BLE001
                         print(f"[WARN] ws_tts_failed: {exc}", flush=True)
                 await _send_text(json.dumps(result, ensure_ascii=False))
                 _broadcast_result(result)
                 if tts_bytes_ready and not ts.cancelled:
+                    session_tts_pcm.extend(_wav_to_pcm16(tts_bytes_ready))
                     try:
                         await _send_bytes(tts_bytes_ready)
                         await _send_bytes(b"")
@@ -409,7 +525,7 @@ async def audio_ws(websocket: WebSocket) -> None:
                 turn_queue.task_done()
 
     def _enqueue_turn(wav_bytes: bytes, vad_end: float | None, reason: str | None) -> None:
-        nonlocal turn_gen, pending_start
+        nonlocal turn_gen, pending_start, seg_seq
         turn_gen += 1
         turn_queue.put_nowait(_TurnState(
             gen=turn_gen,
@@ -417,7 +533,10 @@ async def audio_ws(websocket: WebSocket) -> None:
             vad_start=pending_start,
             vad_end=vad_end,
             reason=reason,
+            turn_idx=seg_seq,
+            segment_id=ordinal_id("seg", seg_seq),
         ))
+        seg_seq += 1
         pending_start = None
 
     try:
@@ -435,17 +554,57 @@ async def audio_ws(websocket: WebSocket) -> None:
                         etype = event.get("type")
                         if etype == "speech_start":
                             pending_start = event.get("offset_seconds")
+                            seg_id = ordinal_id("seg", seg_seq)
+                            during_tts = _tts_playing()
+                            if journal is not None:
+                                ss = emit_vad_start(
+                                    journal,
+                                    segment_id=seg_id,
+                                    start_ms=seconds_to_ms(pending_start),
+                                    confidence=event.get("probability"),
+                                    during_tts=during_tts or None,
+                                )
+                                last_speech_start_evt = ss.get("event_id")
+                            event["segment_id"] = seg_id
                             await _send_text(json.dumps(event, ensure_ascii=False))
                             # Barge-in: only fire while TTS is actually playing. Speech
                             # during ASR/route is a follow-up, not an interruption.
-                            if current_turn is not None and _tts_playing():
+                            if current_turn is not None and during_tts:
                                 current_turn.cancelled = True
+                                cancel_turn_id = ordinal_id("turn", current_turn.turn_idx)
+                                cancel_tts_id = ordinal_id("tts", current_turn.turn_idx)
+                                # Ledger before side effect: the interruption is proven
+                                # even if the cancel frame never reaches the Pi.
+                                if journal is not None:
+                                    now_ms = journal.now_ms()
+                                    emit_bargein_commit(
+                                        journal, ts_ms=now_ms, segment_id=seg_id,
+                                        turn_id=ordinal_id("turn", seg_seq),
+                                        tts_id=cancel_tts_id, cause=last_speech_start_evt,
+                                    )
+                                    emit_tts_cancel(
+                                        journal, ts_ms=now_ms, tts_id=cancel_tts_id,
+                                        turn_id=cancel_turn_id, reason="barge_in",
+                                        cause=last_speech_start_evt,
+                                    )
                                 await _send_text(json.dumps(
-                                    {"type": "tts_cancel", "session_id": session_id, "turn": current_turn.gen},
+                                    {"type": "tts_cancel", "session_id": session_id,
+                                     "turn": current_turn.gen, "turn_id": cancel_turn_id,
+                                     "tts_id": cancel_tts_id},
                                     ensure_ascii=False,
                                 ))
                         elif etype == "speech_end" and event.get("wav_bytes"):
                             wav_bytes = event.pop("wav_bytes")
+                            seg_id = ordinal_id("seg", seg_seq)
+                            if journal is not None:
+                                emit_vad_end(
+                                    journal,
+                                    segment_id=seg_id,
+                                    start_ms=seconds_to_ms(pending_start),
+                                    end_ms=seconds_to_ms(event.get("offset_seconds")),
+                                    reason=event.get("reason"),
+                                )
+                            event["segment_id"] = seg_id
                             await _send_text(json.dumps(event, ensure_ascii=False))
                             _enqueue_turn(wav_bytes, event.get("offset_seconds"), event.get("reason"))
                         else:
@@ -495,6 +654,21 @@ async def audio_ws(websocket: WebSocket) -> None:
                         ))
                         continue
                     audio_buf.clear()
+                    seg_seq = 0
+                    # Open the live event journal now: the session dir + session.start
+                    # exist before any audio, so a crash mid-session still leaves a
+                    # complete, replayable ledger of everything up to the last event.
+                    try:
+                        journal = open_streaming_journal(
+                            AUDIO_DATA_DIR,
+                            session_id=session_id,
+                            device_id=device_id,
+                            sample_rate=STREAM_SAMPLE_RATE,
+                            chunk_ms=int(1000 * 512 / STREAM_SAMPLE_RATE),
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        journal = None
+                        print(f"[WARN] journal_open_failed: {exc}", flush=True)
                     if worker_task is None or worker_task.done():
                         worker_task = asyncio.create_task(_turn_worker())
                     await _send_text(json.dumps(
@@ -550,6 +724,14 @@ async def audio_ws(websocket: WebSocket) -> None:
                         final_wav = stream_vad.finish()
                         stream_vad = None
                         if final_wav:
+                            # Leftover speech flushed at stop has no speech_end edge;
+                            # record a segment so its turn still has a VAD anchor.
+                            if journal is not None:
+                                emit_vad_end(
+                                    journal, segment_id=ordinal_id("seg", seg_seq),
+                                    start_ms=seconds_to_ms(pending_start),
+                                    end_ms=journal.now_ms(), reason="stop_stream",
+                                )
                             _enqueue_turn(final_wav, None, "stop_stream")
                     # Drain all queued turns so their results land before stream_stopped.
                     await turn_queue.join()
@@ -1378,6 +1560,72 @@ def _load_events_for_session(package_dir: Path) -> list[dict[str, Any]]:
     return events
 
 
+def _extract_bargein_cases(events: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], set[str]]:
+    """Reconstruct barge-in cases from the journal, decomposed by clock.
+
+    Server clock: vad.speech_start → bargein.commit → tts.cancel.
+    Edge clock (only if the Pi uploaded telemetry): bargein.tts_cancel_recv →
+    playback.play_stop(killed) = post_cancel_tail. The two clocks are not yet
+    aligned (design G8), so the end-to-end cancel_delay is intentionally left
+    None until clock-sync lands; each single-clock half is reported honestly.
+    """
+    ss_by_evt: dict[str, dict[str, Any]] = {}
+    cancel_by_tts: dict[str, dict[str, Any]] = {}
+    commits: list[dict[str, Any]] = []
+    edge_recv: list[dict[str, Any]] = []
+    edge_stop: list[dict[str, Any]] = []
+    for e in events:
+        et = str(e.get("type", ""))
+        if et == "vad.speech_start" and e.get("event_id"):
+            ss_by_evt[str(e["event_id"])] = e
+        elif et == "bargein.commit":
+            commits.append(e)
+        elif et == "tts.cancel":
+            cancel_by_tts[str(e.get("tts_id") or "")] = e
+        elif et == "bargein.tts_cancel_recv":
+            edge_recv.append(e)
+        elif et == "playback.play_stop":
+            edge_stop.append(e)
+
+    cancelled_turns: set[str] = set()
+    cases: list[dict[str, Any]] = []
+    for c in commits:
+        tts_id = str(c.get("tts_id") or "")
+        commit_ms = int(c.get("ts_ms", 0))
+        ss = ss_by_evt.get(str(c.get("cause") or ""))
+        speech_ms = int(ss.get("ts_ms", 0)) if ss else None
+        cancel = cancel_by_tts.get(tts_id)
+        if cancel and cancel.get("turn_id"):
+            cancelled_turns.add(str(cancel["turn_id"]))
+        recv = next((e for e in edge_recv if str(e.get("tts_id") or "") == tts_id), None)
+        stop = None
+        if recv is not None:
+            stop = next(
+                (e for e in edge_stop
+                 if int(e.get("ts_ms", 0)) >= int(recv.get("ts_ms", 0)) and e.get("reason") == "killed"),
+                None,
+            )
+        recv_ms = int(recv.get("ts_ms", 0)) if recv else None
+        stop_ms = int(stop.get("ts_ms", 0)) if stop else None
+        cases.append({
+            "tts_id": tts_id,
+            "turn_id": str(c.get("turn_id") or ""),
+            "cancelled_turn_id": str(cancel.get("turn_id") or "") if cancel else "",
+            "segment_id": str(c.get("segment_id") or ""),
+            "speech_start_ms": speech_ms,
+            "commit_ms": commit_ms,
+            "cancel_ms": int(cancel.get("ts_ms", 0)) if cancel else None,
+            # server clock
+            "commit_delay_ms": (commit_ms - speech_ms) if speech_ms is not None else None,
+            # edge clock
+            "edge_cancel_recv_ms": recv_ms,
+            "edge_play_stop_ms": stop_ms,
+            "post_cancel_tail_ms": (stop_ms - recv_ms) if (recv_ms is not None and stop_ms is not None) else None,
+            "has_edge_telemetry": recv is not None,
+        })
+    return cases, cancelled_turns
+
+
 @app.get("/api/sessions")
 def list_sessions_route(limit: int = 60) -> list[dict[str, Any]]:
     entries = _list_sessions(AUDIO_DATA_DIR, limit)
@@ -1414,6 +1662,73 @@ def list_sessions_route(limit: int = 60) -> list[dict[str, Any]]:
     return out
 
 
+def _resolve_session_package_dir(session_id: str) -> Path | None:
+    """Locate a session's standard package dir by id (dirs use safe_id names)."""
+    safe = safe_id(session_id)
+    matches = sorted(AUDIO_DATA_DIR.glob(f"sessions/*/{safe}"))
+    for pkg in matches:
+        if (pkg / "events").is_dir():
+            return pkg
+    return matches[0] if matches else None
+
+
+# type prefix → journal file the edge event is merged into (mirrors SessionWriter).
+_EDGE_EVENT_FILES = {
+    "bargein": "bargein_runtime.jsonl",
+    "tts": "tts_runtime.jsonl",
+    "vad": "vad_runtime.jsonl",
+    "capture": "runtime_events.jsonl",
+    "playback": "runtime_events.jsonl",
+}
+
+
+@app.post("/api/sessions/{session_id}/edge-events")
+def post_edge_events(
+    session_id: str,
+    payload: Annotated[Any, Body()],
+    x_audio_token: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    """Merge Pi-side telemetry (play_start/stop/kill/duck/capture) into the ledger.
+
+    The edge records only facts it alone knows, on its own monotonic clock, and
+    uploads them on session end / reconnect. Merge is idempotent by ``event_id``
+    so retries after a flaky uplink never double-count — the edge journal is the
+    authoritative source for cancel_delay / post_cancel_tail metrics.
+    """
+    _require_token(x_audio_token)
+    pkg = _resolve_session_package_dir(session_id)
+    if pkg is None:
+        raise HTTPException(status_code=404, detail=f"session {session_id!r} not found")
+
+    events = payload.get("events") if isinstance(payload, dict) else payload
+    if not isinstance(events, list):
+        raise HTTPException(status_code=400, detail="expected {'events': [...]} or a JSON array")
+
+    events_dir = pkg / "events"
+    runtime_log = EventLogger(events_dir / "runtime_events.jsonl")
+    known = {str(e.get("event_id")) for e in runtime_log.read_all() if e.get("event_id")}
+
+    merged = skipped = 0
+    for raw in events:
+        if not isinstance(raw, dict) or "type" not in raw:
+            skipped += 1
+            continue
+        eid = str(raw.get("event_id") or "")
+        if not eid or eid in known:
+            skipped += 1
+            continue
+        etype = str(raw["type"])
+        category_file = _EDGE_EVENT_FILES.get(etype.split(".", 1)[0], "runtime_events.jsonl")
+        event = {**raw, "session_id": session_id, "source": raw.get("source") or "edge"}
+        if category_file != "runtime_events.jsonl":
+            EventLogger(events_dir / category_file).emit(**event)
+        runtime_log.emit(**event)
+        known.add(eid)
+        merged += 1
+
+    return {"session_id": session_id, "merged": merged, "skipped": skipped}
+
+
 @app.get("/api/sessions/{session_id}")
 def get_session_route(session_id: str) -> dict[str, Any]:
     entries = _list_sessions(AUDIO_DATA_DIR, 500)
@@ -1436,8 +1751,11 @@ def get_session_route(session_id: str) -> dict[str, Any]:
             legacy_skill_map[idx] = sk
 
     utterances: list[dict[str, Any]] = []
+    bargein_cases: list[dict[str, Any]] = []
+    cancelled_turns: set[str] = set()
     if pkg:
         events = _load_events_for_session(pkg)
+        bargein_cases, cancelled_turns = _extract_bargein_cases(events)
         vad_segs: dict[str, dict] = {}
         asr_finals: dict[str, dict] = {}
         robot_cmds: dict[str, dict] = {}
@@ -1464,7 +1782,8 @@ def get_session_route(session_id: str) -> dict[str, Any]:
                                      "action_error": ev.get("action_error", ""),
                                      "envelope_id": ev.get("envelope_id", ""),
                                      "route_elapsed_ms": ev.get("route_elapsed_ms")}
-            elif etype == "tts.audio_ready":
+            elif etype in ("tts.audio_ready", "tts.done"):
+                # audio_ready = proto<2 whole-synth; done = streaming path end.
                 tts_ready[turn] = ev.get("tts_elapsed_ms")
         all_segs = sorted(set(vad_segs) | set(asr_finals), key=lambda s: int(vad_segs.get(s, {}).get("start_ms") or asr_finals.get(s, {}).get("audio_start_ms") or 0))
         for i, seg in enumerate(all_segs):
@@ -1494,6 +1813,7 @@ def get_session_route(session_id: str) -> dict[str, Any]:
                 "asr_elapsed_ms": asr.get("asr_elapsed_ms"),
                 "route_elapsed_ms": cmd.get("route_elapsed_ms"),
                 "tts_elapsed_ms": tts_ready.get(turn_id),
+                "barged_in": turn_id in cancelled_turns,
             })
     else:
         for item in (lm.get("utterances") or []):
@@ -1538,6 +1858,7 @@ def get_session_route(session_id: str) -> dict[str, Any]:
         "proc_same_as_raw": m.get("proc_same_as_raw"),
         "audio_url": audio_url,
         "utterances": utterances,
+        "bargein": bargein_cases,
         "manifest": m or None,
     }
 

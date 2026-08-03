@@ -46,6 +46,10 @@ class SessionWriter:
         self.capture_point = capture_point
         self.session_day = session_day
         self.created_at = time.time()
+        # Monotonic per-session event counter. Every emitted event gets a stable
+        # event_id (evt_000001, ...) so the three ledgers can cross-reference a
+        # single fact and so replays/edge uploads can dedup idempotently.
+        self._event_seq = 0
         self.session_dir = self._session_dir(root, self.session_id, self.session_day)
         self.audio_dir = self.session_dir / "audio"
         self.events_dir = self.session_dir / "events"
@@ -69,12 +73,19 @@ class SessionWriter:
         except ValueError:
             return self.session_dir.as_posix()
 
+    def now_ms(self) -> int:
+        """Session-relative wall-clock offset in ms (0 == session.start)."""
+        return max(0, int((time.time() - self.created_at) * 1000))
+
     def emit(self, category: str, **event: Any) -> dict[str, Any]:
         if category not in self._loggers:
             raise ValueError(f"unknown event category: {category}")
         event.setdefault("session_id", self.session_id)
         if "ts_ms" not in event:
-            event["ts_ms"] = int((time.time() - self.created_at) * 1000)
+            event["ts_ms"] = self.now_ms()
+        if "event_id" not in event:
+            self._event_seq += 1
+            event["event_id"] = f"evt_{self._event_seq:06d}"
         emitted = self._loggers[category].emit(**event)
         if category != "runtime":
             self._loggers["runtime"].emit(**emitted)
@@ -150,6 +161,197 @@ class SessionWriter:
         return self.write_manifest(duration_ms=duration_ms, extra=extra_manifest)
 
 
+def capture_point_for(device_id: str) -> str:
+    # web-* devices come through the browser (already AEC/AGC processed); the
+    # rest are Raspberry Pi ALSA/PipeWire direct captures.
+    return "browser_processed" if device_id.startswith("web") else "pi_alsa_raw"
+
+
+def open_streaming_journal(
+    data_root: Path,
+    *,
+    session_id: str,
+    device_id: str,
+    sample_rate: int,
+    chunk_ms: int = 32,
+) -> SessionWriter:
+    """Create the live event journal for a streaming session.
+
+    The journal directory + session.start event exist immediately, so events are
+    durable the instant they happen (WAL semantics) instead of only at flush.
+    """
+    return SessionWriter(
+        data_root,
+        session_id=session_id,
+        device_id=device_id,
+        sample_rate=sample_rate,
+        chunk_ms=chunk_ms,
+        source="websocket_stream",
+        capture_point=capture_point_for(device_id),
+    )
+
+
+def emit_vad_start(
+    writer: SessionWriter,
+    *,
+    segment_id: str,
+    start_ms: int,
+    confidence: Any = None,
+    during_tts: bool | None = None,
+) -> dict[str, Any]:
+    return writer.emit(
+        "vad",
+        ts_ms=start_ms,
+        type="vad.speech_start",
+        segment_id=segment_id,
+        confidence=confidence,
+        during_tts=during_tts,
+    )
+
+
+def emit_vad_end(
+    writer: SessionWriter,
+    *,
+    segment_id: str,
+    start_ms: int,
+    end_ms: int,
+    reason: Any = None,
+) -> dict[str, Any]:
+    return writer.emit(
+        "vad",
+        ts_ms=end_ms,
+        type="vad.speech_end",
+        segment_id=segment_id,
+        start_ms=start_ms,
+        end_ms=end_ms,
+        reason=reason,
+    )
+
+
+def emit_turn_result(
+    writer: SessionWriter,
+    item: dict[str, Any],
+    *,
+    segment_id: str,
+    turn_id: str,
+    ts_ms: int | None = None,
+    emit_tts: bool = True,
+) -> None:
+    """Emit asr.final + robot.command (+ optional tts.* from item timing).
+
+    Shared by the live path (emit_tts=False; TTS events come from the streamer)
+    and the batch rebuild in write_streaming_session_package (emit_tts=True).
+    """
+    start_ms = _seconds_to_ms(item.get("vad_start_seconds"))
+    end_ms = ts_ms if ts_ms is not None else _seconds_to_ms(item.get("vad_end_seconds"))
+    asr_elapsed_ms = item.get("asr_elapsed_ms")
+    route_elapsed_ms = item.get("route_elapsed_ms")
+    tts_elapsed_ms = item.get("tts_elapsed_ms")
+
+    asr_event: dict[str, Any] = dict(
+        ts_ms=end_ms,
+        type="asr.final",
+        segment_id=segment_id,
+        turn_id=turn_id,
+        audio_start_ms=start_ms,
+        audio_end_ms=_seconds_to_ms(item.get("vad_end_seconds")),
+        text=str(item.get("text") or ""),
+        wake_status=item.get("wake_status"),
+        status=item.get("status"),
+        skill_id=str(item.get("skill_id") or ""),
+    )
+    if asr_elapsed_ms is not None:
+        asr_event["asr_elapsed_ms"] = asr_elapsed_ms
+    writer.emit("asr", **asr_event)
+
+    skill_id = str(item.get("skill_id") or "")
+    action_task = item.get("action_task")
+    tts_text = str(item.get("tts_text") or "")
+    action_error = str(item.get("action_error") or "")
+    # any routed outcome counts: motion skills carry skill_id, but
+    # observation/chat turns only produce tts_text (and an envelope)
+    if item.get("status") == "ok" and (skill_id or tts_text or action_task or action_error):
+        cmd_event: dict[str, Any] = dict(
+            ts_ms=end_ms,
+            type="robot.command",
+            turn_id=turn_id,
+            skill_id=skill_id,
+            action_task=action_task,
+            tts_text=tts_text,
+            action_error=action_error,
+        )
+        envelope_id = str(item.get("envelope_id") or "")
+        if envelope_id:
+            cmd_event["envelope_id"] = envelope_id
+        if route_elapsed_ms is not None:
+            cmd_event["route_elapsed_ms"] = route_elapsed_ms
+        writer.emit("runtime", **cmd_event)
+    if emit_tts and tts_elapsed_ms is not None:
+        writer.emit("tts", ts_ms=end_ms, type="tts.request", turn_id=turn_id)
+        writer.emit("tts", ts_ms=end_ms, type="tts.audio_ready", turn_id=turn_id,
+                    tts_elapsed_ms=tts_elapsed_ms)
+
+
+def emit_bargein_commit(
+    writer: SessionWriter,
+    *,
+    ts_ms: int,
+    segment_id: str,
+    turn_id: str,
+    tts_id: str,
+    cause: str | None = None,
+) -> dict[str, Any]:
+    """Barge-in confirmed: user speech during TTS is accepted as an interruption."""
+    return writer.emit(
+        "bargein",
+        ts_ms=ts_ms,
+        type="bargein.commit",
+        segment_id=segment_id,
+        turn_id=turn_id,
+        tts_id=tts_id,
+        cause=cause,
+    )
+
+
+def emit_tts_cancel(
+    writer: SessionWriter,
+    *,
+    ts_ms: int,
+    tts_id: str,
+    turn_id: str,
+    reason: str = "barge_in",
+    cause: str | None = None,
+) -> dict[str, Any]:
+    return writer.emit(
+        "tts",
+        ts_ms=ts_ms,
+        type="tts.cancel",
+        tts_id=tts_id,
+        turn_id=turn_id,
+        reason=reason,
+        cause=cause,
+    )
+
+
+def finalize_streaming_session(
+    writer: SessionWriter,
+    *,
+    full_pcm: bytes,
+    tts_pcm: bytes | None = None,
+) -> str:
+    """Write session audio and manifest for a live journal, then return its path.
+
+    Events were already appended in real time, so this only lays down the media
+    (account three) and closes the manifest — it does not re-emit any events.
+    """
+    writer.write_audio_pcm16("mic_raw_16k.wav", full_pcm)
+    writer.write_audio_pcm16("mic_proc_16k.wav", full_pcm)
+    if tts_pcm:
+        writer.write_audio_pcm16("tts_ref_16k.wav", tts_pcm)
+    writer.close()
+    return writer.relative_path(writer.root)
+
+
 def write_streaming_session_package(
     data_root: Path,
     *,
@@ -162,14 +364,12 @@ def write_streaming_session_package(
 ) -> str | None:
     if not full_pcm:
         return None
-    writer = SessionWriter(
+    writer = open_streaming_journal(
         data_root,
         session_id=session_id,
         device_id=device_id,
         sample_rate=sample_rate,
         chunk_ms=chunk_ms,
-        source="websocket_stream",
-        capture_point="browser_processed" if device_id.startswith("web") else "pi_alsa_raw",
     )
     writer.write_audio_pcm16("mic_raw_16k.wav", full_pcm)
     writer.write_audio_pcm16("mic_proc_16k.wav", full_pcm)
@@ -178,67 +378,9 @@ def write_streaming_session_package(
         turn_id = ordinal_id("turn", index)
         start_ms = _seconds_to_ms(item.get("vad_start_seconds"))
         end_ms = _seconds_to_ms(item.get("vad_end_seconds"))
-        asr_elapsed_ms = item.get("asr_elapsed_ms")
-        route_elapsed_ms = item.get("route_elapsed_ms")
-        tts_elapsed_ms = item.get("tts_elapsed_ms")
-        writer.emit(
-            "vad",
-            ts_ms=start_ms,
-            type="vad.speech_start",
-            segment_id=segment_id,
-            confidence=item.get("confidence"),
-        )
-        writer.emit(
-            "vad",
-            ts_ms=end_ms,
-            type="vad.speech_end",
-            segment_id=segment_id,
-            start_ms=start_ms,
-            end_ms=end_ms,
-            reason=item.get("reason"),
-        )
-        text = str(item.get("text") or "")
-        asr_event: dict[str, Any] = dict(
-            ts_ms=end_ms,
-            type="asr.final",
-            segment_id=segment_id,
-            turn_id=turn_id,
-            audio_start_ms=start_ms,
-            audio_end_ms=end_ms,
-            text=text,
-            wake_status=item.get("wake_status"),
-            status=item.get("status"),
-            skill_id=str(item.get("skill_id") or ""),
-        )
-        if asr_elapsed_ms is not None:
-            asr_event["asr_elapsed_ms"] = asr_elapsed_ms
-        writer.emit("asr", **asr_event)
-        skill_id = str(item.get("skill_id") or "")
-        action_task = item.get("action_task")
-        tts_text = str(item.get("tts_text") or "")
-        action_error = str(item.get("action_error") or "")
-        # any routed outcome counts: motion skills carry skill_id, but
-        # observation/chat turns only produce tts_text (and an envelope)
-        if item.get("status") == "ok" and (skill_id or tts_text or action_task or action_error):
-            cmd_event: dict[str, Any] = dict(
-                ts_ms=end_ms,
-                type="robot.command",
-                turn_id=turn_id,
-                skill_id=skill_id,
-                action_task=action_task,
-                tts_text=tts_text,
-                action_error=action_error,
-            )
-            envelope_id = str(item.get("envelope_id") or "")
-            if envelope_id:
-                cmd_event["envelope_id"] = envelope_id
-            if route_elapsed_ms is not None:
-                cmd_event["route_elapsed_ms"] = route_elapsed_ms
-            writer.emit("runtime", **cmd_event)
-        if tts_elapsed_ms is not None:
-            writer.emit("tts", ts_ms=end_ms, type="tts.request", turn_id=turn_id)
-            writer.emit("tts", ts_ms=end_ms, type="tts.audio_ready", turn_id=turn_id,
-                        tts_elapsed_ms=tts_elapsed_ms)
+        emit_vad_start(writer, segment_id=segment_id, start_ms=start_ms, confidence=item.get("confidence"))
+        emit_vad_end(writer, segment_id=segment_id, start_ms=start_ms, end_ms=end_ms, reason=item.get("reason"))
+        emit_turn_result(writer, item, segment_id=segment_id, turn_id=turn_id, emit_tts=True)
     writer.close()
     return writer.relative_path(data_root)
 
@@ -280,3 +422,7 @@ def _seconds_to_ms(value: Any) -> int:
         return max(0, int(round(float(value) * 1000)))
     except (TypeError, ValueError):
         return 0
+
+
+# Public alias for callers outside this module (e.g. the live server path).
+seconds_to_ms = _seconds_to_ms

@@ -1,0 +1,2 @@
+{"ts_ms":2600,"type":"asr.final","segment_id":"seg_001","turn_id":"turn_001","audio_start_ms":1200,"audio_end_ms":2600,"text":"往前走一点","wake_status":"awake","status":"ok","skill_id":"move_forward","asr_elapsed_ms":420,"session_id":"fdx-bargein-synthetic-001","event_id":"evt_000004"}
+{"ts_ms":6500,"type":"asr.final","segment_id":"seg_002","turn_id":"turn_002","audio_start_ms":5100,"audio_end_ms":6500,"text":"停下","wake_status":"awake","status":"ok","skill_id":"stop","asr_elapsed_ms":380,"session_id":"fdx-bargein-synthetic-001","event_id":"evt_000013"}

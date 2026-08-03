@@ -70,6 +70,50 @@ function renderWaterfall(utts, durationMs) {
     </div>
   </div>`;
 }
+// ── barge-in (full-duplex) ────────────────────────────────────
+// Two clocks, reported honestly: server clock (speech_start→commit→cancel) and
+// edge clock (cancel_recv→play_stop = post_cancel_tail). End-to-end cancel_delay
+// needs clock sync (not yet), so it is shown as "待对时" rather than faked.
+function judge(ms, good, max) {
+  if (ms == null) return { cls: "bi-na", sym: "" };
+  if (ms <= good)  return { cls: "bi-good", sym: "✓" };
+  if (ms <= max)   return { cls: "bi-warn", sym: "⚠" };
+  return { cls: "bi-bad", sym: "✗" };
+}
+function renderBargein(cases) {
+  if (!cases || !cases.length) return "";
+  const rows = cases.map((c, i) => {
+    const tail = judge(c.post_cancel_tail_ms, 150, 250);
+    const serverLine = [
+      c.speech_start_ms != null ? `插话 @${msToSec(c.speech_start_ms)}` : null,
+      c.commit_delay_ms != null ? `确认打断 +${c.commit_delay_ms}ms` : "已确认打断",
+      c.cancel_ms != null ? `发 cancel @${msToSec(c.cancel_ms)}` : null,
+    ].filter(Boolean).join(" → ");
+    const edgeLine = c.has_edge_telemetry
+      ? `端侧：收到 cancel @${c.edge_cancel_recv_ms}ms(端钟) → 停播 @${c.edge_play_stop_ms}ms ·
+         <span class="bi-metric ${tail.cls}">播放拖尾 ${c.post_cancel_tail_ms}ms ${tail.sym}</span>
+         <span class="bi-target">目标≤150 / 上限≤250</span>`
+      : `<span class="bi-na">端侧遥测未上报（部署 Pi listener 后可测 cancel_delay / 拖尾）</span>`;
+    return `<div class="bi-case">
+      <div class="bi-head">
+        <span class="bi-idx">⚡ 打断 ${i + 1}</span>
+        <span class="bi-tts">TTS ${c.tts_id || "—"}</span>
+        ${c.cancelled_turn_id ? `<span class="bi-cut">被 ${c.segment_id || c.turn_id} 打断</span>` : ""}
+      </div>
+      <div class="bi-line"><span class="bi-clk">服务端</span>${serverLine}</div>
+      <div class="bi-line"><span class="bi-clk edge">端&nbsp;侧</span>${edgeLine}</div>
+    </div>`;
+  }).join("");
+  return `
+  <div class="card">
+    <div class="card-head">
+      <h2>全双工打断 · barge-in</h2>
+      <span style="font-size:12px;color:var(--muted)">${cases.length} 次打断</span>
+    </div>
+    <div class="bi-list">${rows}</div>
+  </div>`;
+}
+
 const API = "/audio_interact/api";
 const SESSION_LIST_LIMIT = 500;
 let currentSession = null;
@@ -200,6 +244,7 @@ async function openSession(sessionId, opts = {}) {
 }
 
 function renderDetail(s) {
+  detailEl.classList.remove("detail-empty");  // was centering flex for the empty state
   const utts = s.utterances || [];
   const dur  = s.duration_ms || 0;
 
@@ -225,7 +270,7 @@ function renderDetail(s) {
         <div class="vad-range">${msToSec(u.vad_start_ms ?? u.audio_start_ms)} → ${msToSec(u.vad_end_ms ?? u.audio_end_ms)}</div>
         ${u.vad_source === "fixed_window" ? '<div style="font-size:10px;color:#999">定长上传</div>' : ''}
       </td>
-      <td class="asr-text">${u.text || '<span style="color:#aaa">（空）</span>'}</td>
+      <td class="asr-text">${u.text || '<span style="color:#aaa">（空）</span>'}${u.barged_in ? ' <span class="bi-tag">⚡打断</span>' : ''}</td>
       <td><span class="wake-pill ${wakeClass(u.wake_status)}">${u.wake_status || '—'}</span></td>
       <td>${u.status ? `<span class="status-${u.status === 'ok' ? 'ok' : u.status === 'waiting_for_wake_word' ? 'wait' : 'err'}">${u.status}</span>` : '—'}</td>
       <td>${actionSummary(u)}</td>
@@ -274,6 +319,9 @@ function renderDetail(s) {
       <div class="card-head"><h2>阶段耗时瀑布图</h2></div>
       ${renderWaterfall(utts, dur)}
     </div>` : ""}
+
+    <!-- 全双工打断 -->
+    ${renderBargein(s.bargein)}
 
     <!-- 链路追踪表 -->
     <div class="card">

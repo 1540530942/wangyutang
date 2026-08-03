@@ -1,0 +1,25 @@
+{
+  "session_id": "fdx-bargein-synthetic-001",
+  "bargein_cases": [
+    {
+      "case_id": "bargein_middle_001",
+      "tts_id": "tts_001",
+      "user_turn_id": "turn_002",
+      "user_speech_start_ms": 5100,
+      "user_speech_end_ms": 6500,
+      "user_text": "停下",
+      "should_interrupt": true,
+      "expected_interrupt_commit_after_ms": 5100,
+      "expected_interrupt_commit_before_ms": 5600,
+      "expected_post_cancel_tail_ms_max": 250
+    },
+    {
+      "case_id": "echo_only_001",
+      "tts_id": "tts_002",
+      "user_turn_id": null,
+      "user_speech_start_ms": null,
+      "user_speech_end_ms": null,
+      "should_interrupt": false
+    }
+  ]
+}

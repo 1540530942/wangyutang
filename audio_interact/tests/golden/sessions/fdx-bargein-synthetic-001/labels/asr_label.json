@@ -1,0 +1,19 @@
+{
+  "session_id": "fdx-bargein-synthetic-001",
+  "turns": [
+    {
+      "turn_id": "turn_001",
+      "start_ms": 1200,
+      "end_ms": 2600,
+      "raw_text": "往前走一点",
+      "normalized_text": "往前走一点"
+    },
+    {
+      "turn_id": "turn_002",
+      "start_ms": 5100,
+      "end_ms": 6500,
+      "raw_text": "停下",
+      "normalized_text": "停下"
+    }
+  ]
+}

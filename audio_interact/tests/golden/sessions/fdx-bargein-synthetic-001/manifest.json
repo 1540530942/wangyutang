@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.1",
+  "session_id": "fdx-bargein-synthetic-001",
+  "created_at": "2026-08-04T01:09:57+0800",
+  "device_id": "turbopi-01",
+  "duration_ms": 9000,
+  "source": "synthetic",
+  "capture_point": "pi_alsa_raw",
+  "proc_same_as_raw": true,
+  "audio": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "format": "wav_pcm_s16le",
+    "chunk_ms": 32
+  },
+  "versions": {
+    "audio_pipeline": "audio_interact",
+    "vad": "silero_streaming"
+  },
+  "tags": [],
+  "case_id": "wonderecho_fullduplex_bargein_synthetic_001",
+  "label": "全双工打断（合成金标）",
+  "mode": "full_duplex",
+  "tiers": [
+    "offline"
+  ],
+  "guards": [
+    "vad_asr",
+    "full_duplex",
+    "bargein",
+    "echo_false_positive",
+    "aec_residual"
+  ],
+  "full_duplex": {
+    "hardware_validated": false,
+    "synthesis": "runtime.session_writer emit_* + edge merge"
+  },
+  "labels": {
+    "vad": "labels/vad_label.json",
+    "asr": "labels/asr_label.json",
+    "tts": "labels/tts_label.json",
+    "bargein": "labels/bargein_label.json"
+  }
+}

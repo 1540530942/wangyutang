@@ -1,0 +1,22 @@
+{
+  "session_id": "fdx-bargein-synthetic-001",
+  "speech_segments": [
+    {
+      "label_segment_id": "gt_seg_001",
+      "speaker": "user",
+      "start_ms": 1200,
+      "end_ms": 2600,
+      "text": "往前走一点",
+      "turn_id": "turn_001"
+    },
+    {
+      "label_segment_id": "gt_seg_002",
+      "speaker": "user",
+      "start_ms": 5100,
+      "end_ms": 6500,
+      "text": "停下",
+      "turn_id": "turn_002",
+      "overlap_tts_id": "tts_001"
+    }
+  ]
+}

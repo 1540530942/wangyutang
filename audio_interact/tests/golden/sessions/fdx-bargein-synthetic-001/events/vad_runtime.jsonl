@@ -1,0 +1,4 @@
+{"ts_ms":1200,"type":"vad.speech_start","segment_id":"seg_001","confidence":0.94,"session_id":"fdx-bargein-synthetic-001","event_id":"evt_000002"}
+{"ts_ms":2600,"type":"vad.speech_end","segment_id":"seg_001","start_ms":1200,"end_ms":2600,"reason":"silence","session_id":"fdx-bargein-synthetic-001","event_id":"evt_000003"}
+{"ts_ms":5100,"type":"vad.speech_start","segment_id":"seg_002","confidence":0.9,"during_tts":true,"session_id":"fdx-bargein-synthetic-001","event_id":"evt_000009"}
+{"ts_ms":6500,"type":"vad.speech_end","segment_id":"seg_002","start_ms":5100,"end_ms":6500,"reason":"silence","session_id":"fdx-bargein-synthetic-001","event_id":"evt_000012"}

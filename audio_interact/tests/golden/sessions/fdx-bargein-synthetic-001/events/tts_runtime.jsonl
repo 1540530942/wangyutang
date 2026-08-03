@@ -1,0 +1,7 @@
+{"ts_ms":3000,"type":"tts.request","tts_id":"tts_001","turn_id":"turn_001","text":"好的，我现在往前走","session_id":"fdx-bargein-synthetic-001","event_id":"evt_000006"}
+{"ts_ms":3200,"type":"tts.begin","tts_id":"tts_001","turn_id":"turn_001","session_id":"fdx-bargein-synthetic-001","event_id":"evt_000007"}
+{"ts_ms":3400,"type":"tts.first_chunk","tts_id":"tts_001","turn_id":"turn_001","tts_first_ms":200,"session_id":"fdx-bargein-synthetic-001","event_id":"evt_000008"}
+{"ts_ms":5290,"type":"tts.cancel","tts_id":"tts_001","turn_id":"turn_001","reason":"barge_in","cause":"evt_000009","session_id":"fdx-bargein-synthetic-001","event_id":"evt_000011"}
+{"ts_ms":6900,"type":"tts.request","tts_id":"tts_002","turn_id":"turn_002","text":"好的，停下","session_id":"fdx-bargein-synthetic-001","event_id":"evt_000015"}
+{"ts_ms":7050,"type":"tts.begin","tts_id":"tts_002","turn_id":"turn_002","session_id":"fdx-bargein-synthetic-001","event_id":"evt_000016"}
+{"ts_ms":8000,"type":"tts.done","tts_id":"tts_002","turn_id":"turn_002","tts_elapsed_ms":280,"session_id":"fdx-bargein-synthetic-001","event_id":"evt_000017"}
