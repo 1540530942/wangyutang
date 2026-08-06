@@ -163,6 +163,45 @@ class EdgeJournal:
             return out
 
 
+def estimate_clock_offset(samples: list[tuple[int, int, int]]) -> dict[str, int] | None:
+    """NTP-style offset from (t0_edge, t1_server, t2_edge) probe samples.
+
+    For each sample: offset = t1 - (t0+t2)/2 maps edge clock → server session
+    clock (ts_session ≈ ts_edge + offset). The sample with the smallest RTT is
+    the least queue-delayed, so use the median of the best half by RTT.
+    """
+    if not samples:
+        return None
+    scored = sorted(((t2 - t0, t1 - (t0 + t2) // 2) for t0, t1, t2 in samples))
+    best = scored[: max(1, len(scored) // 2 + 1)]
+    offsets = sorted(o for _, o in best)
+    return {"offset_ms": offsets[len(offsets) // 2], "rtt_ms": best[0][0]}
+
+
+async def _run_clock_probes(ws: Any, journal: "EdgeJournal", count: int = 5) -> dict[str, int] | None:
+    """Sequential probe exchange right after stream_ready (no audio in flight yet)."""
+    samples: list[tuple[int, int, int]] = []
+    for _ in range(count):
+        t0 = journal.now_ms()
+        await ws.send(json.dumps({"type": "clock_probe", "t0": t0}))
+        try:
+            while True:
+                raw = await asyncio.wait_for(ws.recv(), timeout=3.0)
+                if isinstance(raw, str):
+                    msg = json.loads(raw)
+                    if msg.get("type") == "clock_probe_ack" and int(msg.get("t0", -1)) == t0:
+                        samples.append((t0, int(msg.get("t1", 0)), journal.now_ms()))
+                        break
+        except (asyncio.TimeoutError, json.JSONDecodeError, ValueError):
+            continue
+    sync = estimate_clock_offset(samples)
+    if sync is not None:
+        journal.emit("clock.sync", **sync, probes=len(samples))
+        await ws.send(json.dumps({"type": "clock_sync", **sync, "probes": len(samples)}))
+        print(f"[INFO] clock sync offset={sync['offset_ms']}ms rtt={sync['rtt_ms']}ms", flush=True)
+    return sync
+
+
 def upload_edge_journal(server: str, token: str, journal: "EdgeJournal") -> None:
     events = journal.drain()
     if not events:
@@ -396,6 +435,13 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
             if isinstance(msg, str) and json.loads(msg).get("type") == "stream_ready":
                 print("[INFO] stream_ready — streaming clean mic (ec_source)", flush=True)
                 break
+
+        # Estimate edge↔session clock offset before any audio is in flight, so
+        # edge journal timestamps can be mapped onto the session timeline (G8).
+        try:
+            await _run_clock_probes(ws, journal)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[WARN] clock probe failed: {exc}", flush=True)
 
         rec = await asyncio.create_subprocess_exec(
             "pw-record", "--target", EC_SOURCE, "--rate", "16000",

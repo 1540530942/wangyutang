@@ -24,6 +24,7 @@ from runtime.event_logger import EventLogger
 from runtime.id_generator import ordinal_id, safe_id
 from runtime.session_writer import (
     SessionWriter,
+    classify_retention,
     emit_bargein_commit,
     emit_tts_cancel,
     emit_turn_result,
@@ -136,9 +137,13 @@ def _wav_to_pcm16(wav_bytes: bytes) -> bytes:
         return b""
 
 
-def safe_finalize_streaming_session(journal: SessionWriter, *, full_pcm: bytes, tts_pcm: bytes | None) -> str | None:
+def safe_finalize_streaming_session(
+    journal: SessionWriter, *, full_pcm: bytes, tts_pcm: bytes | None,
+    extra_manifest: dict[str, Any] | None = None,
+) -> str | None:
     try:
-        return finalize_streaming_session(journal, full_pcm=full_pcm, tts_pcm=tts_pcm)
+        return finalize_streaming_session(journal, full_pcm=full_pcm, tts_pcm=tts_pcm,
+                                          extra_manifest=extra_manifest)
     except Exception as exc:  # noqa: BLE001
         print(f"[WARN] journal_finalize_failed: {exc}", flush=True)
         return None
@@ -153,6 +158,7 @@ def save_session_recording(
     *,
     journal: SessionWriter | None = None,
     tts_pcm: bytes = b"",
+    extra_manifest: dict[str, Any] | None = None,
 ) -> str | None:
     """Persist a full streaming session in legacy and standard layouts.
 
@@ -170,7 +176,8 @@ def save_session_recording(
     if journal is not None:
         # Finalize the live journal even for an empty capture so the on-disk
         # session stays internally consistent (events + a valid, possibly-empty wav).
-        standard_rel = safe_finalize_streaming_session(journal, full_pcm=full_pcm, tts_pcm=tts_pcm or None)
+        standard_rel = safe_finalize_streaming_session(
+            journal, full_pcm=full_pcm, tts_pcm=tts_pcm or None, extra_manifest=extra_manifest)
         if not full_pcm:
             return standard_rel
     elif not full_pcm:
@@ -297,6 +304,7 @@ async def audio_ws(websocket: WebSocket) -> None:
     journal: SessionWriter | None = None
     seg_seq = 0                       # next VAD segment / turn index
     last_speech_start_evt: str | None = None  # event_id of the most recent speech_start (barge-in cause)
+    clock_sync: dict[str, Any] | None = None  # edge↔session offset from clock_probe (G8)
     route_enabled = True  # web模式 dispatches actions; VAD_ASR_TTS debug does ASR-only
     proto = 1             # start_stream may bump to 2 (streaming TTS + tts_state)
 
@@ -336,9 +344,12 @@ async def audio_ws(websocket: WebSocket) -> None:
             tts_ms = _tts_timing_store.pop(f"{session_id}:{i}", None)
             if tts_ms is not None:
                 utt["tts_elapsed_ms"] = tts_ms
+        extra: dict[str, Any] = dict(classify_retention(utts, session_id))
+        if clock_sync is not None:
+            extra["clock"] = clock_sync
         rel = save_session_recording(
             session_id, device_id, STREAM_SAMPLE_RATE, bytes(session_full), utts,
-            journal=journal, tts_pcm=bytes(session_tts_pcm),
+            journal=journal, tts_pcm=bytes(session_tts_pcm), extra_manifest=extra,
         )
         session_full = bytearray()
         session_tts_pcm = bytearray()
@@ -686,6 +697,24 @@ async def audio_ws(websocket: WebSocket) -> None:
                 elif frame_type == "tts_state":
                     pi_tts_playing = bool(frame.get("playing"))
                     _refresh_tts_active()
+
+                elif frame_type == "clock_probe":
+                    # NTP-style probe (G8): echo t0, attach our session-clock t1.
+                    # Answered inline in the recv loop so queueing skew stays minimal.
+                    t1 = journal.now_ms() if journal is not None else 0
+                    await _send_text(json.dumps(
+                        {"type": "clock_probe_ack", "t0": frame.get("t0"), "t1": t1}
+                    ))
+
+                elif frame_type == "clock_sync":
+                    clock_sync = {
+                        "offset_ms": int(frame.get("offset_ms") or 0),
+                        "rtt_ms": int(frame.get("rtt_ms") or 0),
+                        "probes": int(frame.get("probes") or 0),
+                        "method": "ws_probe_median",
+                    }
+                    if journal is not None:
+                        journal.emit("runtime", type="clock.sync", **clock_sync)
 
                 elif frame_type == "end":
                     if not audio_buf:
@@ -1565,15 +1594,17 @@ def _extract_bargein_cases(events: list[dict[str, Any]]) -> tuple[list[dict[str,
 
     Server clock: vad.speech_start → bargein.commit → tts.cancel.
     Edge clock (only if the Pi uploaded telemetry): bargein.tts_cancel_recv →
-    playback.play_stop(killed) = post_cancel_tail. The two clocks are not yet
-    aligned (design G8), so the end-to-end cancel_delay is intentionally left
-    None until clock-sync lands; each single-clock half is reported honestly.
+    playback.play_stop(killed) = post_cancel_tail. When a clock.sync event is
+    present (G8 ws probes), edge timestamps are mapped onto the session clock
+    (ts_session ≈ ts_edge + offset) to compute the true end-to-end cancel_delay;
+    without it each single-clock half is still reported honestly.
     """
     ss_by_evt: dict[str, dict[str, Any]] = {}
     cancel_by_tts: dict[str, dict[str, Any]] = {}
     commits: list[dict[str, Any]] = []
     edge_recv: list[dict[str, Any]] = []
     edge_stop: list[dict[str, Any]] = []
+    clock_offset: int | None = None
     for e in events:
         et = str(e.get("type", ""))
         if et == "vad.speech_start" and e.get("event_id"):
@@ -1586,6 +1617,8 @@ def _extract_bargein_cases(events: list[dict[str, Any]]) -> tuple[list[dict[str,
             edge_recv.append(e)
         elif et == "playback.play_stop":
             edge_stop.append(e)
+        elif et == "clock.sync" and e.get("offset_ms") is not None:
+            clock_offset = int(e["offset_ms"])
 
     cancelled_turns: set[str] = set()
     cases: list[dict[str, Any]] = []
@@ -1607,6 +1640,11 @@ def _extract_bargein_cases(events: list[dict[str, Any]]) -> tuple[list[dict[str,
             )
         recv_ms = int(recv.get("ts_ms", 0)) if recv else None
         stop_ms = int(stop.get("ts_ms", 0)) if stop else None
+        # G8: with a measured offset, the edge play_stop maps onto the session
+        # clock — cancel_delay is then the user-perceived speech→silence gap.
+        cancel_delay = None
+        if clock_offset is not None and stop_ms is not None and speech_ms is not None:
+            cancel_delay = (stop_ms + clock_offset) - speech_ms
         cases.append({
             "tts_id": tts_id,
             "turn_id": str(c.get("turn_id") or ""),
@@ -1621,6 +1659,9 @@ def _extract_bargein_cases(events: list[dict[str, Any]]) -> tuple[list[dict[str,
             "edge_cancel_recv_ms": recv_ms,
             "edge_play_stop_ms": stop_ms,
             "post_cancel_tail_ms": (stop_ms - recv_ms) if (recv_ms is not None and stop_ms is not None) else None,
+            # cross-clock (needs clock.sync)
+            "clock_offset_ms": clock_offset,
+            "cancel_delay_ms": cancel_delay,
             "has_edge_telemetry": recv is not None,
         })
     return cases, cancelled_turns

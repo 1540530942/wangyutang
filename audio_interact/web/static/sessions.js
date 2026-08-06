@@ -89,10 +89,15 @@ function renderBargein(cases) {
       c.commit_delay_ms != null ? `确认打断 +${c.commit_delay_ms}ms` : "已确认打断",
       c.cancel_ms != null ? `发 cancel @${msToSec(c.cancel_ms)}` : null,
     ].filter(Boolean).join(" → ");
+    const e2e = judge(c.cancel_delay_ms, 300, 400);
     const edgeLine = c.has_edge_telemetry
       ? `端侧：收到 cancel @${c.edge_cancel_recv_ms}ms(端钟) → 停播 @${c.edge_play_stop_ms}ms ·
          <span class="bi-metric ${tail.cls}">播放拖尾 ${c.post_cancel_tail_ms}ms ${tail.sym}</span>
-         <span class="bi-target">目标≤150 / 上限≤250</span>`
+         <span class="bi-target">目标≤150 / 上限≤250</span>
+         ${c.cancel_delay_ms != null
+           ? `· <span class="bi-metric ${e2e.cls}">打断全程 ${c.cancel_delay_ms}ms ${e2e.sym}</span>
+              <span class="bi-target">插话→静音，已对时(offset ${c.clock_offset_ms}ms)，目标≤300 / 上限≤400</span>`
+           : `· <span class="bi-na">全程时延待对时</span>`}`
       : `<span class="bi-na">端侧遥测未上报（部署 Pi listener 后可测 cancel_delay / 拖尾）</span>`;
     return `<div class="bi-case">
       <div class="bi-head">

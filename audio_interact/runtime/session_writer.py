@@ -333,11 +333,34 @@ def emit_tts_cancel(
     )
 
 
+def classify_retention(utterances: list[dict[str, Any]], session_id: str = "") -> dict[str, str]:
+    """Retention tier for the media store (design §5): evidence is kept long-term.
+
+    T0_evidence — barge-in / failed / golden-CI sessions (needed for regression
+    and attribution). T1_normal — everything else, rolling retention. T2 sensitive
+    captures are opt-in at record time, not classified here.
+    """
+    reasons = []
+    if any(u.get("barged_in") for u in utterances):
+        reasons.append("barged_in")
+    if any(u.get("action_error") for u in utterances):
+        reasons.append("action_error")
+    if any(str(u.get("status") or "") not in ("", "ok", "asr_only", "empty", "waiting_for_wake_word", "wake_word")
+           for u in utterances):
+        reasons.append("abnormal_status")
+    if session_id.startswith(("ci-", "golden-exec-")):
+        reasons.append("golden_ci")
+    if reasons:
+        return {"retention_tier": "T0_evidence", "retention_reason": ",".join(reasons)}
+    return {"retention_tier": "T1_normal"}
+
+
 def finalize_streaming_session(
     writer: SessionWriter,
     *,
     full_pcm: bytes,
     tts_pcm: bytes | None = None,
+    extra_manifest: dict[str, Any] | None = None,
 ) -> str:
     """Write session audio and manifest for a live journal, then return its path.
 
@@ -348,7 +371,7 @@ def finalize_streaming_session(
     writer.write_audio_pcm16("mic_proc_16k.wav", full_pcm)
     if tts_pcm:
         writer.write_audio_pcm16("tts_ref_16k.wav", tts_pcm)
-    writer.close()
+    writer.close(extra_manifest=extra_manifest)
     return writer.relative_path(writer.root)
 
 

@@ -1,7 +1,7 @@
 {
   "schema_version": "1.1",
   "session_id": "fdx-bargein-synthetic-001",
-  "created_at": "2026-08-04T01:09:57+0800",
+  "created_at": "2026-08-06T19:25:31+0800",
   "device_id": "turbopi-01",
   "duration_ms": 9000,
   "source": "synthetic",

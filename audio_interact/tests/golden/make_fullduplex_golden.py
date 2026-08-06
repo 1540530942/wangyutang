@@ -69,6 +69,10 @@ def build(root: Path) -> Path:
     j.emit("tts", ts_ms=T["tts1_first"], type="tts.first_chunk", tts_id="tts_001", turn_id="turn_001", tts_first_ms=200)
 
     # barge-in: user "停下" over TTS → commit + cancel (server clock)
+    # G8 clock sync: edge timestamps in this synthetic pack are session-aligned,
+    # so the measured offset is 0 (rtt is still realistic).
+    j.emit("runtime", ts_ms=500, type="clock.sync", offset_ms=0, rtt_ms=42, probes=5, method="ws_probe_median")
+
     ss = emit_vad_start(j, segment_id=ordinal_id("seg", 1), start_ms=T["barge_speech"], during_tts=True, confidence=0.9)
     emit_bargein_commit(j, ts_ms=T["barge_commit"], segment_id=ordinal_id("seg", 1),
                         turn_id="turn_002", tts_id="tts_001", cause=ss["event_id"])

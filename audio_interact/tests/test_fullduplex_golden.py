@@ -75,5 +75,9 @@ def test_dashboard_extractor_matches_eval_and_thresholds():
 
     # Spec acceptance metrics (docs/audio-interact-fullduplex-golden-spec.md).
     assert c["post_cancel_tail_ms"] <= 150           # target ≤150, max ≤250
-    false_bargein = sum(1 for x in cases if not x["has_edge_telemetry"] and False)
-    assert false_bargein == 0
+
+    # G8 cross-clock: with clock.sync (offset 0 in this pack) the end-to-end
+    # cancel_delay = play_stop(5388) − speech_start(5100) = 288ms ≤ 300 target.
+    assert c["clock_offset_ms"] == 0
+    assert c["cancel_delay_ms"] == 288
+    assert c["cancel_delay_ms"] <= 300
