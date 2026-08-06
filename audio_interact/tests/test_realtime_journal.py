@@ -157,3 +157,28 @@ def test_edge_events_merge_is_idempotent(tmp_path: Path) -> None:
     assert play_stops[0]["source"] == "edge"
     bargein = read_jsonl(journal.events_dir / "bargein_runtime.jsonl")
     assert any(e["type"] == "bargein.tts_cancel_recv" for e in bargein)
+
+
+def test_extractor_local_energy_kill_before_cancel_recv(tmp_path: Path) -> None:
+    """Real-hardware pattern (pi-1786016177435): the local energy path kills
+    playback BEFORE the server's tts_cancel arrives — tail is 0 by definition
+    and cancel_delay falls back to the edge-local reaction time."""
+    import server
+
+    events = [
+        {"ts_ms": 210, "type": "clock.sync", "offset_ms": -1755, "rtt_ms": 28},
+        {"ts_ms": 89600, "type": "vad.speech_start", "segment_id": "seg_002", "event_id": "evt_9", "during_tts": True},
+        {"ts_ms": 90121, "type": "bargein.commit", "segment_id": "seg_002", "turn_id": "turn_002", "tts_id": "tts_001", "cause": "evt_9"},
+        {"ts_ms": 90121, "type": "tts.cancel", "tts_id": "tts_001", "turn_id": "turn_001"},
+        {"ts_ms": 90832, "type": "bargein.local_duck", "rms": 4893.7, "source": "edge"},
+        {"ts_ms": 91088, "type": "bargein.playback_killed", "reason": "local_energy", "source": "edge"},
+        {"ts_ms": 91088, "type": "playback.play_stop", "reason": "killed", "rc": -9, "source": "edge"},
+        {"ts_ms": 91894, "type": "bargein.tts_cancel_recv", "tts_id": "tts_001", "source": "edge"},
+    ]
+    cases, cancelled = server._extract_bargein_cases(events)
+    assert cancelled == {"turn_001"}
+    c = cases[0]
+    assert c["stop_source"] == "local_energy"
+    assert c["local_react_ms"] == 256          # duck 90832 → stop 91088
+    assert c["post_cancel_tail_ms"] == 0       # already silent when cancel arrived
+    assert c["cancel_delay_ms"] == 256         # mapped delay negative → local reaction

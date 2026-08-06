@@ -1604,6 +1604,8 @@ def _extract_bargein_cases(events: list[dict[str, Any]]) -> tuple[list[dict[str,
     commits: list[dict[str, Any]] = []
     edge_recv: list[dict[str, Any]] = []
     edge_stop: list[dict[str, Any]] = []
+    edge_duck: list[dict[str, Any]] = []
+    edge_local_kill: list[dict[str, Any]] = []
     clock_offset: int | None = None
     for e in events:
         et = str(e.get("type", ""))
@@ -1617,6 +1619,10 @@ def _extract_bargein_cases(events: list[dict[str, Any]]) -> tuple[list[dict[str,
             edge_recv.append(e)
         elif et == "playback.play_stop":
             edge_stop.append(e)
+        elif et == "bargein.local_duck":
+            edge_duck.append(e)
+        elif et == "bargein.playback_killed":
+            edge_local_kill.append(e)
         elif et == "clock.sync" and e.get("offset_ms") is not None:
             clock_offset = int(e["offset_ms"])
 
@@ -1631,20 +1637,42 @@ def _extract_bargein_cases(events: list[dict[str, Any]]) -> tuple[list[dict[str,
         if cancel and cancel.get("turn_id"):
             cancelled_turns.add(str(cancel["turn_id"]))
         recv = next((e for e in edge_recv if str(e.get("tts_id") or "") == tts_id), None)
-        stop = None
-        if recv is not None:
-            stop = next(
-                (e for e in edge_stop
-                 if int(e.get("ts_ms", 0)) >= int(recv.get("ts_ms", 0)) and e.get("reason") == "killed"),
-                None,
-            )
         recv_ms = int(recv.get("ts_ms", 0)) if recv else None
+        # The killed play_stop may precede tts_cancel_recv: on real hardware the
+        # local energy path often wins the race and silences the speaker before
+        # the server's cancel frame lands. Anchor the search on whichever edge
+        # signal exists (local kill or cancel receipt) and take the nearest
+        # killed stop in a ±10s window.
+        anchors = [int(e.get("ts_ms", 0)) for e in edge_local_kill]
+        if recv_ms is not None:
+            anchors.append(recv_ms)
+        stop = None
+        if anchors:
+            lo, hi = min(anchors) - 10_000, max(anchors) + 10_000
+            stop = next((e for e in edge_stop
+                         if e.get("reason") == "killed" and lo <= int(e.get("ts_ms", 0)) <= hi), None)
         stop_ms = int(stop.get("ts_ms", 0)) if stop else None
-        # G8: with a measured offset, the edge play_stop maps onto the session
-        # clock — cancel_delay is then the user-perceived speech→silence gap.
+        local_kill = next((e for e in edge_local_kill
+                           if stop_ms is not None and abs(int(e.get("ts_ms", 0)) - stop_ms) <= 100), None)
+        stop_source = "local_energy" if local_kill else ("server_cancel" if stop else None)
+        duck = max((e for e in edge_duck
+                    if stop_ms is not None and int(e.get("ts_ms", 0)) <= stop_ms),
+                   key=lambda e: int(e.get("ts_ms", 0)), default=None)
+        # Tail: audible playback after the cancel frame arrived. If the local
+        # path already silenced the speaker, the tail is 0 by definition.
+        if recv_ms is not None and stop_ms is not None:
+            tail = max(0, stop_ms - recv_ms)
+        else:
+            tail = None
+        # Local reaction: user speech energy onset → speaker silent (edge clock).
+        local_react = (stop_ms - int(duck.get("ts_ms", 0))) if (duck and stop_ms is not None) else None
+        # G8 cross-clock: user-perceived speech→silence on the session timeline.
+        # Negative means the edge killed playback before the server's (backdated)
+        # VAD onset marker — report the local reaction time instead in that case.
         cancel_delay = None
         if clock_offset is not None and stop_ms is not None and speech_ms is not None:
-            cancel_delay = (stop_ms + clock_offset) - speech_ms
+            mapped = (stop_ms + clock_offset) - speech_ms
+            cancel_delay = mapped if mapped >= 0 else local_react
         cases.append({
             "tts_id": tts_id,
             "turn_id": str(c.get("turn_id") or ""),
@@ -1658,11 +1686,13 @@ def _extract_bargein_cases(events: list[dict[str, Any]]) -> tuple[list[dict[str,
             # edge clock
             "edge_cancel_recv_ms": recv_ms,
             "edge_play_stop_ms": stop_ms,
-            "post_cancel_tail_ms": (stop_ms - recv_ms) if (recv_ms is not None and stop_ms is not None) else None,
+            "stop_source": stop_source,
+            "post_cancel_tail_ms": tail,
+            "local_react_ms": local_react,
             # cross-clock (needs clock.sync)
             "clock_offset_ms": clock_offset,
             "cancel_delay_ms": cancel_delay,
-            "has_edge_telemetry": recv is not None,
+            "has_edge_telemetry": recv is not None or stop is not None,
         })
     return cases, cancelled_turns
 

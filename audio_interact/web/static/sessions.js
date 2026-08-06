@@ -90,10 +90,19 @@ function renderBargein(cases) {
       c.cancel_ms != null ? `发 cancel @${msToSec(c.cancel_ms)}` : null,
     ].filter(Boolean).join(" → ");
     const e2e = judge(c.cancel_delay_ms, 300, 400);
+    const react = judge(c.local_react_ms, 300, 400);
+    const stopDesc = c.stop_source === "local_energy"
+      ? `<b>本地能量打断</b>${c.local_react_ms != null
+          ? ` · <span class="bi-metric ${react.cls}">反应 ${c.local_react_ms}ms ${react.sym}</span>` : ""} → 停播 @${c.edge_play_stop_ms}ms(端钟)`
+      : `停播 @${c.edge_play_stop_ms}ms(端钟)`;
+    const tailDesc = c.post_cancel_tail_ms != null
+      ? (c.post_cancel_tail_ms === 0 && c.stop_source === "local_energy"
+          ? `cancel 到达时已静音（拖尾 0ms ✓）`
+          : `<span class="bi-metric ${tail.cls}">播放拖尾 ${c.post_cancel_tail_ms}ms ${tail.sym}</span>
+             <span class="bi-target">目标≤150 / 上限≤250</span>`)
+      : `<span class="bi-na">拖尾未测</span>`;
     const edgeLine = c.has_edge_telemetry
-      ? `端侧：收到 cancel @${c.edge_cancel_recv_ms}ms(端钟) → 停播 @${c.edge_play_stop_ms}ms ·
-         <span class="bi-metric ${tail.cls}">播放拖尾 ${c.post_cancel_tail_ms}ms ${tail.sym}</span>
-         <span class="bi-target">目标≤150 / 上限≤250</span>
+      ? `端侧：${stopDesc}${c.edge_cancel_recv_ms != null ? ` · 收到 cancel @${c.edge_cancel_recv_ms}ms` : ""} · ${tailDesc}
          ${c.cancel_delay_ms != null
            ? `· <span class="bi-metric ${e2e.cls}">打断全程 ${c.cancel_delay_ms}ms ${e2e.sym}</span>
               <span class="bi-target">插话→静音，已对时(offset ${c.clock_offset_ms}ms)，目标≤300 / 上限≤400</span>`
