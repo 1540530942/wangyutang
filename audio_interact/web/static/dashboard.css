@@ -159,3 +159,4 @@ audio { width: 100%; margin-top: 8px; }
 .bi-target { font-size: 10px; color: var(--muted); margin-left: 4px; }
 .bi-na { color: var(--muted); font-style: italic; font-size: 11px; }
 .bi-tag { font-size: 10px; font-weight: 600; color: var(--warn); background: #fff3e0; padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+.bi-clk.comp { background: var(--warn); }

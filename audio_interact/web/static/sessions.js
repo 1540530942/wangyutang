@@ -108,6 +108,15 @@ function renderBargein(cases) {
               <span class="bi-target">插话→静音，已对时(offset ${c.clock_offset_ms}ms)，目标≤300 / 上限≤400</span>`
            : `· <span class="bi-na">全程时延待对时</span>`}`
       : `<span class="bi-na">端侧遥测未上报（部署 Pi listener 后可测 cancel_delay / 拖尾）</span>`;
+    const comp = c.compensation;
+    const compLine = comp
+      ? `<div class="bi-line"><span class="bi-clk comp">补&nbsp;偿</span>被打断轮已派发动作(${comp.envelope_id || "—"}) →
+          ${comp.status === "compensated"
+            ? `<span class="bi-metric bi-good">已派发 ${comp.compensation} ✓</span> ${comp.compensation_envelope_id ? `<span class="bi-target">${comp.compensation_envelope_id}</span>` : ""}`
+            : comp.status === "failed"
+              ? `<span class="bi-metric bi-bad">补偿失败 ✗</span> <span class="bi-target">${(comp.error || "").slice(0, 60)}</span>`
+              : `<span class="bi-na">补偿执行中…</span>`}</div>`
+      : "";
     return `<div class="bi-case">
       <div class="bi-head">
         <span class="bi-idx">⚡ 打断 ${i + 1}</span>
@@ -116,6 +125,7 @@ function renderBargein(cases) {
       </div>
       <div class="bi-line"><span class="bi-clk">服务端</span>${serverLine}</div>
       <div class="bi-line"><span class="bi-clk edge">端&nbsp;侧</span>${edgeLine}</div>
+      ${compLine}
     </div>`;
   }).join("");
   return `

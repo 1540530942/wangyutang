@@ -1,0 +1,49 @@
+# 账本二（可观测性）— 轻量 SLO 栈。
+#
+# 生产机只有 3.6G 内存，故裁掉 Tempo/Collector（见 README），只跑
+# Prometheus + Grafana，各限 256M，端口只绑 127.0.0.1（经 SSH 隧道访问）。
+# 部署（在 /root/wangyutang_platform 同级）：
+#   docker compose -f observability/docker-compose.observability.yml up -d
+services:
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: obs-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    mem_limit: 256m
+    restart: unless-stopped
+    networks: [platform]
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: obs-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-wangyutang-obs}
+      # 只绑 127.0.0.1，匿名只读仅用于本机隧道查看/截图
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    mem_limit: 256m
+    restart: unless-stopped
+    networks: [platform]
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  platform:
+    external: true
+    name: wangyutang_platform_default

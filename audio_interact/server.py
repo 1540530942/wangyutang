@@ -20,6 +20,7 @@ from fastapi import Body, FastAPI, File, Form, Header, HTTPException, Request, U
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from runtime import metrics
 from runtime.event_logger import EventLogger
 from runtime.id_generator import ordinal_id, safe_id
 from runtime.session_writer import (
@@ -211,7 +212,14 @@ def save_session_recording(
     return standard_rel or f"recordings/{day}/{safe_session}"
 
 app = FastAPI(title="Audio Interact Service", version="0.3.0")
+metrics.init_tracing("audio-interact")
 WAKE_STATES = WakeStateStore()
+
+
+@app.get("/metrics", include_in_schema=False)
+def prometheus_metrics() -> Response:
+    payload, content_type = metrics.metrics_payload()
+    return Response(content=payload, media_type=content_type)
 SILERO_VAD_MODEL: Any | None = None
 SILERO_TORCH: Any | None = None
 
@@ -284,6 +292,10 @@ class _TurnState:
     # barge-in events for this utterance all cross-reference the same turn.
     turn_idx: int = 0
     segment_id: str = "seg_001"
+    # Set once routing returns, so a later barge-in knows whether this turn had
+    # already dispatched a physical action that needs compensating (G9).
+    envelope_id: str = ""
+    action_dispatched: bool = False
 
 
 @app.websocket("/ws/audio")
@@ -347,6 +359,7 @@ async def audio_ws(websocket: WebSocket) -> None:
         extra: dict[str, Any] = dict(classify_retention(utts, session_id))
         if clock_sync is not None:
             extra["clock"] = clock_sync
+        metrics.record_session_flush(extra.get("retention_tier", ""))
         rel = save_session_recording(
             session_id, device_id, STREAM_SAMPLE_RATE, bytes(session_full), utts,
             journal=journal, tts_pcm=bytes(session_tts_pcm), extra_manifest=extra,
@@ -448,6 +461,8 @@ async def audio_ws(websocket: WebSocket) -> None:
             result = await loop.run_in_executor(None, _process, ts.wav_bytes, device_id, session_id, route_enabled)
             result["streaming_vad"] = "silero"
             tts_text = result.get("tts_text", "")
+            ts.envelope_id = str(result.get("envelope_id") or "")
+            ts.action_dispatched = bool(result.get("action_task"))
 
             # Journal the ASR final + routed command the moment routing returns,
             # so the fact is durable before any (cancellable) TTS is attempted.
@@ -505,6 +520,11 @@ async def audio_ws(websocket: WebSocket) -> None:
                 if tts_text and TTS_URL and not ts.cancelled:
                     await _stream_tts(tts_text, ts, turn_idx)
 
+            metrics.record_turn(result)
+            first_ms = _tts_timing_store.get(f"{session_id}:{turn_idx}")
+            if first_ms is not None:
+                e2e = first_ms + int(result.get("asr_elapsed_ms") or 0) + int(result.get("route_elapsed_ms") or 0)
+                metrics.record_tts_first_chunk(first_ms, e2e)
             session_utterances.append({
                 "index": turn_idx,
                 "vad_start_seconds": ts.vad_start,
@@ -588,7 +608,7 @@ async def audio_ws(websocket: WebSocket) -> None:
                                 # even if the cancel frame never reaches the Pi.
                                 if journal is not None:
                                     now_ms = journal.now_ms()
-                                    emit_bargein_commit(
+                                    commit_ev = emit_bargein_commit(
                                         journal, ts_ms=now_ms, segment_id=seg_id,
                                         turn_id=ordinal_id("turn", seg_seq),
                                         tts_id=cancel_tts_id, cause=last_speech_start_evt,
@@ -598,6 +618,22 @@ async def audio_ws(websocket: WebSocket) -> None:
                                         turn_id=cancel_turn_id, reason="barge_in",
                                         cause=last_speech_start_evt,
                                     )
+                                    metrics.record_bargein_commit(now_ms - seconds_to_ms(pending_start))
+                                    # G9: interrupted motion gets an always-safe stop,
+                                    # journaled as cancel_requested → compensated so the
+                                    # physical outcome of the interruption is auditable.
+                                    if current_turn.action_dispatched:
+                                        req_ev = journal.emit(
+                                            "runtime", type="task.cancel_requested",
+                                            turn_id=cancel_turn_id,
+                                            envelope_id=current_turn.envelope_id,
+                                            cause=commit_ev.get("event_id"),
+                                            compensation="stop",
+                                        )
+                                        asyncio.ensure_future(_compensate_cancelled_turn(
+                                            journal, req_ev.get("event_id", ""),
+                                            current_turn.envelope_id, device_id,
+                                        ))
                                 await _send_text(json.dumps(
                                     {"type": "tts_cancel", "session_id": session_id,
                                      "turn": current_turn.gen, "turn_id": cancel_turn_id,
@@ -1088,6 +1124,47 @@ def _process(wav_bytes: bytes, device_id: str, session_id: str, route_action: bo
         "route_elapsed_ms": int((route_done_at - asr_done_at) * 1000),
         "elapsed_ms": elapsed_ms(started),
     }
+
+
+def _dispatch_bargein_compensation(device_id: str, cancelled_envelope_id: str) -> dict[str, Any]:
+    """G9 safety compensation: a barged-in turn had already dispatched motion.
+
+    `stop` is the only always-safe compensation for interrupted motion, so it is
+    dispatched unconditionally. The user's interrupting utterance may itself
+    route to stop moments later — stop is idempotent, doubling is harmless.
+    """
+    resp = requests.post(
+        f"{ROBOT_SANDBOX_URL}/api/recognize-text",
+        json={
+            "device_id": device_id,
+            "text": "停下",
+            "source": "bargein_compensation",
+            "route_action": True,
+            "raw": {"compensates_envelope": cancelled_envelope_id},
+        },
+        timeout=ROUTE_TIMEOUT,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def _compensate_cancelled_turn(
+    journal: SessionWriter, cancel_req_event_id: str, envelope_id: str, device_id: str,
+) -> None:
+    loop = asyncio.get_running_loop()
+    try:
+        comp = await loop.run_in_executor(None, _dispatch_bargein_compensation, device_id, envelope_id)
+        journal.emit(
+            "runtime", type="task.compensated", cause=cancel_req_event_id,
+            envelope_id=envelope_id,
+            compensation_envelope_id=str(comp.get("envelope_id") or ""),
+            skill_id=str(comp.get("skill_id") or ""),
+        )
+    except Exception as exc:  # noqa: BLE001
+        journal.emit(
+            "runtime", type="task.compensate_failed", cause=cancel_req_event_id,
+            envelope_id=envelope_id, error=str(exc)[:200],
+        )
 
 
 def wake_only_result(*, session_id: str, text: str, wake: WakeDecision, started: float,
@@ -1606,6 +1683,7 @@ def _extract_bargein_cases(events: list[dict[str, Any]]) -> tuple[list[dict[str,
     edge_stop: list[dict[str, Any]] = []
     edge_duck: list[dict[str, Any]] = []
     edge_local_kill: list[dict[str, Any]] = []
+    comp_events: list[dict[str, Any]] = []
     clock_offset: int | None = None
     for e in events:
         et = str(e.get("type", ""))
@@ -1625,6 +1703,8 @@ def _extract_bargein_cases(events: list[dict[str, Any]]) -> tuple[list[dict[str,
             edge_local_kill.append(e)
         elif et == "clock.sync" and e.get("offset_ms") is not None:
             clock_offset = int(e["offset_ms"])
+        elif et in ("task.cancel_requested", "task.compensated", "task.compensate_failed"):
+            comp_events.append(e)
 
     cancelled_turns: set[str] = set()
     cases: list[dict[str, Any]] = []
@@ -1693,8 +1773,31 @@ def _extract_bargein_cases(events: list[dict[str, Any]]) -> tuple[list[dict[str,
             "clock_offset_ms": clock_offset,
             "cancel_delay_ms": cancel_delay,
             "has_edge_telemetry": recv is not None or stop is not None,
+            # G9: compensation chain for a cancelled turn that had dispatched motion
+            "compensation": _compensation_for(comp_events, commit_evt=str(c.get("event_id") or "")),
         })
     return cases, cancelled_turns
+
+
+def _compensation_for(comp_events: list[dict[str, Any]], *, commit_evt: str) -> dict[str, Any] | None:
+    req = next((e for e in comp_events
+                if e.get("type") == "task.cancel_requested" and str(e.get("cause") or "") == commit_evt), None)
+    if req is None:
+        return None
+    req_id = str(req.get("event_id") or "")
+    done = next((e for e in comp_events
+                 if e.get("type") in ("task.compensated", "task.compensate_failed")
+                 and str(e.get("cause") or "") == req_id), None)
+    status = "pending"
+    if done is not None:
+        status = "compensated" if done.get("type") == "task.compensated" else "failed"
+    return {
+        "status": status,
+        "envelope_id": str(req.get("envelope_id") or ""),
+        "compensation": str(req.get("compensation") or "stop"),
+        "compensation_envelope_id": str((done or {}).get("compensation_envelope_id") or ""),
+        "error": str((done or {}).get("error") or ""),
+    }
 
 
 @app.get("/api/sessions")
@@ -1796,6 +1899,17 @@ def post_edge_events(
         runtime_log.emit(**event)
         known.add(eid)
         merged += 1
+
+    if merged:
+        # Edge telemetry completes the cross-clock picture — record the SLO
+        # metrics once per successful merge (retries merge 0 and record nothing).
+        try:
+            cases, _ = _extract_bargein_cases(_load_events_for_session(pkg))
+            for case in cases:
+                if case.get("has_edge_telemetry"):
+                    metrics.record_bargein_case(case)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[WARN] bargein_metrics_failed: {exc}", flush=True)
 
     return {"session_id": session_id, "merged": merged, "skipped": skipped}
 

@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: audio-slo
+    folder: 语音交互
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

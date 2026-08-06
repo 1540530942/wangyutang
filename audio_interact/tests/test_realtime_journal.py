@@ -182,3 +182,49 @@ def test_extractor_local_energy_kill_before_cancel_recv(tmp_path: Path) -> None:
     assert c["local_react_ms"] == 256          # duck 90832 → stop 91088
     assert c["post_cancel_tail_ms"] == 0       # already silent when cancel arrived
     assert c["cancel_delay_ms"] == 256         # mapped delay negative → local reaction
+
+
+def test_extractor_compensation_chain(tmp_path: Path) -> None:
+    """G9: a barged-in turn with dispatched motion gets a journaled
+    cancel_requested → compensated chain, attached to the barge-in case."""
+    import server
+
+    events = [
+        {"ts_ms": 5100, "type": "vad.speech_start", "segment_id": "seg_002", "event_id": "evt_1", "during_tts": True},
+        {"ts_ms": 5287, "type": "bargein.commit", "segment_id": "seg_002", "turn_id": "turn_002",
+         "tts_id": "tts_001", "cause": "evt_1", "event_id": "evt_2"},
+        {"ts_ms": 5290, "type": "tts.cancel", "tts_id": "tts_001", "turn_id": "turn_001", "event_id": "evt_3"},
+        {"ts_ms": 5291, "type": "task.cancel_requested", "turn_id": "turn_001", "envelope_id": "env_A",
+         "cause": "evt_2", "compensation": "stop", "event_id": "evt_4"},
+        {"ts_ms": 5600, "type": "task.compensated", "cause": "evt_4", "envelope_id": "env_A",
+         "compensation_envelope_id": "env_B", "skill_id": "stop", "event_id": "evt_5"},
+    ]
+    cases, _ = server._extract_bargein_cases(events)
+    comp = cases[0]["compensation"]
+    assert comp is not None
+    assert comp["status"] == "compensated"
+    assert comp["envelope_id"] == "env_A"
+    assert comp["compensation_envelope_id"] == "env_B"
+
+
+def test_compensate_cancelled_turn_journals_result(tmp_path: Path, monkeypatch) -> None:
+    import asyncio
+    import server
+
+    journal = open_streaming_journal(tmp_path, session_id="pi-comp-001", device_id="turbopi-01", sample_rate=16000)
+    monkeypatch.setattr(server, "_dispatch_bargein_compensation",
+                        lambda device_id, env: {"envelope_id": "env_stop_1", "skill_id": "stop"})
+    asyncio.run(server._compensate_cancelled_turn(journal, "evt_req", "env_A", "turbopi-01"))
+    runtime = read_jsonl(journal.events_dir / "runtime_events.jsonl")
+    done = next(e for e in runtime if e["type"] == "task.compensated")
+    assert done["cause"] == "evt_req"
+    assert done["compensation_envelope_id"] == "env_stop_1"
+
+    # failure path
+    def _boom(device_id, env):
+        raise RuntimeError("sandbox down")
+    monkeypatch.setattr(server, "_dispatch_bargein_compensation", _boom)
+    asyncio.run(server._compensate_cancelled_turn(journal, "evt_req2", "env_A", "turbopi-01"))
+    runtime = read_jsonl(journal.events_dir / "runtime_events.jsonl")
+    failed = next(e for e in runtime if e["type"] == "task.compensate_failed")
+    assert failed["cause"] == "evt_req2" and "sandbox down" in failed["error"]
