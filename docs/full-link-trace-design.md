@@ -397,7 +397,19 @@ P0（账本层，不改交互行为）已实现并通过单测，代码改动集
 | P0-4 | G4/G5 ID 贯通 | 每事件带单调 `event_id`；`tts_begin`/`tts_cancel`/`asr_started` 帧带 `turn_id`/`tts_id`/`segment_id`；`POST /api/sessions/{id}/edge-events` 按 event_id 去重合并 | `server.py`、`runtime/session_writer.py` |
 | P0-5 | G7 tts_ref 缺失 | `_stream_tts`/proto<2 路径 tee 已投递的 TTS PCM → `tts_ref_16k.wav` | `server.py` |
 
-未覆盖（留待 P1/P2）：OTel 接入(G6)、端云 ping RTT 对时(G8)、补偿/回滚事件模型(G9)、媒体分级保留、Dashboard turn 瀑布图。
+**P1/P2 落地状态（2026-08-06 更新，全部部署至生产并经真机验证）：**
+
+| 项 | 实现 | 真机验证 |
+|---|---|---|
+| G8 对时 | listener 5 次 NTP 式 WS clock_probe，最小 RTT 半程取中位数；`clock.sync` 落账+写 manifest.clock；抽取器映射端侧时间轴算端到端 cancel_delay | offset −1755/−3776ms，rtt 24-28ms；打断全程 256ms ✓ / 401ms ⚠ 两轮实测 |
+| G6 观测 | `runtime/metrics.py` 暴露 /metrics（e2e/分阶段/打断直方图）；`observability/` Prometheus+Grafana 各限 256M 只绑 127.0.0.1（生产机 3.6G 内存跑不起 Tempo，OTel span 埋点门控在 OTEL_EXPORTER_OTLP_ENDPOINT，换大机即接） | SLO 看板已用真机数据渲染；e2e P95 8s 红色告警如实暴露观察链路慢 |
+| G9 补偿 | 被打断 turn 若已派发动作 → 自动派发永远安全的 stop；账本 `task.cancel_requested → task.compensated/compensate_failed` 因果链；打断卡片显示补偿状态。**车端抢占式取消协议未做**（涉实车控制栈，需单独设计评审） | 链路单测覆盖；物理验证待真人唤醒+移动指令场景 |
+| 媒体分级 | flush 时 `classify_retention` 自动标 manifest.retention_tier（打断/失败/CI=T0_evidence 长期，其余 T1_normal） | 真机打断会话已标 T0_evidence ✓ |
+| turn 瀑布+打断卡片 | Dashboard「阶段耗时瀑布图」+「全双工打断」卡片（服务端/端侧/补偿三行，双时钟拆分，本地先杀路径 tail=0 语义） | 真机会话 pi-1786016177435 生产渲染 ✓ |
+
+**真机声学验证方法**（可复现）：Pi 的 AEC 参考只含走 ec_sink 的 TTS，把合成语音直接 pw-play 到物理 USB sink 即绕过回声消除、经空气进真麦克风，等效真人插话。两轮实测：本地能量打断反应 256ms/2ms，拖尾 0ms，server cancel 比本地 kill 晚 33-806ms（双路冗余符合设计）。
+
+**运维教训**：手动 scp 部署与 deploy-modules CI 并存时，push 会触发 CI 用发布包覆盖未提交文件（曾致 5 分钟崩溃循环）。规则：**生产变更一律走 commit→push→CI**，手动部署只用于紧急止血。
 
 测试：`audio_interact/tests/test_realtime_journal.py`（event_id 单调、崩溃前事件已落盘、打断因果链、finalize 产出合法会话、edge-events 幂等合并）——全绿；既有 `tests/`、`ci_tests/` 本地用例未回归（`ci_tests/vad_asr` 中 1 例连的是远端生产服务器的实时 Silero VAD，与本地改动无关）。
 
