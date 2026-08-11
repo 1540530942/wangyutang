@@ -25,9 +25,9 @@ class ModelStudioSelectionTest(unittest.TestCase):
 
         self.assertEqual(saved, loaded)
         self.assertEqual(loaded["llm"]["endpoint"], "/common/api/chat/qwen3/completions")
-        self.assertEqual(loaded["llm"]["model"], "Qwen3.5-35B-A3B-Q4_K_M.gguf")
+        self.assertEqual(loaded["llm"]["model"], "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
         self.assertEqual(loaded["vision"]["endpoint"], "/common/api/vision/lv/analyze-json")
-        self.assertEqual(loaded["vision"]["model"], "qwen25vl7b-q4km.gguf")
+        self.assertEqual(loaded["vision"]["model"], "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 
     def test_unknown_provider_falls_back_to_audio_defaults(self) -> None:
         selected = model_studio_router.default_selection()

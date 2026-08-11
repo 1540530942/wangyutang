@@ -2,7 +2,7 @@
 
 > 用途：记录 spark-c9a7 上所有 AI 模型的部署方式、配置和调用方法。
 >
-> 最后更新：2026-07-16
+> 最后更新：2026-07-19
 
 ---
 
@@ -110,10 +110,10 @@ curl http://100.97.66.46:8000/v1/models
 | **生成速率** | ~165 tok/s | ~65-75 tok/s |
 | **图像耗时**（关 thinking） | ~0.8s | ~3-4s |
 | **图像生成速率** | ~130 tok/s | ~75 tok/s |
-| **工具调用** | ✅ 支持 | 未测试 |
+| **工具调用** | ✅ 支持 | ✅ 支持 |
 | **关 thinking 方式** | `chat_template_kwargs` | `chat_template_kwargs` |
 
-lv_server 生成速率约为 Spark 的 **2-2.5x**，图像端到端也快约 4x。
+lv_server 生成速率约为 Spark 的 **2-2.5x**，图像端到端也快约 4x。2026-07-19 线上验证中，Spark 文本返回 `OK`，工具调用返回 `get_weather({"city":"北京"})`，红色测试图返回 `红色`。
 
 ---
 
@@ -129,11 +129,13 @@ python -m hermes_cli.main gateway run --replace
 
 ## common_api_manager 集成
 
-Spark 端点在 `common_api_manager` 中以 `spark_qwen_chat` provider 接入：
+Spark 端点在 `common_api_manager` 中以 `spark_qwen_chat` 和 `spark_qwen_vision` provider 接入：
 
 ```
 SPARK_QWEN_BASE_URL=http://100.97.66.46:8000   # 或 ssh tunnel 127.0.0.1:18000
 SPARK_QWEN_MODEL=qwen3.6-35b-a3b
 ```
 
-调用路径：`/api/llm?provider=spark_qwen_chat`
+调用路径：
+- `POST /common/api/llm/spark-qwen/chat/completions`
+- `POST /common/api/vision/spark/analyze-json`

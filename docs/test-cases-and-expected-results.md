@@ -137,19 +137,20 @@
 
 | 输入/请求 | 预期结果 |
 |---|---|
-| LV chat：`只回答数字：1+1=` | HTTP 200；`provider=lv_qwen_chat`；`text` 非空 |
+| LV chat：`只回答数字：1+1=` | HTTP 200；`model=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`；`text` 非空 |
 | DashScope chat：`只回答数字：2+2=` | HTTP 200；`text` 非空 |
-| Spark LLM：简单文本问题 | HTTP 200；`provider=spark_qwen_chat`；`text` 非空 |
-| LV vision：64x64 红色 JPEG + `图片主要是什么颜色？` | HTTP 200；`provider=lv_qwen_vision`；返回文本非空 |
-| Spark vision：64x64 红色 JPEG + `图片主要是什么颜色？` | HTTP 200；`provider=spark_qwen_vision`；返回文本非空 |
+| Spark LLM：简单文本问题 | HTTP 200；`model=qwen3.6-35b-a3b`；`text` 非空 |
+| Spark LLM：工具调用问题 `北京天气怎么样？请调用工具回答。` | HTTP 200；`finish_reason=tool_calls`；工具名为 `get_weather`，参数含 `city=北京` |
+| LV vision：64x64 红色 JPEG + `图片主要是什么颜色？` | HTTP 200；`provider=lv_qwen_vision`；`model=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`；返回文本非空 |
+| Spark vision：64x64 红色 JPEG + `图片主要是什么颜色？` | HTTP 200；`provider=spark_qwen_vision`；`model=qwen3.6-35b-a3b`；返回文本非空 |
 | DashScope vision：64x64 红色 JPEG + `图片主要是什么颜色？` | HTTP 200；`provider=dashscope_qwen_vision`；返回文本非空 |
 
 ### 3.3 common lab 模型选择
 
 | 输入选择 | 预期保存结果 |
 |---|---|
-| `llm.provider=lv`, `vision.provider=lv` | LLM endpoint 为 `/common/api/chat/qwen3/completions`，model 为 `Qwen3.5-35B-A3B-Q4_K_M.gguf` |
-| `llm.provider=lv`, `vision.provider=lv` | Vision endpoint 为 `/common/api/vision/lv/analyze-json`，model 为 `qwen25vl7b-q4km.gguf` |
+| `llm.provider=lv`, `vision.provider=lv` | LLM endpoint 为 `/common/api/chat/qwen3/completions`，model 为 `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` |
+| `llm.provider=lv`, `vision.provider=lv` | Vision endpoint 为 `/common/api/vision/lv/analyze-json`，model 为 `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` |
 | 未知 provider | LLM 回退到 `dashscope`，Vision 回退到 `spark` |
 
 ## 4. camera_snapshot 摄像头/截图服务

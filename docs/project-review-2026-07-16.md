@@ -8,6 +8,11 @@
 > 论据（hairpin 回环性能损耗很小）；P0-3 升级为"鉴权方向装反"（设备端点
 > 有票、指令下发端点裸奔）；阶段一#1 补 extra_hosts 前提、#3 改为应用层
 > 精确鉴权（Caddy 整段拦截会弄断真机）。新增"用 loop 巡检闭环推进落地"一节。
+>
+> 后续模型更新（2026-07-19）：生产 `common_api_manager` 的 chat 与 lv vision
+> 实际加载标识已统一为 `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`。本文保留 7 月 16 日
+> 评审时的 MTP 部署记录；当前模型配置以 `common_api_manager` 的 settings、env
+> 示例和 health 接口为准。
 
 ---
 
@@ -54,7 +59,7 @@ chat/vision 同端点）连续多轮全绿，期间发现并修复了 Tencent �
    front_distance）→ 做（底盘/舵机执行）→ 说（TTS 播报）→ 看（相机/表情屏反馈）"
    的完整闭环，并且每一步都留下可审计、可回放的 DecisionEnvelope。
 2. **模型自主权**：不绑死单一云厂商。`common_api_manager` 把 DashScope、Spark
-   服务器、自建 lv_server GPU（Qwen3.5-35B + Qwen2.5-VL-7B）统一收口成平台级
+   服务器、自建 lv_server GPU（Qwen3.6-35B-A3B-MTP-GGUF，文本和视觉共用）统一收口成平台级
    ASR/TTS/Chat/Vision API，Model Studio 提供真实推理校验的模型目录，可随时切换。
 3. **工程可信度**：用金标会话（golden sessions）、回放（replay）、无 LLM 的
    smoke 必过集、分层 CI 守护（`ci_tests/`）来保证"改了代码，机器人行为不退化"。
