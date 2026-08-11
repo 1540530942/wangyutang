@@ -4,6 +4,11 @@ Golden audio data follows the same principle as runtime capture: one complete
 multi-turn session is the primary data unit. Tests can expand a session into
 per-turn assertions, but the archived audio must remain continuous.
 
+Full-duplex and barge-in sessions have extra audio, event, and label
+requirements. See
+[audio-interact-fullduplex-golden-spec.md](audio-interact-fullduplex-golden-spec.md)
+before adding `mode: "full_duplex"` golden data.
+
 ## Layout
 
 ```text
