@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>音频转换 · ASR 预处理</title>
+    <link rel="stylesheet" href="./static/audio_convert.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">WALLE / Common API</p>
+          <h1>音频转换 · ASR 预处理</h1>
+        </div>
+        <span class="pill" id="capabilityPill">检查转码能力…</span>
+      </header>
+
+      <section class="panel">
+        <h2>上传并转换</h2>
+        <p class="hint">
+          把 m4a / mp3 / wav / aac 等任意录音转成 16kHz 单声道音频，可按静音切片。转换结果保存在服务端，可直接下载，也可以通过接口取回。
+        </p>
+
+        <form id="convertForm">
+          <div class="form-grid">
+            <label class="field">
+              源文件
+              <input id="fileInput" type="file" accept="audio/*,.m4a,.mp3,.wav,.aac,.flac,.ogg,.opus,.amr" required />
+              <small id="fileHint">支持 ffmpeg 可读的音频格式</small>
+            </label>
+            <label class="field">
+              输出格式
+              <select id="formatSelect"></select>
+              <small id="formatHint">&nbsp;</small>
+            </label>
+            <label class="field">
+              切片长度（秒）
+              <input id="splitInput" type="number" min="0" step="10" value="120" />
+              <small>0 = 不切片；否则在目标长度附近的静音处下刀</small>
+            </label>
+          </div>
+
+          <div class="actions">
+            <button type="submit" id="submitButton">开始转换</button>
+            <button type="button" class="ghost" id="refreshButton">刷新历史</button>
+            <span class="status" id="statusText">就绪</span>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel" id="resultPanel" hidden>
+        <h2>转换结果</h2>
+        <div class="summary" id="resultSummary"></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>文件</th>
+                <th>起始</th>
+                <th>结束</th>
+                <th>大小</th>
+                <th>下载</th>
+              </tr>
+            </thead>
+            <tbody id="resultRows"></tbody>
+          </table>
+        </div>
+        <div class="actions">
+          <a id="archiveLink" href="#" download><button type="button">打包下载 ZIP</button></a>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>历史任务</h2>
+        <p class="hint">服务端按数量、总体积和保留时长自动清理旧任务。</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>任务 ID</th>
+                <th>源文件</th>
+                <th>时长</th>
+                <th>格式</th>
+                <th>分片</th>
+                <th>输出大小</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="jobRows"></tbody>
+          </table>
+        </div>
+        <p class="empty" id="jobsEmpty" hidden>暂无历史任务。</p>
+      </section>
+    </main>
+    <script src="./static/audio_convert.js"></script>
+  </body>
+</html>

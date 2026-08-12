@@ -15,6 +15,7 @@
 | **图像理解 lv（推荐）** | `POST /common/api/vision/lv/analyze-json` | Qwen3.6-35B-A3B-UD-Q4_K_M.gguf + mmproj (lv RTX 4090) | ✅ |
 | **图像理解 Spark** | `POST /common/api/vision/spark/analyze-json` | qwen3.6-35b-a3b (spark vLLM) | ✅ |
 | **图像理解 DashScope** | `POST /common/api/vision/dashscope/analyze-json` | Qwen-VL-Plus (阿里云) | ✅ |
+| **音频转换（ASR 预处理）** | `POST /common/api/audio/convert` | ffmpeg 7.0.2（宿主机本地转码，不走模型） | ✅ |
 
 接口基础 URL：`https://www.wangyutang.cn`
 

@@ -28,7 +28,7 @@ audio I/O lives in `audio_interact`, robot command planning/execution in
 
 | Path | Role | Public route | Port |
 | --- | --- | --- | --- |
-| `common_api_manager/` | Public workbench (Model Studio, Robot Skills) + platform ASR/TTS common API | `/common/` | host:8101 |
+| `common_api_manager/` | Public workbench (Model Studio, Robot Skills, 音频转换) + platform ASR/TTS common API | `/common/` | host:8101 |
 
 ## Web pages (可打开使用的网页)
 
@@ -44,6 +44,7 @@ All under `https://www.wangyutang.cn`. Each page and what it does:
 | **公共工作台** | `/common/` | common_api_manager 公共能力入口页。 |
 | **Model Studio** | `/common/model-studio` | 模型目录 + 每模型真实推理校验（点“校验”跑真实推理，非硬编码徽章）。 |
 | **机器人技能** | `/common/robot-skills` | 技能面板（原 function_center 继任页），调用 `/action/*`、`/camera/*`。 |
+| **音频转换** | `/common/audio-convert` | 上传 m4a/mp3/wav 等录音，转成 16kHz 单声道 ASR 输入音频（wav/opus/mp3），可按静音自动切片；结果可网页下载或经 `/common/api/audio/convert/*` 接口取回。 |
 | **Pi5 控制台** | `/robot/` | 树莓派5 巡逻机器人 MVP 控制台。 |
 | **SLAM 地图** | `/slam/` | 位姿 / 占据栅格地图反馈。 |
 | **表情屏** | `/face/` | Wall-E 风格机器人表情屏（网页 + 树莓派 LCD kiosk）。 |

@@ -62,6 +62,13 @@ class Settings:
     spark_qwen_model: str = os.getenv("SPARK_QWEN_MODEL", "qwen3.6-35b-a3b")
     spark_qwen_timeout_seconds: float = float(os.getenv("SPARK_QWEN_TIMEOUT_SECONDS", "180"))
     model_usage_collector_url: str = os.getenv("MODEL_USAGE_COLLECTOR_URL", "").strip()
+    audio_convert_dir: str = os.getenv("AUDIO_CONVERT_DIR", os.path.join(BASE_DIR, "data", "audio_convert"))
+    audio_convert_max_upload_bytes: int = int(os.getenv("AUDIO_CONVERT_MAX_UPLOAD_BYTES", "209715200"))
+    audio_convert_max_jobs: int = int(os.getenv("AUDIO_CONVERT_MAX_JOBS", "40"))
+    audio_convert_max_store_bytes: int = int(os.getenv("AUDIO_CONVERT_MAX_STORE_BYTES", "2147483648"))
+    audio_convert_max_age_hours: float = float(os.getenv("AUDIO_CONVERT_MAX_AGE_HOURS", "168"))
+    audio_convert_concurrency: int = int(os.getenv("AUDIO_CONVERT_CONCURRENCY", "2"))
+    audio_convert_timeout_seconds: float = float(os.getenv("AUDIO_CONVERT_TIMEOUT_SECONDS", "600"))
 
 
 settings = Settings()

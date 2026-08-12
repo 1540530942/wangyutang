@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from common.settings import settings
 from modules.asr_transcribe import router as asr_transcribe_router
+from modules.audio_convert import router as audio_convert_router
 from modules.dashscope_qwen_chat import router as dashscope_qwen_chat_router
 from modules.dashscope_qwen_vision import router as dashscope_qwen_vision_router
 from modules.health_check import router as health_check_router
@@ -30,6 +31,7 @@ app.mount("/static", StaticFiles(directory=settings.static_dir), name="static")
 app.include_router(health_check_router)
 app.include_router(model_studio_catalog_router)
 app.include_router(asr_transcribe_router)
+app.include_router(audio_convert_router)
 app.include_router(lv_qwen_asr_router)
 app.include_router(lv_qwen_chat_router)
 app.include_router(dashscope_qwen_chat_router)
@@ -53,3 +55,8 @@ def model_studio() -> FileResponse:
 @app.get("/robot-skills")
 def robot_skills() -> FileResponse:
     return FileResponse(f"{settings.static_dir}/robot_skills.html")
+
+
+@app.get("/audio-convert")
+def audio_convert() -> FileResponse:
+    return FileResponse(f"{settings.static_dir}/audio_convert.html")
