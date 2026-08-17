@@ -79,7 +79,7 @@
     <main>
       <header>
         <h1>网络连接与远程访问拓扑</h1>
-        <p class="updated">最后更新：2026-06-13。当前文档按 WALLE 机器人平台入口和反向 SSH 隧道现状修订。</p>
+        <p class="updated">最后更新：2026-08-18。新增 Spark GPU 服务器的双路径调用拓扑。</p>
       </header>
 
       <section>
@@ -230,6 +230,50 @@ journalctl -u reverse-ssh-tencent.service -n 80 --no-pager
 systemctl status ssh --no-pager
 ip -4 addr show wlan0
 iwgetid -r</pre>
+      </section>
+
+      <section>
+        <h2>Spark GPU 服务器：同一个模型的两条独立调用路径</h2>
+        <p>
+          <code>spark-c9a7</code>（<code>100.97.66.46</code>，Tailscale）上的 vLLM 模型服务有两条完全独立、互不知情的调用路径。
+          这一点不体现在任何单一服务的代码里，只能靠本文档记录，否则换模型 / 改端口时很容易只顾一头。
+        </p>
+        <pre class="topology">spark-c9a7 (100.97.66.46, Tailscale)
+└─ vllm-qwen36-nvfp4 :8000   本地 vLLM 推理服务 (served-model-name=qwen3.6-35b-a3b)
+     │
+     ├─ 路径 A：经腾讯云公网网关，可审计
+     │    common-api-spark-c9a7-tunnel.service (腾讯云 127.0.0.1:18000)
+     │    → common_api_manager: spark_qwen_chat / spark_qwen_vision
+     │    → 公网 https://www.wangyutang.cn/common/api/llm/qwen3.6-35b/chat 等
+     │    （Caddy 网关日志 + common-api systemd journal 都能看到调用记录）
+     │
+     └─ 路径 B：spark 本机直连，公网日志完全看不到
+          hermes-gateway.service (~/.hermes/, 不在本仓库)
+          → OpenAI 兼容客户端直连 http://127.0.0.1:8000/v1
+          → 微信 (weixin) / 钉钉 (dingtalk) 机器人网关
+          （只能看 ~/.hermes/logs/agent.log，Caddy/common-api 日志里查不到）</pre>
+      </section>
+
+      <section class="warn">
+        <h2>Spark 模型变更前必须检查的两处配置</h2>
+        <ul>
+          <li>
+            2026-08-18 排查模型切换影响面时，起初只查路径 A 的日志，得出"7 天零外部流量"的错误结论——
+            路径 B 当时正有真实微信对话在跑，只是完全不走公网网关，日志天生看不到。
+          </li>
+          <li>
+            改 <code>served-model-name</code> 或换端口前，必须同时检查两条路径的消费方，尤其是
+            <code>~/.hermes/config.yaml</code> 里的 <code>model.default</code>（约第 2 行）和
+            <code>custom_providers[].model</code>（约第 558-561 行）——两处都硬编码了模型名，不同步改会导致
+            微信 / 钉钉机器人直接报错。
+          </li>
+          <li>
+            改完 <code>~/.hermes/config.yaml</code> 需要 <code>sudo systemctl restart hermes-gateway</code> 才生效。
+          </li>
+          <li>
+            完整排查过程见 <code>docs/logs/2026-08-18-spark-hermes-dependency-discovery.md</code>。
+          </li>
+        </ul>
       </section>
 
       <section class="warn">

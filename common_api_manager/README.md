@@ -2,7 +2,7 @@
 
 ## 可调用模型总览 · 真实性校验
 
-> 以下状态均经过实际接口调用验证（2026-07-19）
+> 以下状态均经过实际接口调用验证（2026-08-18；Spark 一行为 2026-08-18 切换 qwen3.8-27b-fp8 后复验）
 
 | 能力 | 公网接口路径 | 后端模型 | 验证状态 |
 |---|---|---|---|
@@ -11,9 +11,9 @@
 | **语音合成 TTS** | `POST /common/api/tts/speech` | Qwen3-TTS-12Hz-1.7B (lv RTX 4090) | ✅ |
 | **LLM 聊天（默认）** | `POST /common/api/llm/chat` | Qwen3.6-35B-A3B-UD-Q4_K_M.gguf (lv RTX 4090) | ✅ |
 | **LLM 聊天（DashScope）** | `POST /common/api/llm/qwen3-32b/chat` | Qwen3-32B (阿里云 DashScope) | ✅ |
-| **LLM 聊天（Spark）** | `POST /common/api/llm/qwen3.6-35b/chat` | qwen3.6-35b-a3b (spark vLLM) | ✅ |
+| **LLM 聊天（Spark）** | `POST /common/api/llm/qwen3.6-35b/chat`（路由名沿用历史，实际模型见下） | qwen3.8-27b-fp8 (spark vLLM) | ✅ |
 | **图像理解 lv（推荐）** | `POST /common/api/vision/lv/analyze-json` | Qwen3.6-35B-A3B-UD-Q4_K_M.gguf + mmproj (lv RTX 4090) | ✅ |
-| **图像理解 Spark** | `POST /common/api/vision/spark/analyze-json` | qwen3.6-35b-a3b (spark vLLM) | ✅ |
+| **图像理解 Spark** | `POST /common/api/vision/spark/analyze-json` | qwen3.8-27b-fp8 (spark vLLM) | ✅ |
 | **图像理解 DashScope** | `POST /common/api/vision/dashscope/analyze-json` | Qwen-VL-Plus (阿里云) | ✅ |
 | **音频转换（ASR 预处理）** | `POST /common/api/audio/convert` | ffmpeg 7.0.2（宿主机本地转码，不走模型） | ✅ |
 
@@ -26,8 +26,12 @@ ASR    → lv_server:8000   model=qwen3-asr-1.7b
 TTS    → lv_server:8001   model=qwen3-tts-12hz-1.7b-customvoice
 LLM    → 127.0.0.1:18002 → lv_server:8013 proxy → 8012   model=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
 Vision → 127.0.0.1:18002 → lv_server:8013 proxy → 8012   model=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf + mmproj
-Spark  → 100.97.66.46:8000 / tunnel :18000               model=qwen3.6-35b-a3b
+Spark  → 100.97.66.46:8000 / tunnel :18000               model=qwen3.8-27b-fp8（2026-08-18 前为 qwen3.6-35b-a3b，切换记录见 docs/spark-server-deployment.md）
 ```
+
+**注意**：`/api/llm/qwen3.6-35b/*` 这组路由名字是历史沿用，不代表当前实际模型——路由名不随模型切换改，
+避免破坏已有调用方的 URL；要看当前实际服务的模型名，以 `SPARK_QWEN_MODEL` 环境变量或
+`GET /common/api/health` 返回的 `models.spark_llm` 字段为准。
 
 ---
 
@@ -90,7 +94,7 @@ POST /api/llm/qwen3-32b/chat            DashScope Qwen3-32B（含 tools）
 POST /api/llm/qwen3-32b/chat/completions
 GET  /api/llm/qwen3-32b/health
 
-POST /api/llm/qwen3.6-35b/chat         Spark qwen3.6-35b-a3b
+POST /api/llm/qwen3.6-35b/chat         Spark qwen3.8-27b-fp8（路由名沿用历史，见上方说明）
 POST /api/llm/qwen3.6-35b/chat/completions
 GET  /api/llm/qwen3.6-35b/health
 
@@ -99,7 +103,7 @@ POST /api/vision/lv/analyze-json        lv Qwen3.6-35B-A3B-UD-Q4_K_M.gguf + mmpr
 POST /api/vision/lv/analyze
 GET  /api/vision/lv/health
 
-POST /api/vision/spark/analyze-json     Spark qwen3.6-35b-a3b（文本/工具/图像共用）
+POST /api/vision/spark/analyze-json     Spark qwen3.8-27b-fp8（文本/工具/图像共用）
 POST /api/vision/spark/analyze
 GET  /api/vision/spark/health
 
@@ -146,7 +150,7 @@ curl -s -X POST https://www.wangyutang.cn/common/api/llm/qwen3-32b/chat \
   -d '{"messages":[{"role":"user","content":"介绍一下北京"}],"max_tokens":256}'
 ```
 
-Spark qwen3.6-35b：
+Spark qwen3.8-27b-fp8（路由名仍是 `/qwen3.6-35b/`，沿用历史，实际模型已切换）：
 
 ```bash
 curl -s -X POST https://www.wangyutang.cn/common/api/llm/qwen3.6-35b/chat \
@@ -193,7 +197,7 @@ curl -X POST https://www.wangyutang.cn/common/api/tts/speech \
 | 接口 | 路径前缀 | 模型 | 速度 |
 |---|---|---|---|
 | **lv**（推荐） | `/common/api/vision/lv/` | Qwen3.6-35B-A3B-UD-Q4_K_M.gguf + mmproj（lv RTX 4090） | 实测可用 |
-| **spark** | `/common/api/vision/spark/` | qwen3.6-35b-a3b（spark vLLM） | 实测可用 |
+| **spark** | `/common/api/vision/spark/` | qwen3.8-27b-fp8（spark vLLM） | 实测可用 |
 | **dashscope** | `/common/api/vision/dashscope/` | Qwen-VL-Plus（阿里云） | ~2–5s |
 
 ### 接口地址
@@ -296,20 +300,21 @@ curl https://www.wangyutang.cn/common/api/vision/lv/health
 # → {"provider":"lv_qwen_vision","model":"Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",...}
 
 curl https://www.wangyutang.cn/common/api/vision/spark/health
-# → {"provider":"spark_qwen_vision","model":"qwen3.6-35b-a3b",...}
+# → {"provider":"spark_qwen_vision","model":"qwen3.8-27b-fp8",...}
 ```
 
-### 实测状态（2026-07-19，公网外部调用验证）
+### 实测状态（2026-07-19 首次验证；Spark 两行 2026-08-18 切换 qwen3.8-27b-fp8 后复验，公网外部调用验证）
 
 | 接口 | 模型 | 验证结果 |
 |---|---|---|
 | `chat/qwen3/completions` | Qwen3.6-35B-A3B-UD-Q4_K_M.gguf（lv RTX 4090） | 文本返回 `OK`，工具调用返回 `get_weather({"city":"北京"})` |
 | `vision/lv/analyze-json` | Qwen3.6-35B-A3B-UD-Q4_K_M.gguf + mmproj（lv RTX 4090） | 红色测试图返回 `红色` |
-| `llm/spark-qwen/chat/completions` | qwen3.6-35b-a3b（spark vLLM） | 文本返回 `OK`，工具调用返回 `get_weather({"city":"北京"})` |
-| `vision/spark/analyze-json` | qwen3.6-35b-a3b（spark vLLM） | 红色测试图返回 `红色` |
+| `llm/spark-qwen/chat/completions` | qwen3.8-27b-fp8（spark vLLM） | 文本对话、工具调用（`get_weather({"city":"北京"})`）均通过 |
+| `vision/spark/analyze-json` | qwen3.8-27b-fp8（spark vLLM） | 纯色测试图正确识别颜色 |
 | `vision/dashscope/analyze-json` | Qwen-VL-Plus（阿里云） | 云端兜底接口 |
 
-历史性能基准（18 张图）见 `tests/vision_benchmark/`；当前文档以 2026-07-19 的线上路由和模型名为准。
+历史性能基准（18 张图）见 `tests/vision_benchmark/`；Spark 切换记录见
+[docs/spark-server-deployment.md](../docs/spark-server-deployment.md)。
 
 ---
 
@@ -345,7 +350,7 @@ DASHSCOPE_LLM_API_KEY=你的 DashScope API Key
 DASHSCOPE_COMPATIBLE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 TEXT_MODEL=qwen3-32b
 SPARK_QWEN_BASE_URL=http://127.0.0.1:18000
-SPARK_QWEN_MODEL=qwen3.6-35b-a3b
+SPARK_QWEN_MODEL=qwen3.8-27b-fp8
 MODEL_USAGE_COLLECTOR_URL=http://127.0.0.1:18080/usage
 ```
 
@@ -443,4 +448,5 @@ common_api_manager/
 - LLM chat 默认使用 lv_server 上的 Qwen3.6-35B-A3B-UD-Q4_K_M.gguf（llama-server 思考模式默认关闭）。
 - 图像超过 10MB 拒绝，超过 1280px 长边自动缩放至 JPEG 85%。
 - lv vision `/api/vision/lv/` 后端是 llama-server，返回标准 OpenAI chat.completions 格式。
-- Spark chat/vision 经腾讯云 SSH tunnel 路由，模型为 `qwen3.6-35b-a3b`（文本、工具调用、图像理解均已验证）。
+- Spark chat/vision 经腾讯云 SSH tunnel 路由，模型为 `qwen3.8-27b-fp8`（文本、工具调用、图像理解均已验证；
+  2026-08-18 前为 `qwen3.6-35b-a3b`，切换记录见 [docs/spark-server-deployment.md](../docs/spark-server-deployment.md)）。
