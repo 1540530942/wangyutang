@@ -112,3 +112,47 @@ bash ~/models/Scripts/start-qwen36-nvfp4.sh
 
 `~/.hermes/config.yaml.bak.20260818_qwen38cutover` 和
 `/root/control_platform/common_api/.env.bak.20260818_qwen38cutover` 是切换前的配置快照。
+
+## 后续：真实使用暴露的性能问题 + 回滚 + 重新上线（同日）
+
+切换完成约 5 小时后，用户在微信里向 hermes-gateway（clawbot）问了一个开放性问题，触发连续 9 轮
+工具调用（`session_search` / `skill_view` / `terminal`），**单条消息卡了 12 分钟以上没有任何回复**。
+用户主动反馈"手机里试了下 clawbot，发现有问题"。
+
+### 根因排查
+
+- `docker logs vllm-qwen38-27b-fp8` 显示 vLLM 引擎日志：`Avg generation throughput: 7.1-7.3 tokens/s`。
+- `nvidia-smi` 显示 GPU 利用率 96% 但功耗仅 33W——确认是显存带宽瓶颈，不是算力瓶颈，也不是请求卡死
+  （`vllm:num_requests_running=1`，确实在持续生成，只是极慢）。
+- 根因：`qwen3.6-35b-a3b` 名字里的 **A3B = Active 3B**，MoE 架构每 token 仅激活约 3B 参数；
+  `qwen3.8-27b-fp8` 是稠密架构，每 token 全部 27B 参数参与计算。单序列（batch=1）解码场景下吞吐
+  大致与激活参数量成反比，9 倍参数差距对应约 9 倍速度差距，与实测数字吻合。
+- **这是本次评估的真实疏漏**：之前的三项冒烟测试都是短问答，几十个 completion_tokens，即使在
+  7 tok/s 下也是秒级完成，感觉不出速度问题——验证只测了"结果对不对"，没测"生成速度"，直到真实的
+  长对话+多轮工具调用才暴露出这个数量级的差距，多轮调用会把每一轮的速度劣势线性叠加。
+
+### 第一次决策：回滚
+
+发现问题后立即把 hermes-gateway、`common_api_manager`、Model Studio 校验配置三处全部回滚到
+`qwen3.6-35b-a3b`，`docker stop vllm-qwen38-27b-fp8` 结束了那次卡住的生成。回滚过程中又踩到一个
+新坑：`docker stop` 后我编辑了 `~/.hermes/config.yaml` 但忘了 `systemctl restart hermes-gateway`
+让配置生效，导致用户手机上出现 "API failed after 3 retries - Connection error"（进程内存里还是
+旧的 in-memory 配置，指向已经不存在的模型名）——用户追问后立刻定位并补上重启，之后 hermes 侧
+`hermes chat -q` 实测 5 秒内完成，确认回滚生效。
+
+### 第二次决策：用户明确选择继续使用 qwen3.8-27b-fp8
+
+回滚文档还在写的过程中，用户回复："没问题，你就用qwen3.8吧，后面会有优化的模型"——明确知晓速度
+代价后选择接受，把这次的慢速度当作过渡期成本，等待后续模型优化。
+
+于是把 hermes-gateway、`common_api_manager`、Model Studio 校验配置三处**再次切回**
+`qwen3.8-27b-fp8`，重新走 `docker stop`(旧)→`start-qwen38-27b-fp8.sh`→ready-poll→重启下游 的流程，
+复验：`hermes status` 确认 `Model: qwen3.8-27b-fp8`，公网 `health` 聚合确认
+`models.spark_llm: qwen3.8-27b-fp8`。
+
+### 最终状态
+
+`qwen3.8-27b-fp8` 是当前（本文档更新时点）的生产模型，**已知生成速度约 7 tok/s，明显慢于旧模型
+的 65-75 tok/s，多轮工具调用场景会放大这个劣势**——这是用户知情后的明确选择，不是待修复的 bug。
+如果之后想换回快模型或换新模型，两条路径（hermes-gateway 本机直连、common_api_manager 公网网关）
+都需要同步修改，参照本文档"下游消费方同步"一节的操作方式。

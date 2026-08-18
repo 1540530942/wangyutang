@@ -2,7 +2,7 @@
 
 ## 可调用模型总览 · 真实性校验
 
-> 以下状态均经过实际接口调用验证（2026-08-18；Spark 一行为 2026-08-18 切换 qwen3.8-27b-fp8 后复验）
+> 以下状态均经过实际接口调用验证（2026-07-19；Spark 一行 2026-08-18 切换到 qwen3.8-27b-fp8 后复核）
 
 | 能力 | 公网接口路径 | 后端模型 | 验证状态 |
 |---|---|---|---|
@@ -26,12 +26,17 @@ ASR    → lv_server:8000   model=qwen3-asr-1.7b
 TTS    → lv_server:8001   model=qwen3-tts-12hz-1.7b-customvoice
 LLM    → 127.0.0.1:18002 → lv_server:8013 proxy → 8012   model=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
 Vision → 127.0.0.1:18002 → lv_server:8013 proxy → 8012   model=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf + mmproj
-Spark  → 100.97.66.46:8000 / tunnel :18000               model=qwen3.8-27b-fp8（2026-08-18 前为 qwen3.6-35b-a3b，切换记录见 docs/spark-server-deployment.md）
+Spark  → 100.97.66.46:8000 / tunnel :18000               model=qwen3.8-27b-fp8（2026-08-18 前为 qwen3.6-35b-a3b）
 ```
 
 **注意**：`/api/llm/qwen3.6-35b/*` 这组路由名字是历史沿用，不代表当前实际模型——路由名不随模型切换改，
 避免破坏已有调用方的 URL；要看当前实际服务的模型名，以 `SPARK_QWEN_MODEL` 环境变量或
 `GET /common/api/health` 返回的 `models.spark_llm` 字段为准。
+
+**已知限制**：`qwen3.8-27b-fp8`（稠密架构）生成速度明显慢于旧的 `qwen3.6-35b-a3b`（MoE，仅约 1/9），
+在 hermes-gateway 这类多轮工具调用场景下会被放大（2026-08-18 实测一次 9 轮工具调用的对话卡了 12
+分钟以上）。用户已知晓并明确选择接受这个代价，等后续有更快的模型再替换。详见
+[docs/spark-server-deployment.md](../docs/spark-server-deployment.md)。
 
 ---
 
