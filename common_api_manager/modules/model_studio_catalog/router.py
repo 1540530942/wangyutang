@@ -38,14 +38,14 @@ MODEL_REGISTRY: list[dict[str, Any]] = [
         "validate": {"kind": "chat", "path": "/common/api/llm/qwen3-32b/chat/completions", "model": "qwen3-32b"},
     },
     {
-        "id": "spark-qwen3.8-27b-fp8",
-        "name": "Qwen3.8-27B-FP8 (Spark)",
+        "id": "spark-qwen3.6-35b",
+        "name": "Qwen3.6-35B (Spark)",
         "provider": "Spark",
         "type": "text",
         "paths": ["/common/api/llm/spark-qwen/chat/completions", "/common/api/llm/qwen3.6-35b/chat/completions"],
         "health": "/common/api/llm/spark-qwen/health",
         "models": "/common/api/llm/spark-qwen/models",
-        "validate": {"kind": "chat", "path": "/common/api/llm/spark-qwen/chat/completions", "model": "qwen3.8-27b-fp8"},
+        "validate": {"kind": "chat", "path": "/common/api/llm/spark-qwen/chat/completions", "model": "qwen3.6-35b-a3b"},
     },
     {
         "id": "lv-qwen-chat",
@@ -69,13 +69,13 @@ MODEL_REGISTRY: list[dict[str, Any]] = [
     },
     {
         "id": "spark-qwen-vision",
-        "name": "Qwen3.8-27B-FP8 VL (Spark vision)",
+        "name": "Qwen-VL (Spark vision)",
         "provider": "Spark",
         "type": "vision",
         "paths": ["/common/api/vision/spark/analyze-json", "/common/api/vision/spark-qwen/analyze-json"],
         "health": "/common/api/vision/spark/health",
         "models": "/common/api/vision/spark/models",
-        "validate": {"kind": "vision", "path": "/common/api/vision/spark/analyze-json", "model": "qwen3.8-27b-fp8"},
+        "validate": {"kind": "vision", "path": "/common/api/vision/spark/analyze-json", "model": "qwen3.6-35b-a3b"},
     },
     {
         "id": "dashscope-qwen-vision",
