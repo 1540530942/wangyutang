@@ -48,6 +48,26 @@ actual proxy exit region and switch Clash Verge to an OpenAI-supported exit.
 The local WSL setup is working when `codex doctor` shows HTTP reachability as
 reachable.
 
+## Windows device awareness
+
+WSL Codex may fail to call Windows programs from its sandbox with
+`UtilBindVsockAnyPort` errors. For Windows peripheral awareness, use the bridge
+under `docs/codex-wsl/windows-device-bridge/`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\docs\codex-wsl\windows-device-bridge\export-windows-devices.ps1
+```
+
+Then WSL/Codex can read the generated snapshot:
+
+```bash
+bash docs/codex-wsl/windows-device-bridge/read-windows-devices.sh
+```
+
+This is an inventory bridge only. Use `usbipd-win` or another explicit device
+sharing mechanism when Linux needs direct access to USB, serial, or camera
+devices.
+
 ## Manual commands
 
 Install `bubblewrap` inside WSL:
