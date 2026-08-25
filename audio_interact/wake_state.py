@@ -22,6 +22,9 @@ WAKE_WORD_VARIANTS = (
     "你好wallie",
     "你好阿里",  # ASR sometimes renders "瓦力" as "阿里" (e.g. "你好，阿里个。")
     "你好阿力",
+    "你好瓦绿",  # ASR sometimes renders "瓦力" as "瓦绿"
+    "你好娃力",
+    "你好娃利",
 )
 DISMISS_PHRASES = ("退下吧", "退下", "退一下吧", "退下了")
 
@@ -43,6 +46,11 @@ class WakeStateStore:
     def is_active(self, device_id: str) -> bool:
         with self._lock:
             return device_id in self._active_devices
+
+    def activate(self, device_id: str) -> None:
+        """Force-activate a device — used for hardware wake signals (e.g., WonderEcho Pro UART)."""
+        with self._lock:
+            self._active_devices.add(device_id)
 
     def decide(self, device_id: str, text: str) -> WakeDecision:
         clean_text = normalize_text(text)

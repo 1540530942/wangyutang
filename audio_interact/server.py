@@ -1234,6 +1234,19 @@ def stop_manual_recording_route(x_audio_token: Annotated[str | None, Header()] =
     return {"ok": True, "settings": settings}
 
 
+@app.post("/api/device/{device_id}/wake")
+def wake_device_route(device_id: str, x_audio_token: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+    """Activate a device's wake state from an external hardware signal (e.g., WonderEcho Pro UART).
+
+    The Pi calls this endpoint when the WonderEcho Pro CL1302 DSP fires its wake word
+    packet (aa 55 03 00 fb on /dev/ttyUSB0). This bypasses ASR-based wake word detection
+    and uses the hardware's more reliable onboard DSP instead.
+    """
+    _require_token(x_audio_token)
+    WAKE_STATES.activate(device_id)
+    return {"ok": True, "device_id": device_id, "wake_status": "awake"}
+
+
 # ---------------------------------------------------------------------------
 # P3 — audio segment upload endpoint  (WonderEchoPro cloud convergence point)
 # ---------------------------------------------------------------------------

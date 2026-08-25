@@ -583,6 +583,61 @@ async def _run_ws_session(config: dict[str, Any]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# WonderEcho Pro UART wake word integration
+# ---------------------------------------------------------------------------
+# The CL1302 DSP on WonderEcho Pro detects the onboard wake word and fires a
+# 5-byte packet on /dev/ttyUSB0 (115200 baud): aa 55 03 00 fb.
+# When we see this packet we call POST /api/device/{device_id}/wake so the
+# server marks the device as awake — bypassing the ASR-based wake gate.
+
+_UART_WAKE_PACKET = bytes([0xAA, 0x55, 0x03, 0x00, 0xFB])
+_UART_PORT = "/dev/ttyUSB0"
+_UART_BAUD = 115200
+
+
+def _uart_wake_thread(server: str, token: str, device_id: str) -> None:
+    """Background thread: watch WonderEcho Pro UART for wake word, activate server."""
+    wake_url = f"{server.rstrip('/')}/api/device/{device_id}/wake"
+    buf = bytearray()
+    pat = _UART_WAKE_PACKET
+    pat_len = len(pat)
+
+    try:
+        import termios, tty  # type: ignore[import]
+        fd = open(_UART_PORT, "rb", buffering=0)
+        attrs = termios.tcgetattr(fd)
+        attrs[4] = attrs[5] = termios.B115200  # ispeed, ospeed
+        termios.tcsetattr(fd, termios.TCSANOW, attrs)
+        print(f"[UART] watching {_UART_PORT} for wake word", flush=True)
+    except Exception as exc:
+        print(f"[UART] {_UART_PORT} unavailable ({exc}), wake-word UART disabled", flush=True)
+        return
+
+    try:
+        while True:
+            try:
+                byte = fd.read(1)
+                if not byte:
+                    break
+            except OSError:
+                break
+            buf.extend(byte)
+            # Keep only the last pat_len bytes
+            if len(buf) > pat_len * 2:
+                del buf[:len(buf) - pat_len]
+            if len(buf) >= pat_len and bytes(buf[-pat_len:]) == pat:
+                buf.clear()
+                print("[UART] wake word detected — activating device", flush=True)
+                _post_json(wake_url, token, {})
+    finally:
+        try:
+            fd.close()
+        except Exception:
+            pass
+    print("[UART] thread exited", flush=True)
+
+
+# ---------------------------------------------------------------------------
 # Settings-aware main loop
 # ---------------------------------------------------------------------------
 
@@ -648,6 +703,13 @@ def main() -> int:
     config = json.loads(args.config.read_text(encoding="utf-8"))
     _ensure_echo_cancel()
     apply_speaker_volume(int(config.get("pi_speaker_volume", 80)))
+
+    server = str(config.get("server") or "")
+    token = str(config.get("token") or "")
+    device_id = str(config.get("device_id") or "turbopi-01")
+    t = threading.Thread(target=_uart_wake_thread, args=(server, token, device_id), daemon=True)
+    t.start()
+
     asyncio.run(_ws_main(config))
     return 0
 
