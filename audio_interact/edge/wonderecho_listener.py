@@ -598,31 +598,27 @@ _UART_BAUD = 115200
 def _uart_wake_thread(server: str, token: str, device_id: str) -> None:
     """Background thread: watch WonderEcho Pro UART for wake word, activate server."""
     wake_url = f"{server.rstrip('/')}/api/device/{device_id}/wake"
-    buf = bytearray()
     pat = _UART_WAKE_PACKET
     pat_len = len(pat)
 
     try:
-        import termios, tty  # type: ignore[import]
-        fd = open(_UART_PORT, "rb", buffering=0)
-        attrs = termios.tcgetattr(fd)
-        attrs[4] = attrs[5] = termios.B115200  # ispeed, ospeed
-        termios.tcsetattr(fd, termios.TCSANOW, attrs)
-        print(f"[UART] watching {_UART_PORT} for wake word", flush=True)
+        import serial  # type: ignore[import]
+        ser = serial.Serial(_UART_PORT, _UART_BAUD, timeout=1.0)
+        print(f"[UART] watching {_UART_PORT} at {_UART_BAUD} baud for wake word", flush=True)
     except Exception as exc:
         print(f"[UART] {_UART_PORT} unavailable ({exc}), wake-word UART disabled", flush=True)
         return
 
+    buf = bytearray()
     try:
         while True:
             try:
-                byte = fd.read(1)
-                if not byte:
-                    break
-            except OSError:
+                data = ser.read(1)
+            except Exception:
                 break
-            buf.extend(byte)
-            # Keep only the last pat_len bytes
+            if not data:
+                continue  # timeout — loop
+            buf.extend(data)
             if len(buf) > pat_len * 2:
                 del buf[:len(buf) - pat_len]
             if len(buf) >= pat_len and bytes(buf[-pat_len:]) == pat:
@@ -631,7 +627,7 @@ def _uart_wake_thread(server: str, token: str, device_id: str) -> None:
                 _post_json(wake_url, token, {})
     finally:
         try:
-            fd.close()
+            ser.close()
         except Exception:
             pass
     print("[UART] thread exited", flush=True)
