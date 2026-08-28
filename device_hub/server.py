@@ -13,13 +13,16 @@ v1 从简:不做鉴权,所有接口开放。
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import threading
 import time
+import urllib.request
+import urllib.error
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -29,8 +32,14 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 DATA_DIR = BASE_DIR / "data"
 DEVICES_FILE = DATA_DIR / "devices.json"
+AUDIO_DIR = DATA_DIR / "audio"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+
+TTS_URL = os.environ.get("TTS_URL", "http://audio-interact:8097/api/tts")
+AUDIO_PUBLIC_BASE = os.environ.get("AUDIO_PUBLIC_BASE", "https://www.wangyutang.cn/devices/api/audio")
+UPLOAD_MAX_BYTES = 20 * 1024 * 1024  # 20MB
 
 # 契约常量
 HEARTBEAT_INTERVAL_S = 5           # 建议心跳周期,注册回执下发给设备
@@ -349,6 +358,102 @@ def enqueue_command(device_id: str, req: CommandReq) -> Any:
         _save(data)
     known = req.action in KNOWN_ACTIONS
     return {"ok": True, "command_id": command_id, "known_action": known}
+
+
+class SpeakReq(BaseModel):
+    text: str = Field(..., min_length=1, max_length=500)
+
+
+@app.post("/api/device/{device_id}/speak")
+def speak(device_id: str, req: SpeakReq) -> Any:
+    """文本 → TTS WAV → 保存 → 下发 play_audio 给设备。"""
+    with DATA_LOCK:
+        data = _load()
+        if device_id not in data:
+            return _err(404, "not_found", "unknown device_id")
+
+    try:
+        body = json.dumps({"text": req.text}).encode()
+        tts_req = urllib.request.Request(
+            TTS_URL, data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(tts_req, timeout=30) as resp:
+            wav_bytes = resp.read()
+    except urllib.error.URLError as e:
+        return _err(502, "tts_error", f"TTS 服务不可达: {e}")
+
+    filename = secrets.token_hex(8) + ".wav"
+    (AUDIO_DIR / filename).write_bytes(wav_bytes)
+
+    audio_url = f"{AUDIO_PUBLIC_BASE}/{filename}"
+    with DATA_LOCK:
+        data = _load()
+        rec = data.get(device_id)
+        if rec is None:
+            return _err(404, "not_found", "unknown device_id")
+        command_id = "c-" + secrets.token_hex(3)
+        rec.setdefault("commands", []).append({
+            "id": command_id,
+            "action": "play_audio",
+            "args": {"url": audio_url},
+            "status": "pending",
+            "created_at": time.time(),
+            "dispatched_at": 0.0,
+            "done_at": 0.0,
+            "message": "",
+        })
+        data[device_id] = rec
+        _save(data)
+    return {"ok": True, "command_id": command_id, "audio_url": audio_url}
+
+
+@app.post("/api/device/{device_id}/upload_audio")
+async def upload_audio(device_id: str, file: UploadFile = File(...)) -> Any:
+    """上传音频文件 → 保存 → 下发 play_audio 给设备。"""
+    with DATA_LOCK:
+        data = _load()
+        if device_id not in data:
+            return _err(404, "not_found", "unknown device_id")
+
+    content = await file.read(UPLOAD_MAX_BYTES + 1)
+    if len(content) > UPLOAD_MAX_BYTES:
+        return _err(413, "too_large", f"文件超过 {UPLOAD_MAX_BYTES // 1024 // 1024}MB 限制")
+
+    suffix = Path(file.filename or "audio.wav").suffix.lower() or ".wav"
+    filename = secrets.token_hex(8) + suffix
+    (AUDIO_DIR / filename).write_bytes(content)
+
+    audio_url = f"{AUDIO_PUBLIC_BASE}/{filename}"
+    with DATA_LOCK:
+        data = _load()
+        rec = data.get(device_id)
+        if rec is None:
+            return _err(404, "not_found", "unknown device_id")
+        command_id = "c-" + secrets.token_hex(3)
+        rec.setdefault("commands", []).append({
+            "id": command_id,
+            "action": "play_audio",
+            "args": {"url": audio_url},
+            "status": "pending",
+            "created_at": time.time(),
+            "dispatched_at": 0.0,
+            "done_at": 0.0,
+            "message": "",
+        })
+        data[device_id] = rec
+        _save(data)
+    return {"ok": True, "command_id": command_id, "audio_url": audio_url}
+
+
+@app.get("/api/audio/{filename}")
+def serve_audio(filename: str) -> FileResponse:
+    """提供 TTS 生成或上传的音频文件（供 ESP32 下载）。"""
+    path = AUDIO_DIR / filename
+    if not path.exists() or path.parent != AUDIO_DIR:
+        raise HTTPException(status_code=404, detail="not found")
+    return FileResponse(path, media_type="audio/wav")
 
 
 @app.post("/api/batch_command")

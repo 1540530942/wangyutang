@@ -18,15 +18,37 @@
       </div>
 
       <section class="panel">
-        <h2>远程控制</h2>
+        <h2>远程播报</h2>
+        <div class="tabs">
+          <button class="tab active" data-tab="text">文本播报</button>
+          <button class="tab" data-tab="upload">上传音频</button>
+        </div>
+        <div class="tab-body" id="tab-text">
+          <textarea id="speak-text" rows="3" placeholder="输入要播报的文字，平台自动生成语音下发给设备…"></textarea>
+          <div class="actions" style="margin-top:8px">
+            <button class="btn primary" id="btn-speak">生成并播报</button>
+            <button class="btn" id="btn-stop-text">停止播报</button>
+          </div>
+        </div>
+        <div class="tab-body hidden" id="tab-upload">
+          <input type="file" id="upload-file" accept="audio/*" style="margin-bottom:8px;display:block" />
+          <div class="actions">
+            <button class="btn primary" id="btn-upload">上传并播报</button>
+            <button class="btn" id="btn-stop-upload">停止播报</button>
+          </div>
+        </div>
+        <p class="lead" style="margin-top:12px;font-size:0.82rem">
+          指令入队后设备在下次心跳（≤5s）取回执行，结果回执见下方指令历史。
+        </p>
+      </section>
+
+      <section class="panel">
+        <h2>其他控制</h2>
         <div class="actions">
           <button class="btn" data-action="identify">辨认（闪灯/响一声）</button>
           <button class="btn" data-action="set_volume" data-prompt="音量 0-100" data-arg="value">设置音量</button>
           <button class="btn danger" data-action="reboot" data-confirm="确定重启该设备？">重启</button>
         </div>
-        <p class="lead" style="margin-top:12px;font-size:0.82rem">
-          指令入队后设备在下次心跳（≤5s）取回执行，结果回执见下方指令历史。
-        </p>
       </section>
 
       <section class="panel">
@@ -174,6 +196,59 @@
           }
           sendCommand(action, args);
         });
+      });
+
+      // 标签切换
+      document.querySelectorAll(".tab").forEach(tab => {
+        tab.addEventListener("click", () => {
+          document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+          document.querySelectorAll(".tab-body").forEach(b => b.classList.add("hidden"));
+          tab.classList.add("active");
+          document.getElementById("tab-" + tab.dataset.tab).classList.remove("hidden");
+        });
+      });
+
+      // 文本播报
+      document.getElementById("btn-speak").addEventListener("click", async () => {
+        const text = document.getElementById("speak-text").value.trim();
+        if (!text) { toast("请输入播报文字"); return; }
+        const btn = document.getElementById("btn-speak");
+        btn.disabled = true; btn.textContent = "生成中…";
+        try {
+          const r = await fetch(API + "/device/" + encodeURIComponent(id) + "/speak", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text }),
+          });
+          const j = await r.json();
+          if (j.ok) { toast("已下发播报（≤5s 生效）"); load(); }
+          else toast("失败：" + (j.message || j.error));
+        } catch (e) { toast("失败：" + e.message); }
+        btn.disabled = false; btn.textContent = "生成并播报";
+      });
+
+      // 上传音频
+      document.getElementById("btn-upload").addEventListener("click", async () => {
+        const file = document.getElementById("upload-file").files[0];
+        if (!file) { toast("请先选择音频文件"); return; }
+        const btn = document.getElementById("btn-upload");
+        btn.disabled = true; btn.textContent = "上传中…";
+        try {
+          const form = new FormData();
+          form.append("file", file);
+          const r = await fetch(API + "/device/" + encodeURIComponent(id) + "/upload_audio", {
+            method: "POST", body: form,
+          });
+          const j = await r.json();
+          if (j.ok) { toast("已下发播放（≤5s 生效）"); load(); }
+          else toast("失败：" + (j.message || j.error));
+        } catch (e) { toast("失败：" + e.message); }
+        btn.disabled = false; btn.textContent = "上传并播报";
+      });
+
+      // 停止播报
+      ["btn-stop-text", "btn-stop-upload"].forEach(bid => {
+        document.getElementById(bid).addEventListener("click", () => sendCommand("stop_audio", {}));
       });
 
       if (!id) document.getElementById("subtitle").textContent = "缺少 ?id= 参数";
