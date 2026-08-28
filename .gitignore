@@ -26,3 +26,4 @@ action_move/movement_verify/
 robot_sandbox/analysis_html_report/
 wangyutang_analysis_report/
 .venv/
+esp32_speaker/speaker_queue.db
