@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>设备详情 · WALLE</title>
+    <link rel="stylesheet" href="/devices/static/styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <div class="topbar">
+        <div>
+          <div class="crumbs"><a href="/devices/">← 设备终端</a></div>
+          <h1 id="title">设备详情</h1>
+          <p class="lead" id="subtitle">—</p>
+        </div>
+        <span class="dot" id="status">—</span>
+      </div>
+
+      <section class="panel">
+        <h2>远程控制</h2>
+        <div class="actions">
+          <button class="btn" data-action="identify">辨认（闪灯/响一声）</button>
+          <button class="btn" data-action="set_volume" data-prompt="音量 0-100" data-arg="value">设置音量</button>
+          <button class="btn danger" data-action="reboot" data-confirm="确定重启该设备？">重启</button>
+        </div>
+        <p class="lead" style="margin-top:12px;font-size:0.82rem">
+          指令入队后设备在下次心跳（≤5s）取回执行，结果回执见下方指令历史。
+        </p>
+      </section>
+
+      <section class="panel">
+        <h2>状态</h2>
+        <table class="kv"><tbody id="state"></tbody></table>
+      </section>
+
+      <section class="panel">
+        <h2>指令历史</h2>
+        <div id="commands"><div class="empty">—</div></div>
+      </section>
+
+      <section class="panel">
+        <h2>设备日志</h2>
+        <div id="logs"><div class="empty">—</div></div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const API = "/devices/api";
+      const id = new URLSearchParams(location.search).get("id") || "";
+
+      function esc(s) {
+        return String(s == null ? "" : s).replace(/[&<>"]/g, (c) =>
+          ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])
+        );
+      }
+      function fmtTime(sec) {
+        if (!sec) return "—";
+        return new Date(sec * 1000).toLocaleString("zh-CN", { hour12: false });
+      }
+      function fmtAge(sec) {
+        if (!sec) return "—";
+        const d = Math.max(0, Math.floor(Date.now() / 1000 - sec));
+        if (d < 60) return d + " 秒前";
+        if (d < 3600) return Math.floor(d / 60) + " 分钟前";
+        return Math.floor(d / 3600) + " 小时前";
+      }
+      function toast(msg) {
+        const t = document.getElementById("toast");
+        t.textContent = msg;
+        t.classList.add("show");
+        setTimeout(() => t.classList.remove("show"), 2200);
+      }
+
+      const STATE_LABELS = {
+        firmware: "固件", wifi_ssid: "WiFi SSID", wifi_rssi: "信号 (dBm)",
+        ip: "IP", uptime_s: "运行时长 (s)", free_heap: "空闲堆 (B)",
+        activated: "已激活", volume: "音量",
+      };
+
+      async function load() {
+        try {
+          const r = await fetch(API + "/device/" + encodeURIComponent(id), { cache: "no-store" });
+          if (r.status === 404) { document.getElementById("subtitle").textContent = "设备不存在"; return; }
+          const j = await r.json();
+          const d = j.device;
+          document.getElementById("title").textContent = d.name || d.device_id;
+          document.getElementById("subtitle").textContent = d.device_type + " · " + d.device_id;
+          const s = document.getElementById("status");
+          s.className = "dot " + (d.online ? "online" : "offline");
+          s.textContent = d.online ? "在线" : "离线";
+          renderState(d.state || {}, d);
+          renderCommands(d.commands || []);
+          renderLogs(d.logs || []);
+        } catch (e) {
+          toast("加载失败：" + e.message);
+        }
+      }
+
+      function renderState(st, d) {
+        const rows = [];
+        rows.push(["最后心跳", fmtAge(d.last_seen) + "（" + fmtTime(d.last_seen) + "）"]);
+        rows.push(["首次上线", fmtTime(d.first_seen)]);
+        const keys = Object.keys(st);
+        keys.sort((a, b) => (STATE_LABELS[a] ? -1 : 0) - (STATE_LABELS[b] ? -1 : 0));
+        for (const k of keys) {
+          rows.push([STATE_LABELS[k] || k, typeof st[k] === "object" ? JSON.stringify(st[k]) : st[k]]);
+        }
+        document.getElementById("state").innerHTML = rows
+          .map((r) => `<tr><td class="k">${esc(r[0])}</td><td>${esc(r[1])}</td></tr>`)
+          .join("");
+      }
+
+      function renderCommands(cmds) {
+        const el = document.getElementById("commands");
+        if (!cmds.length) { el.innerHTML = '<div class="empty">暂无指令</div>'; return; }
+        const recent = cmds.slice().reverse().slice(0, 30);
+        el.innerHTML = '<div class="cmd-timeline">' + recent.map(cmdCard).join("") + "</div>";
+      }
+
+      function cmdCard(c) {
+        const argsStr = c.args && Object.keys(c.args).length ? JSON.stringify(c.args) : "";
+        const times = [];
+        if (c.created_at) times.push(`<span class="cmd-ts">下发 <b>${fmtTime(c.created_at)}</b></span>`);
+        if (c.dispatched_at) times.push(`<span class="cmd-ts">派送 <b>${fmtAge(c.dispatched_at)}</b></span>`);
+        if (c.done_at) times.push(`<span class="cmd-ts">完成 <b>${fmtAge(c.done_at)}</b></span>`);
+        const st = c.status || "pending";
+        return `<div class="cmd-card">
+          <div class="cmd-head">
+            <span class="cmd-action">${esc(c.action)}</span>
+            <span class="sbadge ${esc(st)}">${esc(st)}</span>
+          </div>
+          ${argsStr ? `<div class="cmd-args">${esc(argsStr)}</div>` : ""}
+          ${times.length ? `<div class="cmd-times">${times.join("")}</div>` : ""}
+          ${c.message ? `<div class="cmd-msg">${esc(c.message)}</div>` : ""}
+        </div>`;
+      }
+
+      function renderLogs(logs) {
+        const el = document.getElementById("logs");
+        if (!logs.length) { el.innerHTML = '<div class="empty">暂无日志</div>'; return; }
+        const recent = logs.slice().reverse().slice(0, 50);
+        el.innerHTML = recent
+          .map((l) => `<div class="logline"><span class="lv ${esc(l.level)}">${esc(l.level)}</span>` +
+                      `${esc(l.message)} <span style="color:var(--muted)">${fmtAge(l.ts)}</span></div>`)
+          .join("");
+      }
+
+      async function sendCommand(action, args) {
+        try {
+          const r = await fetch(API + "/device/" + encodeURIComponent(id) + "/command", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action, args: args || {} }),
+          });
+          const j = await r.json();
+          if (j.ok) { toast("已下发：" + action + "（≤5s 生效）"); load(); }
+          else toast("下发失败：" + (j.message || j.error));
+        } catch (e) { toast("下发失败：" + e.message); }
+      }
+
+      document.querySelectorAll(".actions .btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const action = btn.dataset.action;
+          if (btn.dataset.confirm && !confirm(btn.dataset.confirm)) return;
+          let args = {};
+          if (btn.dataset.prompt) {
+            const v = prompt(btn.dataset.prompt);
+            if (v === null) return;
+            const n = Number(v);
+            args[btn.dataset.arg] = Number.isFinite(n) ? n : v;
+          }
+          sendCommand(action, args);
+        });
+      });
+
+      if (!id) document.getElementById("subtitle").textContent = "缺少 ?id= 参数";
+      else { load(); setInterval(load, 5000); }
+    </script>
+  </body>
+</html>
