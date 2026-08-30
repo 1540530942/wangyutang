@@ -63,6 +63,7 @@ MAX_LOGS = 200                     # 每设备环形日志上限
 MAX_COMMAND_HISTORY = 50           # 每设备已完成指令保留上限
 KNOWN_ACTIONS = {"reboot", "set_volume", "identify", "ota"}
 OFFLINE_ALERT_AFTER_S = 60    # 超过此时长无心跳 → 记录告警（4× OFFLINE_AFTER_S，过滤偶发断联）
+DISPATCHED_TIMEOUT_S = 120    # dispatched 超此时长未收到 done/failed ACK → 自动标 failed
 ALERTS_FILE = DATA_DIR / "alerts.jsonl"
 MAX_ALERTS = 500
 
@@ -181,6 +182,15 @@ def _check_offline_alerts() -> None:
                     logs.append({"level": "warn", "message": f"离线已 {int(gone_for)}s，告警已记录", "ts": now})
                     del logs[:-MAX_LOGS]
                     changed = True
+                # Auto-expire stale dispatched commands
+                for c in rec.get("commands", []):
+                    if c.get("status") == "dispatched":
+                        age = now - c.get("dispatched_at", now)
+                        if age > DISPATCHED_TIMEOUT_S:
+                            c["status"] = "failed"
+                            c["done_at"] = now
+                            c["message"] = f"timeout: no ACK after {int(age)}s"
+                            changed = True
             if changed:
                 _save(data)
         for alert in alerts_to_write:
