@@ -13,24 +13,25 @@ v1 从简:不做鉴权,所有接口开放。
 from __future__ import annotations
 
 import asyncio
-import io
 import json
 import os
 import secrets
-import struct
 import threading
 import time
 import urllib.request
 import urllib.error
+import io
 import wave
+import uuid
+import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-import paho.mqtt.client as _mqtt_lib
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+import paho.mqtt.client as mqtt
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -43,25 +44,17 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 TTS_URL = os.environ.get("TTS_URL", "http://audio-interact:8097/api/tts")
-AUDIO_PUBLIC_BASE = os.environ.get("AUDIO_PUBLIC_BASE", "http://110.40.154.41/devices/api/audio")
+AUDIO_PUBLIC_BASE = os.environ.get("AUDIO_PUBLIC_BASE", "https://www.wangyutang.cn/devices/api/audio")
 UPLOAD_MAX_BYTES = 20 * 1024 * 1024  # 20MB
-
-MQTT_HOST = os.environ.get("MQTT_HOST", "172.19.0.1")
-MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
-
-# PCM 流参数: 24000Hz / 16-bit / mono / 20ms 帧
-PCM_SAMPLE_RATE = 24000
-PCM_FRAME_MS = 20
-PCM_FRAME_BYTES = PCM_SAMPLE_RATE * 2 * PCM_FRAME_MS // 1000  # 960 bytes
-PCM_STORE: dict[str, bytes] = {}       # stream_id -> PCM bytes
-PCM_STORE_TTL: dict[str, float] = {}   # stream_id -> created_at (5min TTL)
+TEST_AUDIO_TEXT = "早上好，我的公主"
+TEST_AUDIO_PATH = AUDIO_DIR / "test-morning-princess.wav"
 
 # 契约常量
 HEARTBEAT_INTERVAL_S = 5           # 建议心跳周期,注册回执下发给设备
 OFFLINE_AFTER_S = 15               # 3× 心跳无上报 -> offline(容忍偶发丢包)
 MAX_LOGS = 200                     # 每设备环形日志上限
 MAX_COMMAND_HISTORY = 50           # 每设备已完成指令保留上限
-KNOWN_ACTIONS = {"reboot", "set_volume", "identify", "ota"}
+KNOWN_ACTIONS = {"reboot", "set_volume", "identify", "ota", "play_audio", "stop_audio", "stream_prepare"}
 OFFLINE_ALERT_AFTER_S = 60    # 超过此时长无心跳 → 记录告警（4× OFFLINE_AFTER_S，过滤偶发断联）
 DISPATCHED_TIMEOUT_S = 120    # dispatched 超此时长未收到 done/failed ACK → 自动标 failed
 ALERTS_FILE = DATA_DIR / "alerts.jsonl"
@@ -72,6 +65,105 @@ _alerted_offline: set[str] = set()   # 已告警的设备 id，防止重复；�
 
 app = FastAPI(title="wangyutang device_hub", version="1.0.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+# MQTT control plane and in-memory PCM stream registry. Authentication is
+# intentionally disabled for the current integration phase.
+MQTT_HOST = os.environ.get("MQTT_HOST", "127.0.0.1")
+MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
+PCM_STREAMS: dict[str, Path] = {}
+PCM_STREAMS_LOCK = threading.Lock()
+
+
+def _mqtt_publish_command(device_id: str, command: dict[str, Any]) -> bool:
+    topic = f"devices/{device_id}/command"
+    client = mqtt.Client(client_id=f"device-hub-{secrets.token_hex(4)}", protocol=mqtt.MQTTv311)
+    try:
+        client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
+        client.loop_start()
+        info = client.publish(topic, json.dumps(command, ensure_ascii=False), qos=1)
+        info.wait_for_publish(timeout=5)
+        return info.rc == mqtt.MQTT_ERR_SUCCESS
+    except Exception as exc:
+        print(f"mqtt publish failed topic={topic}: {exc}", flush=True)
+        return False
+    finally:
+        try:
+            client.loop_stop()
+            client.disconnect()
+        except Exception:
+            pass
+
+
+def _record_mqtt_ack(device_id: str, payload: dict[str, Any]) -> None:
+    command_id = str(payload.get("command_id") or payload.get("id") or "")
+    status = str(payload.get("status") or "")
+    if not command_id or not status:
+        return
+    with DATA_LOCK:
+        data = _load()
+        rec = data.get(device_id)
+        if rec is None:
+            return
+        for command in rec.get("commands", []):
+            if command.get("id") != command_id:
+                continue
+            command.setdefault("transport", "mqtt")
+            for key in ("action", "event", "stream_id"):
+                if payload.get(key):
+                    command[key] = payload[key]
+            detail = str(payload.get("message") or "")
+            for key, pattern in (("playback_bytes", r"\bbytes=(\d+)"), ("playback_elapsed_ms", r"\belapsed_ms=(\d+)"), ("pa_gpio17", r"\bpa_gpio17=(-?\d+)")):
+                match = re.search(pattern, detail)
+                if match:
+                    command[key] = int(match.group(1))
+            if payload.get("event") == "playback_done":
+                command["playback_done_at"] = time.time()
+            if status == "accepted":
+                command["accepted_at"] = time.time()
+                if command.get("status") == "pending":
+                    command["status"] = "dispatched"
+            elif status in {"done", "failed", "unsupported"}:
+                command["status"] = status
+                command["message"] = str(payload.get("message") or "")
+                command["done_at"] = time.time()
+            _save(data)
+            return
+
+
+def _mqtt_ack_worker() -> None:
+    client = mqtt.Client(client_id=f"device-hub-ack-{secrets.token_hex(4)}", protocol=mqtt.MQTTv311)
+    def on_connect(c, userdata, flags, rc):
+        c.subscribe("devices/+/ack", qos=1)
+    def on_message(c, userdata, msg):
+        try:
+            parts = msg.topic.split("/")
+            if len(parts) == 3:
+                _record_mqtt_ack(parts[1], json.loads(msg.payload.decode("utf-8")))
+        except Exception as exc:
+            print(f"mqtt ack parse failed: {exc}", flush=True)
+    client.on_connect = on_connect
+    client.on_message = on_message
+    while True:
+        try:
+            client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
+            client.loop_forever()
+        except Exception as exc:
+            print(f"mqtt ack worker disconnected: {exc}", flush=True)
+            time.sleep(3)
+
+
+@app.on_event("startup")
+def _start_mqtt_ack_worker() -> None:
+    threading.Thread(target=_mqtt_ack_worker, name="mqtt-ack", daemon=True).start()
+
+
+def _enqueue_mqtt_command(device_id: str, command_id: str, action: str,
+                          args: dict[str, Any], text: str = "") -> bool:
+    return _mqtt_publish_command(device_id, {
+        "command_id": command_id, "id": command_id, "action": action,
+        "args": args, "text": text, "published_at": time.time(),
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -285,7 +377,7 @@ def heartbeat(req: HeartbeatReq) -> Any:
             if c.get("status") == "pending":
                 c["status"] = "dispatched"
                 c["dispatched_at"] = time.time()
-                dispatch.append({"command_id": c["id"], "id": c["id"], "action": c["action"], "args": c.get("args", {}), "payload": c.get("args", {})})
+                dispatch.append({"id": c["id"], "action": c["action"], "args": c.get("args", {}), "text": c.get("text", "")})
 
         data[req.device_id] = rec
         _save(data)
@@ -387,7 +479,7 @@ def enqueue_command(device_id: str, req: CommandReq) -> Any:
 
 class SpeakReq(BaseModel):
     text: str = Field(..., min_length=1, max_length=500)
-    volume: Optional[int] = Field(None, ge=0, le=100)
+    volume: int = Field(20, ge=0, le=100)
 
 
 @app.post("/api/device/{device_id}/speak")
@@ -423,7 +515,8 @@ def speak(device_id: str, req: SpeakReq) -> Any:
         rec.setdefault("commands", []).append({
             "id": command_id,
             "action": "play_audio",
-            "args": {"url": audio_url},
+            "text": req.text,
+            "args": {"url": audio_url, "volume": req.volume},
             "status": "pending",
             "created_at": time.time(),
             "dispatched_at": 0.0,
@@ -433,6 +526,153 @@ def speak(device_id: str, req: SpeakReq) -> Any:
         data[device_id] = rec
         _save(data)
     return {"ok": True, "command_id": command_id, "audio_url": audio_url}
+
+
+class TestAudioReq(BaseModel):
+    volume: int = Field(20, ge=0, le=100)
+
+
+@app.post("/api/device/{device_id}/test_audio")
+def test_audio(device_id: str, req: TestAudioReq) -> Any:
+    """快速测试固定音频；首次调用生成并缓存，后续直接下发。"""
+    with DATA_LOCK:
+        data = _load()
+        if device_id not in data:
+            return _err(404, "not_found", "unknown device_id")
+    if not TEST_AUDIO_PATH.exists():
+        try:
+            body = json.dumps({"text": TEST_AUDIO_TEXT}).encode()
+            tts_req = urllib.request.Request(
+                TTS_URL, data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(tts_req, timeout=30) as resp:
+                TEST_AUDIO_PATH.write_bytes(resp.read())
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            return _err(502, "tts_error", f"测试音频生成失败: {e}")
+    audio_url = f"{AUDIO_PUBLIC_BASE}/{TEST_AUDIO_PATH.name}"
+    with DATA_LOCK:
+        data = _load()
+        rec = data[device_id]
+        command_id = "c-" + secrets.token_hex(3)
+        rec.setdefault("commands", []).append({
+            "id": command_id,
+            "action": "play_audio",
+            "text": TEST_AUDIO_TEXT,
+            "args": {"url": audio_url, "volume": req.volume},
+            "status": "pending",
+            "created_at": time.time(),
+            "dispatched_at": 0.0,
+            "done_at": 0.0,
+            "message": "",
+        })
+        data[device_id] = rec
+        _save(data)
+    command = {"id": command_id, "action": "play_audio", "args": {"url": audio_url, "volume": req.volume}, "text": TEST_AUDIO_TEXT}
+    _mqtt_enqueue_ok = _enqueue_mqtt_command(device_id, command_id, command["action"], command["args"], TEST_AUDIO_TEXT)
+    if _mqtt_enqueue_ok:
+        with DATA_LOCK:
+            data = _load()
+            rec = data[device_id]
+            for c in rec.get("commands", []):
+                if c.get("id") == command_id:
+                    c["status"] = "dispatched"; c["dispatched_at"] = time.time(); c["transport"] = "mqtt"
+            _save(data)
+    return {"ok": True, "command_id": command_id, "audio_url": audio_url, "text": TEST_AUDIO_TEXT, "transport": "mqtt" if _mqtt_enqueue_ok else "heartbeat"}
+
+
+class SpeakPcmReq(BaseModel):
+    text: str = Field(..., min_length=1, max_length=500)
+    volume: int = Field(20, ge=0, le=100)
+    # Optional PA output level for board-level validation. Omit to retain
+    # active-high default; set 0 to test an active-low PA/MUTE circuit.
+    pa_level: int | None = Field(None, ge=0, le=1)
+
+
+@app.post("/api/device/{device_id}/speak_pcm")
+def speak_pcm(device_id: str, req: SpeakPcmReq) -> Any:
+    """TTS WAV -> MQTT stream_prepare -> WebSocket PCM stream."""
+    with DATA_LOCK:
+        if device_id not in _load():
+            return _err(404, "not_found", "unknown device_id")
+    try:
+        body = json.dumps({"text": req.text}).encode()
+        tts_req = urllib.request.Request(TTS_URL, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(tts_req, timeout=30) as resp:
+            wav_bytes = resp.read()
+        with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
+            if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getframerate() != 24000:
+                return _err(502, "pcm_format", "TTS WAV must be 24kHz/16-bit/mono")
+    except Exception as exc:
+        return _err(502, "tts_error", f"TTS 服务不可达或格式错误: {exc}")
+    stream_id = "s-" + secrets.token_hex(8)
+    path = AUDIO_DIR / (stream_id + ".wav")
+    path.write_bytes(wav_bytes)
+    with PCM_STREAMS_LOCK:
+        PCM_STREAMS[stream_id] = path
+    command_id = "c-" + secrets.token_hex(3)
+    args = {"stream_id": stream_id, "stream_url": f"wss://www.wangyutang.cn/devices/ws/pcm/{device_id}?stream_id={stream_id}", "audio": {"codec": "pcm_s16le", "sample_rate": 24000, "channels": 1, "frame_ms": 20}, "volume": req.volume}
+    if req.pa_level is not None:
+        args["pa_level"] = req.pa_level
+    with DATA_LOCK:
+        data = _load(); rec = data[device_id]
+        # Reserve the command before publishing. The dispatching state is
+        # intentionally invisible to heartbeat fallback, preventing the same
+        # command from being delivered once by MQTT and once by heartbeat.
+        rec.setdefault("commands", []).append({"id": command_id, "action": "stream_prepare", "text": req.text, "args": args, "status": "dispatching", "created_at": time.time(), "dispatched_at": 0.0, "done_at": 0.0, "message": "", "transport": "mqtt"})
+        _save(data)
+    published = _enqueue_mqtt_command(device_id, command_id, "stream_prepare", args, req.text)
+    with DATA_LOCK:
+        data = _load(); rec = data[device_id]
+        for c in rec.get("commands", []):
+            if c.get("id") == command_id:
+                c["status"] = "dispatched" if published else "pending"
+                c["dispatched_at"] = time.time() if published else 0.0
+        _save(data)
+    return {"ok": True, "command_id": command_id, "stream_id": stream_id, "transport": "mqtt" if published else "heartbeat", "stream_url": args["stream_url"]}
+
+
+@app.websocket("/ws/pcm/{device_id}")
+async def pcm_websocket(websocket: WebSocket, device_id: str, stream_id: str = "") -> None:
+    await websocket.accept()
+    with DATA_LOCK:
+        known = device_id in _load()
+    with PCM_STREAMS_LOCK:
+        path = PCM_STREAMS.get(stream_id)
+    if not known or path is None or not path.exists():
+        await websocket.send_json({"event": "error", "message": "unknown stream"})
+        await websocket.close(code=1008)
+        return
+    try:
+        with wave.open(str(path), "rb") as wf:
+            pcm = wf.readframes(wf.getnframes())
+        stream_started = time.monotonic()
+        frame_count = 0
+        # Keep binary WebSocket frames bounded. A single 100s+ PCM message
+        # makes the ESP-IDF WS/TLS stack reserve a large contiguous buffer and
+        # can reboot the device; 32768 bytes is a bounded transport chunk.
+        packet_bytes = 32768
+        await websocket.send_json({"event": "stream_start", "total_bytes": len(pcm), "audio": {"codec": "pcm_s16le", "sample_rate": 24000, "channels": 1, "frame_ms": 20, "packet_bytes": packet_bytes}})
+        first_frame_at = time.monotonic()
+        for offset in range(0, len(pcm), packet_bytes):
+            await websocket.send_bytes(pcm[offset:offset + packet_bytes])
+        frame_count = (len(pcm) + packet_bytes - 1) // packet_bytes if pcm else 0
+        stream_elapsed_ms = int((time.monotonic() - stream_started) * 1000)
+        first_frame_ms = int((first_frame_at - stream_started) * 1000)
+        print(f"pcm_stream_done device={device_id} stream={stream_id} bytes={len(pcm)} frames={frame_count} first_frame_ms={first_frame_ms} send_ms={stream_elapsed_ms}", flush=True)
+        await websocket.send_json({"event": "stream_end", "sent_bytes": len(pcm), "frames": frame_count, "send_ms": stream_elapsed_ms})
+        # Keep the proxy/TLS path open until the device has drained the
+        # buffered tail and closes its side after observing stream_end.
+        try:
+            await asyncio.wait_for(websocket.receive(), timeout=60)
+        except (asyncio.TimeoutError, WebSocketDisconnect):
+            pass
+    except WebSocketDisconnect:
+        return
+    finally:
+        with PCM_STREAMS_LOCK:
+            PCM_STREAMS.pop(stream_id, None)
 
 
 @app.post("/api/device/{device_id}/upload_audio")
@@ -541,309 +781,11 @@ def health() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# MQTT 集成
-# ---------------------------------------------------------------------------
-_mqtt_client: "_mqtt_lib.Client | None" = None
-
-
-def _mqtt_process_ack(device_id: str, payload: dict) -> None:
-    command_id = payload.get("command_id") or payload.get("id", "")
-    status = payload.get("status", "done")
-    message = str(payload.get("message", ""))
-    if not command_id:
-        return
-    # Capture optional playback metadata sent alongside ACK
-    playback_keys = ("bytes", "pa_status", "handshake_ms", "receive_ms", "i2s_ms",
-                     "total_ms", "duration_ms", "stream_id", "pa_gpio", "pa_enabled")
-    playback = {k: payload[k] for k in playback_keys if k in payload}
-    with DATA_LOCK:
-        data = _load()
-        rec = data.get(device_id)
-        if rec is None:
-            return
-        for c in rec.get("commands", []):
-            if c.get("id") == command_id:
-                c["status"] = status if status in {"done", "failed", "unsupported"} else "done"
-                c["message"] = message
-                c["done_at"] = time.time()
-                if playback:
-                    c["playback"] = playback
-                break
-        done = [c for c in rec["commands"] if c.get("status") in {"done", "failed", "unsupported"}]
-        active = [c for c in rec["commands"] if c.get("status") in {"pending", "dispatched"}]
-        rec["commands"] = active + done[-MAX_COMMAND_HISTORY:]
-        data[device_id] = rec
-        _save(data)
-
-
-def _mqtt_process_state(device_id: str, payload: dict) -> None:
-    with DATA_LOCK:
-        data = _load()
-        rec = data.get(device_id)
-        if rec is None:
-            rec = _new_device(device_id, "unknown", "")
-        rec["last_seen"] = time.time()
-        rec.setdefault("state", {}).update(payload)
-        data[device_id] = rec
-        _save(data)
-
-
-def _mqtt_process_log(device_id: str, payload: dict) -> None:
-    with DATA_LOCK:
-        data = _load()
-        rec = data.get(device_id)
-        if rec is None:
-            rec = _new_device(device_id, "unknown", "")
-        entry = {
-            "level": payload.get("level", "info"),
-            "message": str(payload.get("message", "")),
-            "ts": float(payload.get("ts", time.time())),
-        }
-        logs = rec.setdefault("logs", [])
-        logs.append(entry)
-        del logs[:-MAX_LOGS]
-        rec["last_seen"] = time.time()
-        data[device_id] = rec
-        _save(data)
-
-
-def _on_mqtt_connect(client: Any, userdata: Any, flags: Any, rc: Any, props: Any = None) -> None:
-    client.subscribe("devices/+/ack")
-    client.subscribe("devices/+/state")
-    client.subscribe("devices/+/log")
-    client.subscribe("devices/+/presence")
-
-
-def _on_mqtt_message(client: Any, userdata: Any, msg: Any) -> None:
-    parts = msg.topic.split("/")
-    if len(parts) < 3 or parts[0] != "devices":
-        return
-    device_id, msg_type = parts[1], parts[2]
-    try:
-        payload = json.loads(msg.payload.decode())
-    except Exception:
-        return
-    if msg_type == "ack":
-        _mqtt_process_ack(device_id, payload)
-    elif msg_type in ("state", "presence"):
-        _mqtt_process_state(device_id, payload)
-    elif msg_type == "log":
-        _mqtt_process_log(device_id, payload)
-
-
-def _mqtt_publish(topic: str, payload: dict) -> None:
-    if _mqtt_client is not None and _mqtt_client.is_connected():
-        _mqtt_client.publish(topic, json.dumps(payload, ensure_ascii=False))
-
-
-def _start_mqtt_thread() -> None:
-    global _mqtt_client
-    try:
-        _mqtt_client = _mqtt_lib.Client(_mqtt_lib.CallbackAPIVersion.VERSION2)
-        _mqtt_client.on_connect = _on_mqtt_connect
-        _mqtt_client.on_message = _on_mqtt_message
-        _mqtt_client.connect(MQTT_HOST, MQTT_PORT, 60)
-        _mqtt_client.loop_forever()
-    except Exception:
-        pass  # MQTT 不可用时 HTTP heartbeat 继续工作
-
-
-# ---------------------------------------------------------------------------
-# PCM 工具
-# ---------------------------------------------------------------------------
-def _wav_to_pcm_s16le_24k(wav_bytes: bytes) -> bytes:
-    """WAV → PCM s16le / 24000Hz / mono，用 audioop 重采样。"""
-    import audioop
-    with wave.open(io.BytesIO(wav_bytes)) as wf:
-        nchannels = wf.getnchannels()
-        sampwidth = wf.getsampwidth()
-        framerate = wf.getframerate()
-        pcm = wf.readframes(wf.getnframes())
-    if nchannels == 2:
-        pcm = audioop.tomono(pcm, sampwidth, 0.5, 0.5)
-    if sampwidth != 2:
-        pcm = audioop.lin2lin(pcm, sampwidth, 2)
-    if framerate != PCM_SAMPLE_RATE:
-        pcm, _ = audioop.ratecv(pcm, 2, 1, framerate, PCM_SAMPLE_RATE, None)
-    return pcm
-
-
-def _pcm_store_put(stream_id: str, pcm: bytes) -> None:
-    PCM_STORE[stream_id] = pcm
-    PCM_STORE_TTL[stream_id] = time.time()
-    now = time.time()
-    expired = [sid for sid, t in list(PCM_STORE_TTL.items()) if now - t > 300]
-    for sid in expired:
-        PCM_STORE.pop(sid, None)
-        PCM_STORE_TTL.pop(sid, None)
-
-
-# ---------------------------------------------------------------------------
-# WebSocket PCM 流端点（ESP32 作为客户端连入）
-# ---------------------------------------------------------------------------
-@app.websocket("/ws/pcm/{device_id}")
-async def ws_pcm_stream(websocket: WebSocket, device_id: str, stream_id: str = "") -> None:
-    await websocket.accept()
-    if not stream_id or stream_id not in PCM_STORE:
-        await websocket.send_text(json.dumps({"event": "error", "message": f"unknown stream_id: {stream_id}"}))
-        await websocket.close()
-        return
-    pcm = PCM_STORE[stream_id]
-    total_bytes = len(pcm)
-    sent_bytes = 0
-    frames_sent = 0
-    first_frame_ms: int = 0
-    t0 = time.time()
-    try:
-        await websocket.send_text(json.dumps({
-            "event": "stream_start",
-            "stream_id": stream_id,
-            "device_id": device_id,
-            "total_bytes": total_bytes,
-            "audio": {"codec": "pcm_s16le", "sample_rate": PCM_SAMPLE_RATE,
-                      "channels": 1, "frame_ms": PCM_FRAME_MS},
-            "server_time": time.time(),
-        }))
-        offset = 0
-        while offset < len(pcm):
-            chunk = pcm[offset: offset + PCM_FRAME_BYTES]
-            await websocket.send_bytes(chunk)
-            if frames_sent == 0:
-                first_frame_ms = int((time.time() - t0) * 1000)
-            offset += len(chunk)
-            sent_bytes += len(chunk)
-            frames_sent += 1
-            await asyncio.sleep(0)
-        elapsed = int((time.time() - t0) * 1000)
-        await websocket.send_text(json.dumps({
-            "event": "stream_end",
-            "stream_id": stream_id,
-            "sent_bytes": sent_bytes,
-            "frames_sent": frames_sent,
-            "first_frame_ms": first_frame_ms,
-            "send_ms": elapsed,
-            "elapsed_ms": elapsed,
-        }))
-    except WebSocketDisconnect:
-        pass
-    finally:
-        PCM_STORE.pop(stream_id, None)
-        PCM_STORE_TTL.pop(stream_id, None)
-
-
-# ---------------------------------------------------------------------------
-# speak_pcm: TTS → PCM → MQTT stream_prepare + WebSocket 流
-# ---------------------------------------------------------------------------
-class SpeakPcmReq(BaseModel):
-    text: str = Field(..., min_length=1, max_length=500)
-    volume: Optional[int] = Field(None, ge=0, le=100)
-
-
-@app.post("/api/device/{device_id}/speak_pcm")
-def speak_pcm(device_id: str, req: SpeakPcmReq) -> Any:
-    """文本 → TTS WAV → PCM → MQTT stream_prepare + WebSocket 流。"""
-    with DATA_LOCK:
-        data = _load()
-        if device_id not in data:
-            return _err(404, "not_found", "unknown device_id")
-
-    try:
-        body = json.dumps({"text": req.text}).encode()
-        tts_req = urllib.request.Request(
-            TTS_URL, data=body,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(tts_req, timeout=30) as resp:
-            wav_bytes = resp.read()
-    except urllib.error.URLError as e:
-        return _err(502, "tts_error", f"TTS 服务不可达: {e}")
-
-    try:
-        pcm = _wav_to_pcm_s16le_24k(wav_bytes)
-    except Exception as e:
-        return _err(500, "pcm_convert_error", str(e))
-
-    stream_id = "s-" + secrets.token_hex(4)
-    command_id = "c-" + secrets.token_hex(3)
-    ws_url = f"wss://www.wangyutang.cn/devices/ws/pcm/{device_id}?stream_id={stream_id}"
-    _pcm_store_put(stream_id, pcm)
-
-    mqtt_cmd = {
-        "command_id": command_id,
-        "action": "stream_prepare",
-        "stream_id": stream_id,
-        "transport": "websocket",
-        "stream_url": ws_url,
-        "audio": {"codec": "pcm_s16le", "sample_rate": PCM_SAMPLE_RATE,
-                  "channels": 1, "frame_ms": PCM_FRAME_MS},
-        "volume": req.volume or 80,
-        "text": req.text,
-        "published_at": time.time(),
-    }
-    now = time.time()
-    mqtt_ok = False
-    with DATA_LOCK:
-        data = _load()
-        rec = data.get(device_id)
-        if rec is None:
-            return _err(404, "not_found", "unknown device_id")
-        # 先写 dispatching 防止 HTTP heartbeat 在 MQTT 发布期间重复取出
-        rec.setdefault("commands", []).append({
-            "id": command_id,
-            "action": "stream_prepare",
-            "args": {"stream_id": stream_id, "stream_url": ws_url, "text": req.text},
-            "status": "dispatching",
-            "created_at": now,
-            "dispatched_at": 0.0,
-            "done_at": 0.0,
-            "message": "",
-        })
-        data[device_id] = rec
-        _save(data)
-
-    try:
-        _mqtt_publish(f"devices/{device_id}/command", mqtt_cmd)
-        mqtt_ok = True
-    except Exception:
-        pass
-
-    # 更新为 dispatched（MQTT 成功）或 pending（失败则让心跳兜底）
-    with DATA_LOCK:
-        data = _load()
-        rec = data.get(device_id)
-        if rec:
-            for c in rec.get("commands", []):
-                if c.get("id") == command_id:
-                    c["status"] = "dispatched" if mqtt_ok else "pending"
-                    c["dispatched_at"] = time.time() if mqtt_ok else 0.0
-                    break
-            data[device_id] = rec
-            _save(data)
-
-    return {
-        "ok": True,
-        "command_id": command_id,
-        "stream_id": stream_id,
-        "stream_url": ws_url,
-        "pcm_bytes": len(pcm),
-        "text": req.text,
-    }
-
-
-@app.get("/api/mqtt/status")
-def mqtt_status() -> Any:
-    connected = _mqtt_client is not None and _mqtt_client.is_connected()
-    return {"ok": True, "mqtt_connected": connected, "mqtt_host": MQTT_HOST, "mqtt_port": MQTT_PORT}
-
-
-# ---------------------------------------------------------------------------
 # 启动后台线程
 # ---------------------------------------------------------------------------
 @app.on_event("startup")
 def _start_background() -> None:
     threading.Thread(target=_check_offline_alerts, daemon=True).start()
-    threading.Thread(target=_start_mqtt_thread, daemon=True).start()
 
 
 # ---------------------------------------------------------------------------
