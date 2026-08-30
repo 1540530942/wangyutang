@@ -675,6 +675,8 @@ async def ws_pcm_stream(websocket: WebSocket, device_id: str, stream_id: str = "
     pcm = PCM_STORE[stream_id]
     total_bytes = len(pcm)
     sent_bytes = 0
+    frames_sent = 0
+    first_frame_ms: int = 0
     t0 = time.time()
     try:
         await websocket.send_text(json.dumps({
@@ -690,14 +692,20 @@ async def ws_pcm_stream(websocket: WebSocket, device_id: str, stream_id: str = "
         while offset < len(pcm):
             chunk = pcm[offset: offset + PCM_FRAME_BYTES]
             await websocket.send_bytes(chunk)
+            if frames_sent == 0:
+                first_frame_ms = int((time.time() - t0) * 1000)
             offset += len(chunk)
             sent_bytes += len(chunk)
+            frames_sent += 1
             await asyncio.sleep(0)
         elapsed = int((time.time() - t0) * 1000)
         await websocket.send_text(json.dumps({
             "event": "stream_end",
             "stream_id": stream_id,
             "sent_bytes": sent_bytes,
+            "frames_sent": frames_sent,
+            "first_frame_ms": first_frame_ms,
+            "send_ms": elapsed,
             "elapsed_ms": elapsed,
         }))
     except WebSocketDisconnect:
@@ -757,25 +765,45 @@ def speak_pcm(device_id: str, req: SpeakPcmReq) -> Any:
         "text": req.text,
         "published_at": time.time(),
     }
-    _mqtt_publish(f"devices/{device_id}/command", mqtt_cmd)
-
+    now = time.time()
+    mqtt_ok = False
     with DATA_LOCK:
         data = _load()
         rec = data.get(device_id)
         if rec is None:
             return _err(404, "not_found", "unknown device_id")
+        # 先写 dispatching 防止 HTTP heartbeat 在 MQTT 发布期间重复取出
         rec.setdefault("commands", []).append({
             "id": command_id,
             "action": "stream_prepare",
             "args": {"stream_id": stream_id, "stream_url": ws_url, "text": req.text},
-            "status": "pending",
-            "created_at": time.time(),
-            "dispatched_at": time.time(),  # MQTT 已发
+            "status": "dispatching",
+            "created_at": now,
+            "dispatched_at": 0.0,
             "done_at": 0.0,
             "message": "",
         })
         data[device_id] = rec
         _save(data)
+
+    try:
+        _mqtt_publish(f"devices/{device_id}/command", mqtt_cmd)
+        mqtt_ok = True
+    except Exception:
+        pass
+
+    # 更新为 dispatched（MQTT 成功）或 pending（失败则让心跳兜底）
+    with DATA_LOCK:
+        data = _load()
+        rec = data.get(device_id)
+        if rec:
+            for c in rec.get("commands", []):
+                if c.get("id") == command_id:
+                    c["status"] = "dispatched" if mqtt_ok else "pending"
+                    c["dispatched_at"] = time.time() if mqtt_ok else 0.0
+                    break
+            data[device_id] = rec
+            _save(data)
 
     return {
         "ok": True,
