@@ -742,7 +742,7 @@ def speak_pcm(device_id: str, req: SpeakPcmReq) -> Any:
 
     stream_id = "s-" + secrets.token_hex(4)
     command_id = "c-" + secrets.token_hex(3)
-    ws_url = f"ws://110.40.154.41:8102/ws/pcm/{device_id}?stream_id={stream_id}"
+    ws_url = f"wss://www.wangyutang.cn/devices/ws/pcm/{device_id}?stream_id={stream_id}"
     _pcm_store_put(stream_id, pcm)
 
     mqtt_cmd = {
