@@ -552,6 +552,10 @@ def _mqtt_process_ack(device_id: str, payload: dict) -> None:
     message = str(payload.get("message", ""))
     if not command_id:
         return
+    # Capture optional playback metadata sent alongside ACK
+    playback_keys = ("bytes", "pa_status", "handshake_ms", "receive_ms", "i2s_ms",
+                     "total_ms", "duration_ms", "stream_id", "pa_gpio", "pa_enabled")
+    playback = {k: payload[k] for k in playback_keys if k in payload}
     with DATA_LOCK:
         data = _load()
         rec = data.get(device_id)
@@ -562,6 +566,8 @@ def _mqtt_process_ack(device_id: str, payload: dict) -> None:
                 c["status"] = status if status in {"done", "failed", "unsupported"} else "done"
                 c["message"] = message
                 c["done_at"] = time.time()
+                if playback:
+                    c["playback"] = playback
                 break
         done = [c for c in rec["commands"] if c.get("status") in {"done", "failed", "unsupported"}]
         active = [c for c in rec["commands"] if c.get("status") in {"pending", "dispatched"}]

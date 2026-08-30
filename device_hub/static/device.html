@@ -26,9 +26,11 @@
         <div class="tab-body" id="tab-text">
           <textarea id="speak-text" rows="3" placeholder="输入要播报的文字，平台自动生成语音下发给设备…"></textarea>
           <div class="actions" style="margin-top:8px">
-            <button class="btn primary" id="btn-speak">生成并播报</button>
+            <button class="btn primary" id="btn-speak">HTTP 播报</button>
+            <button class="btn primary" id="btn-speak-pcm" style="background:var(--accent2,#0ea5e9)">PCM 流式播报</button>
             <button class="btn" id="btn-stop-text">停止播报</button>
           </div>
+          <p style="font-size:0.78rem;color:var(--muted);margin-top:6px">PCM 流式：TTS→PCM→MQTT→WSS 直流，延迟约 10-15s；HTTP：TTS→WAV 文件→设备下载。</p>
         </div>
         <div class="tab-body hidden" id="tab-upload">
           <input type="file" id="upload-file" accept="audio/*" style="margin-bottom:8px;display:block" />
@@ -135,6 +137,20 @@
           .join("");
       }
 
+      function fmtPlayback(p) {
+        const parts = [];
+        if (p.bytes != null) parts.push(`bytes=${p.bytes}`);
+        if (p.total_ms != null) parts.push(`total=${p.total_ms}ms`);
+        if (p.handshake_ms != null) parts.push(`hs=${p.handshake_ms}ms`);
+        if (p.receive_ms != null) parts.push(`recv=${p.receive_ms}ms`);
+        if (p.i2s_ms != null) parts.push(`i2s=${p.i2s_ms}ms`);
+        const pa = p.pa_status || (p.pa_gpio != null ? `GPIO${p.pa_gpio}` : null);
+        const paClass = p.pa_enabled ? "done" : "failed";
+        const paHtml = pa ? ` <span class="sbadge ${paClass}" style="font-size:0.72rem">PA:${esc(String(pa))}</span>` : "";
+        if (!parts.length && !pa) return "";
+        return `<div class="cmd-msg" style="color:var(--muted);font-size:0.78rem">${parts.join(" · ")}${paHtml}</div>`;
+      }
+
       function renderCommands(cmds) {
         const el = document.getElementById("commands");
         if (!cmds.length) { el.innerHTML = '<div class="empty">暂无指令</div>'; return; }
@@ -157,6 +173,7 @@
           ${argsStr ? `<div class="cmd-args">${esc(argsStr)}</div>` : ""}
           ${times.length ? `<div class="cmd-times">${times.join("")}</div>` : ""}
           ${c.message ? `<div class="cmd-msg">${esc(c.message)}</div>` : ""}
+          ${c.playback ? fmtPlayback(c.playback) : ""}
         </div>`;
       }
 
@@ -225,6 +242,25 @@
           else toast("失败：" + (j.message || j.error));
         } catch (e) { toast("失败：" + e.message); }
         btn.disabled = false; btn.textContent = "生成并播报";
+      });
+
+      // PCM 流式播报
+      document.getElementById("btn-speak-pcm").addEventListener("click", async () => {
+        const text = document.getElementById("speak-text").value.trim();
+        if (!text) { toast("请输入播报文字"); return; }
+        const btn = document.getElementById("btn-speak-pcm");
+        btn.disabled = true; btn.textContent = "生成中…";
+        try {
+          const r = await fetch(API + "/device/" + encodeURIComponent(id) + "/speak_pcm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, volume: 80 }),
+          });
+          const j = await r.json();
+          if (j.ok) { toast("PCM 流已下发（≤15s 出声）"); load(); }
+          else toast("失败：" + (j.message || j.error));
+        } catch (e) { toast("失败：" + e.message); }
+        btn.disabled = false; btn.textContent = "PCM 流式播报";
       });
 
       // 上传音频
