@@ -20,7 +20,7 @@ import time
 import urllib.request
 import urllib.error
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse
@@ -38,7 +38,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 TTS_URL = os.environ.get("TTS_URL", "http://audio-interact:8097/api/tts")
-AUDIO_PUBLIC_BASE = os.environ.get("AUDIO_PUBLIC_BASE", "https://www.wangyutang.cn/devices/api/audio")
+AUDIO_PUBLIC_BASE = os.environ.get("AUDIO_PUBLIC_BASE", "http://110.40.154.41/devices/api/audio")
 UPLOAD_MAX_BYTES = 20 * 1024 * 1024  # 20MB
 
 # 契约常量
@@ -260,7 +260,7 @@ def heartbeat(req: HeartbeatReq) -> Any:
             if c.get("status") == "pending":
                 c["status"] = "dispatched"
                 c["dispatched_at"] = time.time()
-                dispatch.append({"id": c["id"], "action": c["action"], "args": c.get("args", {})})
+                dispatch.append({"command_id": c["id"], "id": c["id"], "action": c["action"], "args": c.get("args", {}), "payload": c.get("args", {})})
 
         data[req.device_id] = rec
         _save(data)
@@ -362,6 +362,7 @@ def enqueue_command(device_id: str, req: CommandReq) -> Any:
 
 class SpeakReq(BaseModel):
     text: str = Field(..., min_length=1, max_length=500)
+    volume: Optional[int] = Field(None, ge=0, le=100)
 
 
 @app.post("/api/device/{device_id}/speak")
