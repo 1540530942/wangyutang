@@ -102,7 +102,9 @@
         firmware: "固件", wifi_ssid: "WiFi SSID", wifi_rssi: "信号 (dBm)",
         ip: "IP", uptime_s: "运行时长 (s)", free_heap: "空闲堆 (B)",
         activated: "已激活", volume: "音量",
+        mqtt_connected: "MQTT 控制面", reset_reason: "重启原因",
       };
+      const RESET_REASON = {1:"上电",3:"软件重启",6:"WDT",7:"任务WDT",11:"USB-JTAG串口",12:"Brownout欠压"};
 
       async function load() {
         try {
@@ -129,12 +131,26 @@
         rows.push(["首次上线", fmtTime(d.first_seen)]);
         const keys = Object.keys(st);
         keys.sort((a, b) => (STATE_LABELS[a] ? -1 : 0) - (STATE_LABELS[b] ? -1 : 0));
+        const htmlRows = [];
         for (const k of keys) {
-          rows.push([STATE_LABELS[k] || k, typeof st[k] === "object" ? JSON.stringify(st[k]) : st[k]]);
+          const label = STATE_LABELS[k] || k;
+          let val;
+          if (k === "mqtt_connected") {
+            const ok = st[k] === true || st[k] === "true";
+            val = `<span class="sbadge ${ok ? "done" : "failed"}">${ok ? "已连接" : "未连接"}</span>`;
+          } else if (k === "reset_reason") {
+            const code = Number(st[k]);
+            const desc = RESET_REASON[code] || `code ${code}`;
+            val = `<span style="font-family:monospace">${code}</span> <span style="color:var(--muted);font-size:0.85em">${esc(desc)}</span>`;
+          } else {
+            val = esc(typeof st[k] === "object" ? JSON.stringify(st[k]) : st[k]);
+          }
+          htmlRows.push(`<tr><td class="k">${esc(label)}</td><td>${val}</td></tr>`);
         }
-        document.getElementById("state").innerHTML = rows
-          .map((r) => `<tr><td class="k">${esc(r[0])}</td><td>${esc(r[1])}</td></tr>`)
-          .join("");
+        document.getElementById("state").innerHTML =
+          `<tr><td class="k">最后心跳</td><td>${esc(fmtAge(d.last_seen) + "（" + fmtTime(d.last_seen) + "）")}</td></tr>` +
+          `<tr><td class="k">首次上线</td><td>${esc(fmtTime(d.first_seen))}</td></tr>` +
+          htmlRows.join("");
       }
 
       function fmtPlayback(p) {
@@ -254,7 +270,7 @@
           const r = await fetch(API + "/device/" + encodeURIComponent(id) + "/speak_pcm", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text, volume: 80 }),
+            body: JSON.stringify({ text, volume: 30 }),
           });
           const j = await r.json();
           if (j.ok) { toast("PCM 流已下发（≤15s 出声）"); load(); }

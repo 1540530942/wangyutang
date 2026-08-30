@@ -56,7 +56,7 @@ MAX_LOGS = 200                     # 每设备环形日志上限
 MAX_COMMAND_HISTORY = 50           # 每设备已完成指令保留上限
 KNOWN_ACTIONS = {"reboot", "set_volume", "identify", "ota", "play_audio", "stop_audio", "stream_prepare"}
 OFFLINE_ALERT_AFTER_S = 60    # 超过此时长无心跳 → 记录告警（4× OFFLINE_AFTER_S，过滤偶发断联）
-DISPATCHED_TIMEOUT_S = 120    # dispatched 超此时长未收到 ACK → 自动标 failed
+DISPATCHED_TIMEOUT_S = 300    # dispatched 超此时长未收到 ACK → 自动标 failed
 ALERTS_FILE = DATA_DIR / "alerts.jsonl"
 MAX_ALERTS = 500
 
@@ -76,7 +76,7 @@ PCM_STREAMS_LOCK = threading.Lock()
 
 
 def _mqtt_publish_command(device_id: str, command: dict[str, Any]) -> bool:
-    topic = f"devices/{device_id}/command"
+    topic = f"devices/{device_id}/command/{command.get('command_id') or command.get('id') or secrets.token_hex(4)}"
     client = mqtt.Client(client_id=f"device-hub-{secrets.token_hex(4)}", protocol=mqtt.MQTTv311)
     try:
         client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
@@ -95,8 +95,8 @@ def _mqtt_publish_command(device_id: str, command: dict[str, Any]) -> bool:
             pass
 
 
-def _mqtt_clear_retained_command(device_id: str) -> None:
-    topic = f"devices/{device_id}/command"
+def _mqtt_clear_retained_command(device_id: str, command_id: str) -> None:
+    topic = f"devices/{device_id}/command/{command_id}"
     client = mqtt.Client(client_id=f"device-hub-clear-{secrets.token_hex(4)}", protocol=mqtt.MQTTv311)
     try:
         client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
@@ -160,7 +160,7 @@ def _mqtt_ack_worker() -> None:
                 device_id = parts[1]
                 payload = json.loads(msg.payload.decode("utf-8"))
                 if _record_mqtt_ack(device_id, payload):
-                    _mqtt_clear_retained_command(device_id)
+                    _mqtt_clear_retained_command(device_id, str(payload.get("command_id") or payload.get("id") or ""))
         except Exception as exc:
             print(f"mqtt ack parse failed: {exc}", flush=True)
     client.on_connect = on_connect
@@ -500,7 +500,7 @@ def enqueue_command(device_id: str, req: CommandReq) -> Any:
 
 class SpeakReq(BaseModel):
     text: str = Field(..., min_length=1, max_length=500)
-    volume: int = Field(20, ge=0, le=100)
+    volume: int = Field(30, ge=0, le=100)
 
 
 @app.post("/api/device/{device_id}/speak")
@@ -550,7 +550,7 @@ def speak(device_id: str, req: SpeakReq) -> Any:
 
 
 class TestAudioReq(BaseModel):
-    volume: int = Field(20, ge=0, le=100)
+    volume: int = Field(30, ge=0, le=100)
 
 
 @app.post("/api/device/{device_id}/test_audio")
@@ -605,7 +605,7 @@ def test_audio(device_id: str, req: TestAudioReq) -> Any:
 
 class SpeakPcmReq(BaseModel):
     text: str = Field(..., min_length=1, max_length=500)
-    volume: int = Field(20, ge=0, le=100)
+    volume: int = Field(30, ge=0, le=100)
     # Optional PA output level for board-level validation. Omit to retain
     # active-high default; set 0 to test an active-low PA/MUTE circuit.
     pa_level: int | None = Field(None, ge=0, le=1)
