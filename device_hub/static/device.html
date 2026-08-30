@@ -25,12 +25,19 @@
         </div>
         <div class="tab-body" id="tab-text">
           <textarea id="speak-text" rows="3" placeholder="输入要播报的文字，平台自动生成语音下发给设备…"></textarea>
+          <div class="volume-control" aria-label="播报音量">
+            <span>音量</span>
+            <button class="btn volume-step" id="volume-down" type="button">−</button>
+            <input id="volume-range" type="range" min="0" max="100" step="5" value="30" />
+            <button class="btn volume-step" id="volume-up" type="button">＋</button>
+            <output id="volume-value">30%</output>
+          </div>
           <div class="actions" style="margin-top:8px">
-            <button class="btn primary" id="btn-speak">HTTP 播报</button>
-            <button class="btn primary" id="btn-speak-pcm" style="background:var(--accent2,#0ea5e9)">PCM 流式播报</button>
+            <button class="btn primary" id="btn-speak-pcm">PCM生成并播报</button>
+            <button class="btn" id="btn-speak-http">HTTP生成并播报</button>
+            <button class="btn" id="btn-test-audio">快速测试：早上好，我的公主</button>
             <button class="btn" id="btn-stop-text">停止播报</button>
           </div>
-          <p style="font-size:0.78rem;color:var(--muted);margin-top:6px">PCM 流式：TTS→PCM→MQTT→WSS 直流，延迟约 10-15s；HTTP：TTS→WAV 文件→设备下载。</p>
         </div>
         <div class="tab-body hidden" id="tab-upload">
           <input type="file" id="upload-file" accept="audio/*" style="margin-bottom:8px;display:block" />
@@ -80,6 +87,17 @@
           ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])
         );
       }
+      function apiError(j, status) {
+        if (j && j.message) return String(j.message);
+        if (j && j.error) return String(j.error);
+        if (j && j.detail) {
+          if (Array.isArray(j.detail)) {
+            return j.detail.map(x => x && (x.msg || x.message) || String(x)).join("；");
+          }
+          return String(j.detail);
+        }
+        return "HTTP " + status;
+      }
       function fmtTime(sec) {
         if (!sec) return "—";
         return new Date(sec * 1000).toLocaleString("zh-CN", { hour12: false });
@@ -126,9 +144,6 @@
       }
 
       function renderState(st, d) {
-        const rows = [];
-        rows.push(["最后心跳", fmtAge(d.last_seen) + "（" + fmtTime(d.last_seen) + "）"]);
-        rows.push(["首次上线", fmtTime(d.first_seen)]);
         const keys = Object.keys(st);
         keys.sort((a, b) => (STATE_LABELS[a] ? -1 : 0) - (STATE_LABELS[b] ? -1 : 0));
         const htmlRows = [];
@@ -153,18 +168,15 @@
           htmlRows.join("");
       }
 
-      function fmtPlayback(p) {
+      function fmtPlayback(c) {
         const parts = [];
-        if (p.bytes != null) parts.push(`bytes=${p.bytes}`);
-        if (p.total_ms != null) parts.push(`total=${p.total_ms}ms`);
-        if (p.handshake_ms != null) parts.push(`hs=${p.handshake_ms}ms`);
-        if (p.receive_ms != null) parts.push(`recv=${p.receive_ms}ms`);
-        if (p.i2s_ms != null) parts.push(`i2s=${p.i2s_ms}ms`);
-        const pa = p.pa_status || (p.pa_gpio != null ? `GPIO${p.pa_gpio}` : null);
-        const paClass = p.pa_enabled ? "done" : "failed";
-        const paHtml = pa ? ` <span class="sbadge ${paClass}" style="font-size:0.72rem">PA:${esc(String(pa))}</span>` : "";
-        if (!parts.length && !pa) return "";
-        return `<div class="cmd-msg" style="color:var(--muted);font-size:0.78rem">${parts.join(" · ")}${paHtml}</div>`;
+        if (c.playback_bytes != null) parts.push(`bytes=${c.playback_bytes}`);
+        if (c.playback_elapsed_ms != null) parts.push(`total=${c.playback_elapsed_ms}ms`);
+        if (c.pa_gpio17 != null) {
+          const paOk = c.pa_gpio17 > 0;
+          parts.push(`<span class="sbadge ${paOk ? "done" : "failed"}" style="font-size:0.72rem">PA:GPIO17=${c.pa_gpio17}</span>`);
+        }
+        return parts.length ? `<div class="cmd-msg" style="color:var(--muted);font-size:0.78rem">${parts.join(" · ")}</div>` : "";
       }
 
       function renderCommands(cmds) {
@@ -175,7 +187,12 @@
       }
 
       function cmdCard(c) {
-        const argsStr = c.args && Object.keys(c.args).length ? JSON.stringify(c.args) : "";
+        const args = c.args || {};
+        const argsCopy = Object.assign({}, args);
+        delete argsCopy.url;
+        delete argsCopy.text;
+        const argsStr = Object.keys(argsCopy).length ? JSON.stringify(argsCopy) : "";
+        const sourceText = c.text || args.text || (c.action === "play_audio" ? "[original text not recorded]" : "");
         const times = [];
         if (c.created_at) times.push(`<span class="cmd-ts">下发 <b>${fmtTime(c.created_at)}</b></span>`);
         if (c.dispatched_at) times.push(`<span class="cmd-ts">派送 <b>${fmtAge(c.dispatched_at)}</b></span>`);
@@ -186,10 +203,11 @@
             <span class="cmd-action">${esc(c.action)}</span>
             <span class="sbadge ${esc(st)}">${esc(st)}</span>
           </div>
+          ${sourceText ? `<div class="cmd-text">播报文本：${esc(sourceText)}</div>` : ""}
           ${argsStr ? `<div class="cmd-args">${esc(argsStr)}</div>` : ""}
           ${times.length ? `<div class="cmd-times">${times.join("")}</div>` : ""}
           ${c.message ? `<div class="cmd-msg">${esc(c.message)}</div>` : ""}
-          ${c.playback ? fmtPlayback(c.playback) : ""}
+          ${fmtPlayback(c)}
         </div>`;
       }
 
@@ -212,13 +230,14 @@
           });
           const j = await r.json();
           if (j.ok) { toast("已下发：" + action + "（≤5s 生效）"); load(); }
-          else toast("下发失败：" + (j.message || j.error));
+          else toast("下发失败：" + apiError(j, r.status));
         } catch (e) { toast("下发失败：" + e.message); }
       }
 
       document.querySelectorAll(".actions .btn").forEach((btn) => {
         btn.addEventListener("click", () => {
           const action = btn.dataset.action;
+          if (!action) return;
           if (btn.dataset.confirm && !confirm(btn.dataset.confirm)) return;
           let args = {};
           if (btn.dataset.prompt) {
@@ -241,42 +260,64 @@
         });
       });
 
-      // 文本播报
-      document.getElementById("btn-speak").addEventListener("click", async () => {
+      // 音量：默认 30%，每次调整 5%，范围 0-100
+      const volumeRange = document.getElementById("volume-range");
+      const volumeValue = document.getElementById("volume-value");
+      let selectedVolume = Number(localStorage.getItem("device-volume-" + id));
+      if (!Number.isFinite(selectedVolume)) selectedVolume = 30;
+      function updateVolumeUi(v) {
+        selectedVolume = Math.max(0, Math.min(100, Math.round(v / 5) * 5));
+        volumeRange.value = selectedVolume;
+        volumeValue.textContent = selectedVolume + "%";
+        localStorage.setItem("device-volume-" + id, String(selectedVolume));
+      }
+      volumeRange.addEventListener("input", () => updateVolumeUi(Number(volumeRange.value)));
+      document.getElementById("volume-down").addEventListener("click", () => updateVolumeUi(selectedVolume - 5));
+      document.getElementById("volume-up").addEventListener("click", () => updateVolumeUi(selectedVolume + 5));
+      updateVolumeUi(selectedVolume);
+
+      // 文本播报：分别保留 HTTP WAV 和 WebSocket PCM 两条链路，便于现场对比验证
+      async function speakByTransport(endpoint, buttonId, label) {
         const text = document.getElementById("speak-text").value.trim();
         if (!text) { toast("请输入播报文字"); return; }
-        const btn = document.getElementById("btn-speak");
+        const btn = document.getElementById(buttonId);
         btn.disabled = true; btn.textContent = "生成中…";
         try {
-          const r = await fetch(API + "/device/" + encodeURIComponent(id) + "/speak", {
+          const r = await fetch(API + "/device/" + encodeURIComponent(id) + endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text }),
+            body: JSON.stringify({ text, volume: selectedVolume }),
           });
-          const j = await r.json();
-          if (j.ok) { toast("已下发播报（≤5s 生效）"); load(); }
-          else toast("失败：" + (j.message || j.error));
-        } catch (e) { toast("失败：" + e.message); }
-        btn.disabled = false; btn.textContent = "生成并播报";
-      });
+          const raw = await r.text();
+          let j = {};
+          try { j = raw ? JSON.parse(raw) : {}; } catch (_) { j = { message: raw.slice(0, 160) }; }
+          if (r.ok && j.ok) { toast("已下发" + label + "（音量 " + selectedVolume + "%）"); load(); }
+          else toast("生成/下发失败：" + (j.message || j.error || ("HTTP " + r.status)));
+        } catch (e) { toast("生成/下发失败：网络错误：" + e.message); }
+        btn.disabled = false; btn.textContent = label;
+      }
+      document.getElementById("btn-speak-pcm").addEventListener("click", () =>
+        speakByTransport("/speak_pcm", "btn-speak-pcm", "PCM生成并播报"));
+      document.getElementById("btn-speak-http").addEventListener("click", () =>
+        speakByTransport("/speak", "btn-speak-http", "HTTP生成并播报"));
 
-      // PCM 流式播报
-      document.getElementById("btn-speak-pcm").addEventListener("click", async () => {
-        const text = document.getElementById("speak-text").value.trim();
-        if (!text) { toast("请输入播报文字"); return; }
-        const btn = document.getElementById("btn-speak-pcm");
-        btn.disabled = true; btn.textContent = "生成中…";
+      // 固定测试音频：缓存后直接下发，便于快速验证
+      document.getElementById("btn-test-audio").addEventListener("click", async () => {
+        const btn = document.getElementById("btn-test-audio");
+        btn.disabled = true; btn.textContent = "测试音频下发中…";
         try {
           const r = await fetch(API + "/device/" + encodeURIComponent(id) + "/speak_pcm", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text, volume: 30 }),
+            body: JSON.stringify({ text: "早上好，我的公主", volume: selectedVolume }),
           });
-          const j = await r.json();
-          if (j.ok) { toast("PCM 流已下发（≤15s 出声）"); load(); }
-          else toast("失败：" + (j.message || j.error));
-        } catch (e) { toast("失败：" + e.message); }
-        btn.disabled = false; btn.textContent = "PCM 流式播报";
+          const raw = await r.text();
+          let j = {};
+          try { j = raw ? JSON.parse(raw) : {}; } catch (_) { j = { message: raw.slice(0, 160) }; }
+          if (r.ok && j.ok) { toast("已下发测试音频（音量 " + selectedVolume + "%）"); load(); }
+          else toast("测试音频失败：" + apiError(j, r.status));
+        } catch (e) { toast("测试音频失败：" + e.message); }
+        btn.disabled = false; btn.textContent = "快速测试：早上好，我的公主";
       });
 
       // 上传音频
@@ -293,7 +334,7 @@
           });
           const j = await r.json();
           if (j.ok) { toast("已下发播放（≤5s 生效）"); load(); }
-          else toast("失败：" + (j.message || j.error));
+          else toast("失败：" + apiError(j, r.status));
         } catch (e) { toast("失败：" + e.message); }
         btn.disabled = false; btn.textContent = "上传并播报";
       });
