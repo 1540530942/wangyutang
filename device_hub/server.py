@@ -56,7 +56,7 @@ MAX_LOGS = 200                     # 每设备环形日志上限
 MAX_COMMAND_HISTORY = 50           # 每设备已完成指令保留上限
 KNOWN_ACTIONS = {"reboot", "set_volume", "identify", "ota", "play_audio", "stop_audio", "stream_prepare"}
 OFFLINE_ALERT_AFTER_S = 60    # 超过此时长无心跳 → 记录告警（4× OFFLINE_AFTER_S，过滤偶发断联）
-DISPATCHED_TIMEOUT_S = 120    # dispatched 超此时长未收到 done/failed ACK → 自动标 failed
+DISPATCHED_TIMEOUT_S = 120    # dispatched 超此时长未收到 ACK → 自动标 failed
 ALERTS_FILE = DATA_DIR / "alerts.jsonl"
 MAX_ALERTS = 500
 
@@ -81,7 +81,7 @@ def _mqtt_publish_command(device_id: str, command: dict[str, Any]) -> bool:
     try:
         client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
         client.loop_start()
-        info = client.publish(topic, json.dumps(command, ensure_ascii=False), qos=1)
+        info = client.publish(topic, json.dumps(command, ensure_ascii=False), qos=1, retain=True)
         info.wait_for_publish(timeout=5)
         return info.rc == mqtt.MQTT_ERR_SUCCESS
     except Exception as exc:
@@ -95,16 +95,34 @@ def _mqtt_publish_command(device_id: str, command: dict[str, Any]) -> bool:
             pass
 
 
-def _record_mqtt_ack(device_id: str, payload: dict[str, Any]) -> None:
+def _mqtt_clear_retained_command(device_id: str) -> None:
+    topic = f"devices/{device_id}/command"
+    client = mqtt.Client(client_id=f"device-hub-clear-{secrets.token_hex(4)}", protocol=mqtt.MQTTv311)
+    try:
+        client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
+        client.loop_start()
+        info = client.publish(topic, payload=b"", qos=1, retain=True)
+        info.wait_for_publish(timeout=5)
+    except Exception as exc:
+        print(f"mqtt retained command clear failed topic={topic}: {exc}", flush=True)
+    finally:
+        try:
+            client.loop_stop()
+            client.disconnect()
+        except Exception:
+            pass
+
+
+def _record_mqtt_ack(device_id: str, payload: dict[str, Any]) -> bool:
     command_id = str(payload.get("command_id") or payload.get("id") or "")
     status = str(payload.get("status") or "")
     if not command_id or not status:
-        return
+        return False
     with DATA_LOCK:
         data = _load()
         rec = data.get(device_id)
         if rec is None:
-            return
+            return False
         for command in rec.get("commands", []):
             if command.get("id") != command_id:
                 continue
@@ -128,7 +146,7 @@ def _record_mqtt_ack(device_id: str, payload: dict[str, Any]) -> None:
                 command["message"] = str(payload.get("message") or "")
                 command["done_at"] = time.time()
             _save(data)
-            return
+            return status in {"done", "failed", "unsupported"}
 
 
 def _mqtt_ack_worker() -> None:
@@ -139,7 +157,10 @@ def _mqtt_ack_worker() -> None:
         try:
             parts = msg.topic.split("/")
             if len(parts) == 3:
-                _record_mqtt_ack(parts[1], json.loads(msg.payload.decode("utf-8")))
+                device_id = parts[1]
+                payload = json.loads(msg.payload.decode("utf-8"))
+                if _record_mqtt_ack(device_id, payload):
+                    _mqtt_clear_retained_command(device_id)
         except Exception as exc:
             print(f"mqtt ack parse failed: {exc}", flush=True)
     client.on_connect = on_connect
@@ -277,11 +298,11 @@ def _check_offline_alerts() -> None:
                 # Auto-expire stale dispatched commands
                 for c in rec.get("commands", []):
                     if c.get("status") == "dispatched":
-                        age = now - c.get("dispatched_at", now)
-                        if age > DISPATCHED_TIMEOUT_S:
+                        dispatched_at = c.get("dispatched_at") or 0.0
+                        if dispatched_at > 0 and (now - dispatched_at) > DISPATCHED_TIMEOUT_S:
                             c["status"] = "failed"
                             c["done_at"] = now
-                            c["message"] = f"timeout: no ACK after {int(age)}s"
+                            c["message"] = f"timeout: no ACK after {int(now - dispatched_at)}s"
                             changed = True
             if changed:
                 _save(data)
@@ -640,6 +661,13 @@ async def pcm_websocket(websocket: WebSocket, device_id: str, stream_id: str = "
         known = device_id in _load()
     with PCM_STREAMS_LOCK:
         path = PCM_STREAMS.get(stream_id)
+    # The registry is in memory, while the generated WAV is durable. Recover
+    # the path after a container restart so MQTT delivery already accepted by
+    # the device is not turned into an "unknown stream" 1008 error.
+    if path is None and stream_id:
+        candidate = AUDIO_DIR / (stream_id + ".wav")
+        if candidate.exists():
+            path = candidate
     if not known or path is None or not path.exists():
         await websocket.send_json({"event": "error", "message": "unknown stream"})
         await websocket.close(code=1008)
@@ -649,10 +677,10 @@ async def pcm_websocket(websocket: WebSocket, device_id: str, stream_id: str = "
             pcm = wf.readframes(wf.getnframes())
         stream_started = time.monotonic()
         frame_count = 0
-        # Keep binary WebSocket frames bounded. A single 100s+ PCM message
-        # makes the ESP-IDF WS/TLS stack reserve a large contiguous buffer and
-        # can reboot the device; 32768 bytes is a bounded transport chunk.
-        packet_bytes = 32768
+        # Use one frame for short fixed/normal utterances to avoid needless
+        # ESP-IDF WS/TLS read fragmentation. Bound long utterances at 32 KiB;
+        # very large single frames can exhaust the device WS/TLS heap.
+        packet_bytes = len(pcm) if len(pcm) <= 262144 else 32768
         await websocket.send_json({"event": "stream_start", "total_bytes": len(pcm), "audio": {"codec": "pcm_s16le", "sample_rate": 24000, "channels": 1, "frame_ms": 20, "packet_bytes": packet_bytes}})
         first_frame_at = time.monotonic()
         for offset in range(0, len(pcm), packet_bytes):
