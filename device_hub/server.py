@@ -51,11 +51,11 @@ TEST_AUDIO_PATH = AUDIO_DIR / "test-morning-princess.wav"
 
 # 契约常量
 HEARTBEAT_INTERVAL_S = 5           # 建议心跳周期,注册回执下发给设备
-OFFLINE_AFTER_S = 15               # 3× 心跳无上报 -> offline(容忍偶发丢包)
+OFFLINE_AFTER_S = 30               # HTTPS/TLS 心跳偶尔超过 15s，避免冷启动/握手期间误报
 MAX_LOGS = 200                     # 每设备环形日志上限
 MAX_COMMAND_HISTORY = 50           # 每设备已完成指令保留上限
 KNOWN_ACTIONS = {"reboot", "set_volume", "identify", "ota", "play_audio", "stop_audio", "stream_prepare"}
-OFFLINE_ALERT_AFTER_S = 60    # 超过此时长无心跳 → 记录告警（4× OFFLINE_AFTER_S，过滤偶发断联）
+OFFLINE_ALERT_AFTER_S = 90    # 超过此时长无心跳 → 记录告警（过滤 TLS 短暂阻塞）
 DISPATCHED_TIMEOUT_S = 300    # dispatched 超此时长未收到 ACK → 自动标 failed
 ALERTS_FILE = DATA_DIR / "alerts.jsonl"
 MAX_ALERTS = 500
