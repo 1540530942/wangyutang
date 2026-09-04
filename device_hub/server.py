@@ -13,6 +13,7 @@ v1 从简:不做鉴权,所有接口开放。
 from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import os
 import secrets
@@ -546,7 +547,19 @@ def speak(device_id: str, req: SpeakReq) -> Any:
         })
         data[device_id] = rec
         _save(data)
-    return {"ok": True, "command_id": command_id, "audio_url": audio_url}
+    mqtt_ok = _enqueue_mqtt_command(device_id, command_id, "play_audio", {"url": audio_url, "volume": req.volume}, req.text)
+    if mqtt_ok:
+        with DATA_LOCK:
+            data = _load()
+            rec = data.get(device_id)
+            if rec:
+                for c in rec.get("commands", []):
+                    if c.get("id") == command_id:
+                        c["status"] = "dispatched"
+                        c["dispatched_at"] = time.time()
+                        c["transport"] = "mqtt"
+                _save(data)
+    return {"ok": True, "command_id": command_id, "audio_url": audio_url, "transport": "mqtt" if mqtt_ok else "heartbeat"}
 
 
 class TestAudioReq(BaseModel):
@@ -601,6 +614,98 @@ def test_audio(device_id: str, req: TestAudioReq) -> Any:
                     c["status"] = "dispatched"; c["dispatched_at"] = time.time(); c["transport"] = "mqtt"
             _save(data)
     return {"ok": True, "command_id": command_id, "audio_url": audio_url, "text": TEST_AUDIO_TEXT, "transport": "mqtt" if _mqtt_enqueue_ok else "heartbeat"}
+
+
+_WEEKDAYS = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+BOOT_ANNOUNCE_VOLUME = 40
+
+
+def _boot_announce_for(device_id: str) -> Any:
+    """生成开机播报并通过 MQTT 下发 play_audio（40%音量）。"""
+    with DATA_LOCK:
+        data = _load()
+        if device_id not in data:
+            return _err(404, "not_found", "unknown device_id")
+        fw = data[device_id].get("state", {}).get("firmware", "unknown")
+
+    now = datetime.datetime.now()
+    weekday = _WEEKDAYS[now.weekday()]
+    text = f"今天是{now.month}月{now.day}日，{weekday}，固件版本{fw}"
+
+    try:
+        body = json.dumps({"text": text}).encode()
+        tts_req = urllib.request.Request(
+            TTS_URL, data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(tts_req, timeout=30) as resp:
+            wav_bytes = resp.read()
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        return _err(502, "tts_error", f"TTS 服务不可达: {e}")
+
+    filename = "boot-" + secrets.token_hex(8) + ".wav"
+    (AUDIO_DIR / filename).write_bytes(wav_bytes)
+    audio_url = f"{AUDIO_PUBLIC_BASE}/{filename}"
+
+    with DATA_LOCK:
+        data = _load()
+        rec = data.get(device_id)
+        if rec is None:
+            return _err(404, "not_found", "unknown device_id")
+        command_id = "c-" + secrets.token_hex(3)
+        rec.setdefault("commands", []).append({
+            "id": command_id,
+            "action": "play_audio",
+            "text": text,
+            "args": {"url": audio_url, "volume": BOOT_ANNOUNCE_VOLUME},
+            "status": "pending",
+            "created_at": time.time(),
+            "dispatched_at": 0.0,
+            "done_at": 0.0,
+            "message": "",
+        })
+        data[device_id] = rec
+        _save(data)
+
+    mqtt_ok = _enqueue_mqtt_command(
+        device_id, command_id, "play_audio",
+        {"url": audio_url, "volume": BOOT_ANNOUNCE_VOLUME}, text,
+    )
+    if mqtt_ok:
+        with DATA_LOCK:
+            data = _load()
+            rec = data[device_id]
+            for c in rec.get("commands", []):
+                if c.get("id") == command_id:
+                    c["status"] = "dispatched"
+                    c["dispatched_at"] = time.time()
+                    c["transport"] = "mqtt"
+            _save(data)
+
+    return {
+        "ok": True,
+        "command_id": command_id,
+        "text": text,
+        "audio_url": audio_url,
+        "transport": "mqtt" if mqtt_ok else "heartbeat",
+    }
+
+
+class BootAnnounceReq(BaseModel):
+    device_id: str = Field(..., min_length=1)
+
+
+@app.post("/api/boot_announce")
+def boot_announce_from_device(req: BootAnnounceReq) -> Any:
+    """端侧开机/OTA 后调用（device_id 在 body）。"""
+    return _boot_announce_for(req.device_id)
+
+
+@app.post("/api/device/{device_id}/boot_announce")
+def boot_announce(device_id: str) -> Any:
+    """平台页面/手动触发（device_id 在 URL）。"""
+    return _boot_announce_for(device_id)
 
 
 class SpeakPcmReq(BaseModel):
