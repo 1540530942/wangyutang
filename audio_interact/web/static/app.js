@@ -227,6 +227,43 @@ $("manualStopBtn").onclick = async () => {
   setStatus("已停止采集"); loadSettings();
 };
 
+// ---- Remote broadcast: push TTS to the Pi speaker via the already-open
+// /ws/audio connection, independent of the manual-recording mode above.
+// Backed by /api/device/{device_id}/broadcast (see server.py).
+const WONDER_DEVICE_ID = "turbopi-01"; // matches the device_id audio_ws hardcodes
+$("broadcastSpeakBtn").onclick = async () => {
+  const text = $("broadcastText").value.trim();
+  const statusEl2 = $("broadcastStatus");
+  if (!text) { statusEl2.textContent = "请输入播报文字"; return; }
+  $("broadcastSpeakBtn").disabled = true;
+  statusEl2.textContent = "下发中…";
+  try {
+    const r = await fetch(`./api/device/${WONDER_DEVICE_ID}/broadcast`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    statusEl2.textContent = "已下发，Pi 正在播放…";
+  } catch (e) {
+    statusEl2.textContent = "下发失败：" + (e.message || e);
+  } finally {
+    $("broadcastSpeakBtn").disabled = false;
+  }
+};
+$("broadcastStopBtn").onclick = async () => {
+  const statusEl2 = $("broadcastStatus");
+  try {
+    const r = await fetch(`./api/device/${WONDER_DEVICE_ID}/broadcast/stop`, { method: "POST" });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    statusEl2.textContent = "已停止播报";
+  } catch (e) {
+    statusEl2.textContent = "停止失败：" + (e.message || e);
+  }
+};
+
 // ---- Continuous VAD streaming (shared by web模式 and VAD_ASR_TTS) ----
 // ui = { stateEl, barEl, startBtn, stopBtn }
 let vad = null;

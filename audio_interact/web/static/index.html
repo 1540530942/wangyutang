@@ -47,6 +47,20 @@
           <input id="piVolumeInput" type="range" min="0" max="100" step="5" value="80" />
         </label>
       </div>
+      <div class="tts-settings">
+        <h3 style="margin-bottom:6px">远程播报</h3>
+        <p class="note">
+          与上面的采集模式无关：只要树莓派保持 <code>/ws/audio</code> 连接，就能随时把下面输入的文字
+          推送到 Pi 本地扬声器播放（不需要设为采集模式）。
+        </p>
+        <textarea id="broadcastText" rows="2" placeholder="输入要播报的文字，推送到树莓派喇叭播放…"
+                  style="width:100%;box-sizing:border-box;margin-bottom:8px"></textarea>
+        <div class="row">
+          <button id="broadcastSpeakBtn" type="button">🔊 推送播报</button>
+          <button id="broadcastStopBtn" class="secondary" type="button">停止播报</button>
+        </div>
+        <div class="statusline" id="broadcastStatus"></div>
+      </div>
     </section>
 
     <!-- web mode: browser mic continuous VAD interaction -->

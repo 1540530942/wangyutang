@@ -13,7 +13,7 @@ import uuid
 import wave
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Awaitable, Callable
 
 import requests
 from fastapi import Body, FastAPI, File, Form, Header, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
@@ -119,6 +119,20 @@ def safe_write_streaming_session_package(**kwargs: Any) -> str | None:
 
 # keyed by f"{session_id}:{turn_idx}" → tts_elapsed_ms
 _tts_timing_store: dict[str, int] = {}
+
+
+@dataclass
+class _BroadcastHandle:
+    """Registered by an active /ws/audio connection so HTTP handlers can push
+    a cloud-triggered broadcast down that device's persistent socket, outside
+    the normal ASR-turn pipeline (see /api/device/{device_id}/broadcast)."""
+    speak: Callable[[str], Awaitable[None]]
+    stop: Callable[[], None]
+    is_busy: Callable[[], bool]
+
+
+# keyed by device_id → handle for the currently-connected /ws/audio session.
+DEVICE_BROADCAST_HANDLES: dict[str, _BroadcastHandle] = {}
 
 
 def safe_write_segment_session_package(**kwargs: Any) -> str:
@@ -444,6 +458,33 @@ async def audio_ws(websocket: WebSocket) -> None:
         finally:
             server_tts_sending = False
             _refresh_tts_active()
+
+    # --- cloud-triggered broadcast (outside the ASR-turn pipeline) -----------
+    # Lets /api/device/{device_id}/broadcast push a TTS announcement down this
+    # device's already-open socket, reusing the exact tts_begin/binary/sentinel
+    # framing _stream_tts uses for real turns (the Pi-side player doesn't know
+    # the difference), and the same tts_cancel message barge-in already uses
+    # to kill in-flight playback (see wonderecho_listener.py's tts_cancel handler).
+    broadcast_turn: _TurnState | None = None
+
+    async def _broadcast_speak(text: str) -> None:
+        nonlocal broadcast_turn
+        turn = _TurnState(gen=0, wav_bytes=b"", turn_idx=-1, segment_id="broadcast", reason="broadcast")
+        broadcast_turn = turn
+        try:
+            await _stream_tts(text, turn, 0)
+        finally:
+            if broadcast_turn is turn:
+                broadcast_turn = None
+
+    def _broadcast_stop() -> None:
+        if broadcast_turn is not None:
+            broadcast_turn.cancelled = True
+        asyncio.ensure_future(_send_text(json.dumps({"type": "tts_cancel", "session_id": session_id})))
+
+    DEVICE_BROADCAST_HANDLES[device_id] = _BroadcastHandle(
+        speak=_broadcast_speak, stop=_broadcast_stop, is_busy=_tts_playing,
+    )
 
     async def _run_turn(ts: _TurnState) -> None:
         nonlocal current_turn
@@ -806,6 +847,10 @@ async def audio_ws(websocket: WebSocket) -> None:
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
+        if DEVICE_BROADCAST_HANDLES.get(device_id) is not None:
+            handle = DEVICE_BROADCAST_HANDLES.get(device_id)
+            if handle is not None and handle.speak is _broadcast_speak:
+                DEVICE_BROADCAST_HANDLES.pop(device_id, None)
         if worker_task is not None:
             worker_task.cancel()
             try:
@@ -1245,6 +1290,44 @@ def wake_device_route(device_id: str, x_audio_token: Annotated[str | None, Heade
     _require_token(x_audio_token)
     WAKE_STATES.activate(device_id)
     return {"ok": True, "device_id": device_id, "wake_status": "awake"}
+
+
+@app.post("/api/device/{device_id}/broadcast")
+async def broadcast_device_route(
+    device_id: str, payload: dict[str, Any] = Body(...), x_audio_token: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    """Push a cloud-triggered TTS announcement to a device's speaker right now,
+    outside the normal ASR-turn pipeline (e.g. WonderEcho Pro / turbopi-01).
+
+    Requires the device's /ws/audio connection to be live — unlike the ESP32
+    MQTT command queue, there is no offline buffering here (see
+    docs/device-hub-command-timing.md for the ESP32 comparison). Body:
+    {"text": "..."}.
+    """
+    _require_token(x_audio_token)
+    text = str(payload.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+    handle = DEVICE_BROADCAST_HANDLES.get(device_id)
+    if handle is None:
+        raise HTTPException(status_code=503, detail=f"device {device_id} has no active /ws/audio connection")
+    if handle.is_busy():
+        raise HTTPException(status_code=409, detail="device is currently speaking; call broadcast/stop first")
+    asyncio.create_task(handle.speak(text))
+    return {"ok": True, "device_id": device_id, "status": "speaking"}
+
+
+@app.post("/api/device/{device_id}/broadcast/stop")
+async def broadcast_stop_route(device_id: str, x_audio_token: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+    """Cancel an in-flight broadcast (or any TTS playback) on this device, the
+    same way barge-in already does — sends tts_cancel down the socket, which
+    wonderecho_listener.py's handler already kills the current pw-play for."""
+    _require_token(x_audio_token)
+    handle = DEVICE_BROADCAST_HANDLES.get(device_id)
+    if handle is None:
+        raise HTTPException(status_code=503, detail=f"device {device_id} has no active /ws/audio connection")
+    handle.stop()
+    return {"ok": True, "device_id": device_id, "status": "stopped"}
 
 
 # ---------------------------------------------------------------------------
