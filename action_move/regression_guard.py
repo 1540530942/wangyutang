@@ -31,6 +31,7 @@ REQUIRED_SKILLS = {
     "move_right",
     "turn_left",
     "turn_right",
+    "speak",
 }
 
 
@@ -145,6 +146,29 @@ def local_guard(guard: Guard) -> None:
         distance_task.status_code == 200 and distance_task.json()["task"]["skill_id"] == "front_distance",
         "front distance task can be created locally",
     )
+
+    tasks.clear()
+    set_device_online()
+    speak_no_text = client.post("/api/tasks", json={"action": "speak", "source": "guard-local"})
+    guard.check(speak_no_text.status_code == 400, "speak task without params.text is rejected")
+    speak_task = client.post(
+        "/api/tasks", json={"action": "speak", "source": "guard-local", "params": {"text": "验证播报", "voice": "vivian"}}
+    )
+    speak_body = speak_task.json().get("task", {}) if speak_task.status_code == 200 else {}
+    guard.check(
+        speak_task.status_code == 200
+        and speak_body.get("skill_id") == "speak"
+        and speak_body.get("type") == "speak"
+        and speak_body.get("params", {}).get("text") == "验证播报"
+        and speak_body.get("params", {}).get("voice") == "vivian",
+        "speak task carries params.text/voice through to the task record",
+    )
+    tasks.clear()
+    set_device_offline()
+    offline_speak = client.post("/api/tasks", json={"action": "speak", "source": "guard-local", "params": {"text": "x"}})
+    guard.check(offline_speak.status_code == 503, "speak task is rejected when edge device is offline")
+    set_device_online()
+    guard.check(hasattr(edge_action_poller, "speak_text"), "edge poller exposes speak_text for the speak skill")
 
     tasks.clear()
     first_motion = client.post("/api/tasks", json={"action": "move_forward", "source": "guard-local"})

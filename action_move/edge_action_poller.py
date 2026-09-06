@@ -46,13 +46,24 @@ VOICE_ACTION_TEXT = {
 }
 
 
-def fetch_tts_audio(text: str, url: str, model: str, voice: str, language: str, timeout: float = 30.0) -> bytes:
+DEFAULT_TTS_INSTRUCTIONS = "用清新自然、甜美温柔的语气说，声音明亮亲切，语调轻快柔和"
+
+
+def fetch_tts_audio(
+    text: str,
+    url: str,
+    model: str,
+    voice: str,
+    language: str,
+    timeout: float = 30.0,
+    instructions: str = "",
+) -> bytes:
     payload = {
         "model": model,
         "input": text,
         "voice": voice,
         "language": language,
-        "instructions": "用清新自然、甜美温柔的语气说，声音明亮亲切，语调轻快柔和",
+        "instructions": instructions or DEFAULT_TTS_INSTRUCTIONS,
         "response_format": "wav",
     }
     request = urllib.request.Request(
@@ -340,6 +351,51 @@ def schedule_completion_voice(
     return "[INFO] voice_prompt_scheduled=async"
 
 
+def speak_text(
+    text: str,
+    device: str = "",
+    tts_url: str = "",
+    tts_model: str = DEFAULT_TTS_MODEL,
+    tts_voice: str = DEFAULT_TTS_VOICE,
+    tts_language: str = DEFAULT_TTS_LANGUAGE,
+    instructions: str = "",
+    volume_percent: object = None,
+) -> tuple[bool, str, str]:
+    """Synthesize caller-supplied text via the cloud TTS API and play it on the
+    local speaker. Backs the catalog `speak` skill; unlike announce_completion the
+    text is arbitrary rather than a per-action canned phrase, and it is not gated
+    by --no-voice (which only silences automatic completion prompts).
+    """
+    text = (text or "").strip()
+    if not text:
+        return False, "", "speak: empty text"
+    player = shutil.which("aplay") or shutil.which("paplay") or ""
+    if not player:
+        return False, "", "speak: no audio playback command found"
+    selected_device = device or os.getenv("ACTION_VOICE_DEVICE", "").strip()
+    if not selected_device and Path(player).name == "aplay":
+        selected_device = detect_usb_audio_device()
+    volume_output = apply_voice_volume(selected_device, volume_percent) if volume_percent is not None else ""
+    endpoint = tts_url or os.getenv("ACTION_TTS_URL", DEFAULT_TTS_URL).strip()
+    if not endpoint:
+        return False, volume_output, "speak: TTS endpoint not configured"
+    try:
+        audio = fetch_tts_audio(text, endpoint, tts_model, tts_voice, tts_language, instructions=instructions)
+    except Exception as exc:  # noqa: BLE001
+        return False, volume_output, f"speak: tts failed: {exc}"
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+        handle.write(audio)
+        temp_path = Path(handle.name)
+    try:
+        ok, detail = play_audio_file(temp_path, player, selected_device)
+    finally:
+        temp_path.unlink(missing_ok=True)
+    if not ok:
+        return False, volume_output, f"speak: playback failed: {detail}"
+    info = f"[INFO] speak_played chars={len(text)} device={detail} voice={tts_voice} text={text[:80]}"
+    return True, "\n".join(part for part in [volume_output, info] if part), ""
+
+
 def first_ip_address() -> str:
     hostname_ips = command_text(["hostname", "-I"])
     for item in hostname_ips.split():
@@ -568,9 +624,23 @@ def main() -> int:
                 task_id = str(task["id"])
                 action = str(task["skill_id"])
                 settings = task.get("settings") if isinstance(task.get("settings"), dict) else {}
+                params = task.get("params") if isinstance(task.get("params"), dict) else {}
                 if action == "remote_shutdown":
                     heartbeat(args.server, args.token, args.device_id, "running", current_task_id=task_id)
                     ok, stdout, stderr = run_remote_shutdown()
+                elif action == "speak":
+                    # speak has no ROS action; synthesize + play locally instead of /execute.
+                    heartbeat(args.server, args.token, args.device_id, "running", current_task_id=task_id)
+                    ok, stdout, stderr = speak_text(
+                        str(params.get("text") or ""),
+                        device=args.voice_device,
+                        tts_url=args.tts_url,
+                        tts_model=args.tts_model,
+                        tts_voice=str(params.get("voice") or args.tts_voice),
+                        tts_language=args.tts_language,
+                        instructions=str(params.get("instructions") or ""),
+                        volume_percent=settings.get("voice_volume_percent"),
+                    )
                 else:
                     ok, stdout, stderr = execute_with_running_heartbeats(
                         args.server,
@@ -582,7 +652,7 @@ def main() -> int:
                         args.controller_url,
                         args.no_controller,
                     )
-                if ok:
+                if ok and action != "speak":
                     voice_output = schedule_completion_voice(
                         action,
                         enabled=not args.no_voice,

@@ -422,6 +422,31 @@
         "photo",
         "capture"
       ]
+    },
+    {
+      "id": "speak",
+      "name_zh": "说话",
+      "description": "把 params.text 合成为语音并从机器人本机音箱播报；与运动指令共用同一任务队列，可排在动作前后。",
+      "type": "speak",
+      "aliases": [
+        "说",
+        "播报",
+        "讲话",
+        "朗读",
+        "say",
+        "speak",
+        "broadcast"
+      ],
+      "speak": {
+        "text_param": "params.text",
+        "optional_params": [
+          "voice",
+          "instructions"
+        ],
+        "max_chars": 200,
+        "tts_endpoint": "https://www.wangyutang.cn/common/api/tts/speech",
+        "executor": "edge_action_poller.py (fetch_tts_audio + aplay)"
+      }
     }
   ]
 }

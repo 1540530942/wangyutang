@@ -1,6 +1,6 @@
 # action_move 原子技能说明
 
-本文档汇总 `wangyutang_platform/action_move` 中的原子技能。原子技能的定义主要来自 `skill_catalog.json`，执行入口主要是 `edge_ros_controller.py` 的 `POST /execute`，云端任务入口是 `server.py` 的 `POST /api/tasks`。
+本文档汇总 `wangyutang_platform/action_move` 中的原子技能。原子技能的定义主要来自 `skill_catalog.json`，执行入口主要是 `edge_ros_controller.py` 的 `POST /execute`，云端任务入口是 `server.py` 的 `POST /api/tasks`。少数技能（如 `speak`）没有 ROS 动作，由 `edge_action_poller.py` 取到任务后直接在边缘处理，不下发 `/execute`。
 
 ## 通用分层
 
@@ -182,6 +182,27 @@ curl -X POST https://www.wangyutang.cn/action/api/tasks \
   -d '{"action":"remote_shutdown","verification_code":"123","source":"manual"}'
 ```
 
+`speak` 与其它原子技能同级，但携带自由文本参数，通过 `params` 传入（`settings` 的固定字段放不下文本）：
+
+```bash
+curl -X POST https://www.wangyutang.cn/action/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"action":"speak","params":{"text":"你好，我到了","voice":"vivian"},"source":"manual"}'
+```
+
+- `params.text`（必填，≤200 字）：要播报的文本
+- `params.voice`（可选）：TTS 音色，默认 `vivian`
+- `params.instructions`（可选）：播报风格 prompt，默认清新自然甜美语气
+- `settings.voice_volume_percent`（可选，沿用现有设置）：本机音量，0 视为静音
+
+执行链路：云端 `server.py` 校验并入队 → Pi `edge_action_poller.py` 取到 `type=speak` 的任务 → 调 `https://www.wangyutang.cn/common/api/tts/speech` 合成 WAV → `aplay` 到本机 USB 音箱 → 上报任务结果。**不经** `edge_ros_controller.py` 的 `/execute`。
+
+已知边界：
+
+- 只在装了 `edge_action_poller.py` 且接了音箱的机器人（turbopi-01）上生效；WonderEcho Pro 是独立设备，仍走 `audio_interact` 的 `/api/device/{id}/broadcast`（它要的是全双工 / barge-in 流式）
+- `emergency_stop` 目前只清运动类待执行任务、不打断正在播放的 `aplay`；已排进队列的 `speak` 不会被急停取消
+- `speak` 不受 `--no-voice` 影响（该开关只静音自动的动作完成提示音）
+
 
 ## 技能总览
 
@@ -207,6 +228,7 @@ curl -X POST https://www.wangyutang.cn/action/api/tasks \
 | `move_diagonal_forward_left` | 左前斜移 | `base_move` | `linear_x=0.25`, `linear_y=0.25`, `motor_override` | Twist 路径或直接电机路径 | `/cmd_vel` 或 `/set_motor_speeds` |
 | `move_diagonal_forward_right` | 右前斜移 | `base_move` | `linear_x=0.25`, `linear_y=-0.25`, `motor_override` | Twist 路径或直接电机路径 | `/cmd_vel` 或 `/set_motor_speeds` |
 | `camera_snapshot` | 拍照 | `camera_snapshot` | camera server | 创建相机抓拍任务，Pi 端 sender 轮询后取帧上传 | `/camera/api/capture` -> `/camera/api/control` -> `/camera/api/frame` |
+| `speak` | 说话 | `speak` | `params.text` / `params.voice` / `params.instructions` | Pi 端合成文本为 WAV 后本机播放 | `/common/api/tts/speech` -> `aplay` |
 
 ## 执行规则
 
@@ -221,6 +243,7 @@ curl -X POST https://www.wangyutang.cn/action/api/tasks \
 | `front_distance` | 读取多次超声波距离，默认取有效样本的最小值作为保守估计 |
 | `camera_snapshot` | 在相机服务创建抓拍任务；Pi 端 `pi_camera_sender.py` 轮询任务、从 ROS/web-video-server 或相机后端取 JPEG，再上传到 `/api/frame` |
 | `system_shutdown` | 由边缘 poller / executor 执行宿主机关机，云端创建任务时需要验证码 |
+| `speak` | 边缘 poller 直接处理：拉取任务后调云端 TTS 合成 WAV，`aplay` 到本机音箱，不下发 `/execute`；`params.text` 必填且 ≤200 字，创建任务时要求边缘在线 |
 
 ## 运动类技能
 

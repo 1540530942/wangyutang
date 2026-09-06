@@ -71,6 +71,7 @@ class ActionRequest(BaseModel):
     ttl_seconds: int = Field(30, ge=5, le=300)
     verification_code: str = Field("", max_length=20)
     settings_override: dict[str, float] = Field(default_factory=dict)
+    params: dict[str, Any] = Field(default_factory=dict)
 
 
 class ActionSettings(BaseModel):
@@ -155,6 +156,31 @@ def resolve_skill(text: str) -> dict[str, Any]:
         if alias and alias in key:
             return skill
     raise HTTPException(status_code=400, detail=f"unknown action: {text}")
+
+
+SPEAK_MAX_CHARS = 200
+
+
+def build_task_params(skill: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+    """Validate and normalize the free-form params a skill carries alongside its id.
+
+    Only `speak` uses this today: it needs caller-supplied text that the fixed
+    ActionSettings schema cannot hold. The edge poller reads the returned dict
+    from the task record and routes it through the TTS + playback path.
+    """
+    if skill["id"] != "speak":
+        return {}
+    text = str(params.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="speak requires params.text")
+    if len(text) > SPEAK_MAX_CHARS:
+        raise HTTPException(status_code=400, detail=f"speak text exceeds {SPEAK_MAX_CHARS} chars")
+    result: dict[str, Any] = {"text": text}
+    for key in ("voice", "instructions"):
+        value = str(params.get(key) or "").strip()
+        if value:
+            result[key] = value[:200]
+    return result
 
 
 def expected_token() -> str:
@@ -308,6 +334,7 @@ def clear_tasks() -> dict[str, Any]:
 @app.post("/api/tasks")
 def create_task(payload: ActionRequest) -> dict[str, Any]:
     skill = resolve_skill(payload.action)
+    task_params = build_task_params(skill, payload.params)
     refresh_tasks()
     if skill["id"] == "emergency_stop":
         expire_pending_motion_tasks("cancelled by emergency stop")
@@ -338,6 +365,7 @@ def create_task(payload: ActionRequest) -> dict[str, Any]:
         "type": skill["type"],
         "source": payload.source,
         "note": payload.note,
+        "params": task_params,
         "settings": settings,
         "unit_distance_cm": settings["unit_distance_cm"],
         "turn_angle_deg": settings["turn_angle_deg"],

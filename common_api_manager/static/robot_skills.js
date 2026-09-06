@@ -22,6 +22,7 @@ const SKILLS = [
   { id: "move_diagonal_forward_right", name: "右前斜移", group: "motion", type: "base_move", twist: { x: 0.25, y: -0.25, z: 0 }, motor: "M1=-50, M2=0, M3=0, M4=50, 300ms", definition: "linear_x=0.25, linear_y=-0.25 + motor_override", executor: "edge_ros_controller.py 或 action_move_executor.py fallback", verify: "安全验证使用 1cm；相机前后图应体现右前方向位移。" },
   { id: "camera_snapshot", name: "拍照", group: "sensor", type: "camera_snapshot", definition: "相机抓拍任务，读取 /image_raw 到 JPEG", executor: "action_move_executor.py -> camera_snapshot 服务", verify: "以 /camera/api/latest 元数据和 latest.jpg 的 frame_id/task_id/updated_at 为准；edge_ros_controller 当前可能返回 camera_snapshot unsupported。" },
   { id: "remote_shutdown", name: "远程关机", group: "system", type: "system_shutdown", definition: "sudo shutdown -h now，需要 verification_code=123", executor: "edge_action_poller.py / action_move_executor.py", verify: "破坏性技能，页面默认不执行；只能展示指令和安全边界。" },
+  { id: "speak", name: "说话", group: "system", type: "speak", definition: "params.text（≤200字）经 /common/api/tts/speech 合成 WAV，再由 aplay 在本机音箱播报；可选 params.voice / params.instructions", executor: "edge_action_poller.py（fetch_tts_audio + aplay），不经 edge_ros_controller /execute", verify: "以任务 output 的 speak_played chars/device/voice 为准；需现场听到播报，相机无法验证音频。" },
 ];
 
 let selectedSkill = SKILLS.find((item) => item.id === "move_forward");
@@ -35,6 +36,11 @@ function escapeHtml(value) {
 }
 
 function cloudCommand(skill) {
+  if (skill.id === "speak") {
+    return `curl -X POST https://www.wangyutang.cn/action/api/tasks \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"speak","params":{"text":"你好，我是机器人"},"source":"manual"}'`;
+  }
   const payload = skill.id === "remote_shutdown"
     ? `{"action":"${skill.id}","verification_code":"123","source":"manual"}`
     : `{"action":"${skill.id}","source":"manual"}`;
@@ -44,6 +50,14 @@ function cloudCommand(skill) {
 }
 
 function localCommand(skill) {
+  if (skill.id === "speak") {
+    return `# speak 不走 edge_ros_controller /execute；由 edge_action_poller 取到任务后本机合成播报
+curl -X POST https://www.wangyutang.cn/common/api/tts/speech \\
+  -H "Content-Type: application/json" \\
+  -d '{"model":"qwen3-tts-12hz-1.7b-customvoice","input":"你好","voice":"vivian","language":"chinese","response_format":"wav"}' \\
+  --output speak.wav
+aplay speak.wav`;
+  }
   return `curl -X POST http://127.0.0.1:8765/execute \\
   -H "Content-Type: application/json" \\
   -d '{"action":"${skill.id}"}'`;
@@ -55,6 +69,9 @@ function stopTwistCommand() {
 }
 
 function rosCommand(skill) {
+  if (skill.id === "speak") {
+    return `# 无 ROS 话题；最底层就是把合成好的 WAV 交给 ALSA 播放\naplay -D plughw:1,0 speak.wav`;
+  }
   if (skill.twist) {
     return `ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \\
   "{linear: {x: ${skill.twist.x}, y: ${skill.twist.y}, z: 0.0}, angular: {x: 0.0, y: 0.0, z: ${skill.twist.z}}}"
@@ -325,6 +342,14 @@ async function runSkill(skillId) {
       ttl_seconds: 90,
       settings_override: safeOverrides(skill),
     };
+    if (skill.id === "speak") {
+      const text = window.prompt("输入要播报的文本（≤200 字）", "你好，我是机器人，语音技能验证。");
+      if (!text || !text.trim()) {
+        append("已取消：未输入播报文本");
+        return;
+      }
+      payload.params = { text: text.trim() };
+    }
     append("创建云端任务", payload);
     const created = await apiJson(`${ACTION_BASE}/api/tasks`, {
       method: "POST",
