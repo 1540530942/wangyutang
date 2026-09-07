@@ -1313,8 +1313,21 @@ async def broadcast_device_route(
         raise HTTPException(status_code=503, detail=f"device {device_id} has no active /ws/audio connection")
     if handle.is_busy():
         raise HTTPException(status_code=409, detail="device is currently speaking; call broadcast/stop first")
-    asyncio.create_task(handle.speak(text))
-    return {"ok": True, "device_id": device_id, "status": "speaking"}
+    # Await the send instead of firing-and-forgetting it: a fire-and-forget
+    # asyncio.create_task() here previously let this handler return "speaking"
+    # before the WS send ran at all, so a mid-flight disconnect (the socket
+    # already having sent its close frame) surfaced only as an unretrieved
+    # task exception in the container log -- the caller never learned the
+    # broadcast silently failed. Awaiting it directly makes failures real
+    # HTTP errors, at the cost of blocking the caller for the speech duration
+    # (same trade-off device_hub's ESP32 play_audio already makes).
+    try:
+        await asyncio.wait_for(handle.speak(text), timeout=30.0)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="broadcast timed out after 30s")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"broadcast failed: {exc}")
+    return {"ok": True, "device_id": device_id, "status": "done"}
 
 
 @app.post("/api/device/{device_id}/broadcast/stop")
