@@ -133,11 +133,15 @@
     <!-- 合成方向 TTS (VAD_ASR_TTS mode only, below the result panel) -->
     <section id="ttsSection" class="card hidden">
       <h2>合成方向（TTS）</h2>
-      <p class="note">输入任意文本，用 common_api TTS 合成并在浏览器扬声器直接播报。</p>
+      <p class="note">输入任意文本，用 common_api TTS 合成并在浏览器扬声器直接播报；也可作为 <code>action_move</code> 的 <code>speak</code> 原子技能推送到实车 turbopi-01 本机喇叭播报。</p>
       <div class="row">
         <input id="ttsInput" class="tts-input" type="text" placeholder="例如：你好，我是瓦力" />
         <button id="ttsSpeakBtn" type="button">🔊 TTS 播报</button>
         <span id="ttsState" class="badge">待输入</span>
+      </div>
+      <div class="row">
+        <button id="ttsPushVehicleBtn" type="button">🚗 推送到实车播报</button>
+        <span id="ttsPushVehicleState" class="badge">—</span>
       </div>
       <div class="tts-settings">
         <label>

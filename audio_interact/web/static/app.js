@@ -236,7 +236,7 @@ $("broadcastSpeakBtn").onclick = async () => {
   const statusEl2 = $("broadcastStatus");
   if (!text) { statusEl2.textContent = "请输入播报文字"; return; }
   $("broadcastSpeakBtn").disabled = true;
-  statusEl2.textContent = "下发中…";
+  statusEl2.textContent = "播报中…（请求会等 Pi 说完才返回）";
   try {
     const r = await fetch(`./api/device/${WONDER_DEVICE_ID}/broadcast`, {
       method: "POST",
@@ -245,9 +245,9 @@ $("broadcastSpeakBtn").onclick = async () => {
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
-    statusEl2.textContent = "已下发，Pi 正在播放…";
+    statusEl2.textContent = "已播完";
   } catch (e) {
-    statusEl2.textContent = "下发失败：" + (e.message || e);
+    statusEl2.textContent = "播报失败：" + (e.message || e);
   } finally {
     $("broadcastSpeakBtn").disabled = false;
   }
@@ -460,6 +460,37 @@ $("ttsSpeakBtn").onclick = async () => {
   }
 };
 $("ttsInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("ttsSpeakBtn").click(); });
+// ---- 推送到实车播报：把 TTS 文本作为 action_move 的 speak 原子技能下发到 turbopi-01
+// (POST /action/api/tasks {"action":"speak",...})，独立于上面的浏览器本地播报。
+$("ttsPushVehicleBtn")?.addEventListener("click", async () => {
+  const text = ($("ttsInput").value || "").trim();
+  const stateEl = $("ttsPushVehicleState");
+  if (!text) { setStatus("请输入要播报的文本"); return; }
+  const voice = ($("ttsVoiceSelect")?.value || ttsDefaults.default_voice || "vivian").trim();
+  const instructions = ($("ttsInstructionsInput")?.value || "").trim();
+  const params = { text };
+  if (voice) params.voice = voice;
+  if (instructions) params.instructions = instructions;
+  $("ttsPushVehicleBtn").disabled = true;
+  stateEl.textContent = "下发中…";
+  try {
+    const r = await fetch("/action/api/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "speak", params, source: "audio_interact" }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    const tid = d.task?.id || "";
+    stateEl.textContent = "已下发实车" + (tid ? ` #${tid.slice(-6)}` : "");
+    setStatus("已推送到实车 turbopi-01 播报");
+  } catch (e) {
+    stateEl.textContent = "失败";
+    setStatus("实车下发失败：" + (e.message || e));
+  } finally {
+    $("ttsPushVehicleBtn").disabled = false;
+  }
+});
 $("ttsResetBtn")?.addEventListener("click", () => {
   if ($("ttsVoiceSelect")) $("ttsVoiceSelect").value = ttsDefaults.default_voice || "vivian";
   if ($("ttsInstructionsInput")) $("ttsInstructionsInput").value = ttsDefaults.default_instructions || "";
