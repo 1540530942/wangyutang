@@ -38,14 +38,14 @@ MODEL_REGISTRY: list[dict[str, Any]] = [
         "validate": {"kind": "chat", "path": "/common/api/llm/qwen3-32b/chat/completions", "model": "qwen3-32b"},
     },
     {
-        "id": "spark-qwen3.6-35b-a3b",
-        "name": "Qwen3.6-35B-A3B-NVFP4 (Spark)",
+        "id": "spark-nemotron3.5-lightning-30b-a3b",
+        "name": "Nemotron-3.5-Lightning-30B-A3B-NVFP4 (Spark)",
         "provider": "Spark",
         "type": "text",
         "paths": ["/common/api/llm/spark-qwen/chat/completions", "/common/api/llm/qwen3.6-35b/chat/completions"],
         "health": "/common/api/llm/spark-qwen/health",
         "models": "/common/api/llm/spark-qwen/models",
-        "validate": {"kind": "chat", "path": "/common/api/llm/spark-qwen/chat/completions", "model": "qwen3.6-35b-a3b"},
+        "validate": {"kind": "chat", "path": "/common/api/llm/spark-qwen/chat/completions", "model": "nemotron3.5-lightning-30b-a3b"},
     },
     {
         "id": "lv-qwen-chat",
