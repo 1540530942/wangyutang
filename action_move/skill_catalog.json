@@ -514,7 +514,7 @@
       "id": "speak_listen",
       "name_zh": "边说边听",
       "type": "speak_listen",
-      "description": "一个任务里同时播报 params.text 并用本机麦克风录音；返回播报起点偏移、逐100ms RMS 包络与 ASR 转写。用于全双工打断验证 —— 树莓派在此扮演房间里的人。",
+      "description": "一个任务里同时播报 params.text 并用本机麦克风录音；repeat/gap_ms 控制在同一次录音里循环播报几次、每次间隔多久。返回各次播报起点偏移、逐100ms RMS 包络与 ASR 转写。用于全双工打断验证 —— 树莓派在此扮演房间里的人。",
       "aliases": [
         "边说边听",
         "说并听",
@@ -529,6 +529,7 @@
           "seconds",
           "speak_at_ms",
           "repeat",
+          "gap_ms",
           "voice",
           "instructions",
           "transcribe"
@@ -536,7 +537,8 @@
         "defaults": {
           "seconds": 30,
           "speak_at_ms": 3000,
-          "repeat": 1
+          "repeat": 1,
+          "gap_ms": 10000
         },
         "max_seconds": 60,
         "max_chars": 200,

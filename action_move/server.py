@@ -181,6 +181,7 @@ def build_task_params(skill: dict[str, Any], params: dict[str, Any]) -> dict[str
             seconds = int(params.get("seconds", 30))
             speak_at_ms = int(params.get("speak_at_ms", 3000))
             repeat = int(params.get("repeat", 1))
+            gap_ms = int(params.get("gap_ms", 10000))
         except (TypeError, ValueError):
             raise HTTPException(status_code=400, detail="seconds/speak_at_ms/repeat must be integers")
         if not 1 <= seconds <= LISTEN_MAX_SECONDS:
@@ -189,8 +190,11 @@ def build_task_params(skill: dict[str, Any], params: dict[str, Any]) -> dict[str
             raise HTTPException(status_code=400, detail="speak_at_ms must fall inside the window")
         if not 1 <= repeat <= 10:
             raise HTTPException(status_code=400, detail="repeat must be 1..10")
+        if not 0 <= gap_ms <= seconds * 1000:
+            raise HTTPException(status_code=400, detail="gap_ms must fall inside the window")
         result: dict[str, Any] = {
-            "text": text, "seconds": seconds, "speak_at_ms": speak_at_ms, "repeat": repeat,
+            "text": text, "seconds": seconds, "speak_at_ms": speak_at_ms,
+            "repeat": repeat, "gap_ms": gap_ms,
             "transcribe": bool(params.get("transcribe", True)),
         }
         for key in ("voice", "instructions"):

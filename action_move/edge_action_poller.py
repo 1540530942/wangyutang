@@ -488,6 +488,7 @@ def speak_while_listening(
     seconds: int,
     speak_at_ms: int = 3000,
     repeat: int = 1,
+    gap_ms: int = 10000,
     device: str = "",
     capture_device: str = "",
     tts_url: str = "",
@@ -517,6 +518,7 @@ def speak_while_listening(
     seconds = max(1, min(LISTEN_MAX_SECONDS, int(seconds)))
     speak_at_ms = max(0, min(seconds * 1000, int(speak_at_ms)))
     repeat = max(1, min(10, int(repeat)))
+    gap_ms = max(0, min(seconds * 1000, int(gap_ms)))
 
     player = shutil.which("aplay") or shutil.which("paplay") or ""
     recorder = shutil.which("arecord")
@@ -558,8 +560,12 @@ def speak_while_listening(
         rec_proc = subprocess.Popen(rec_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         t_rec = time.time()
         try:
-            for _ in range(repeat):
-                wait = speak_at_ms / 1000.0 - (time.time() - t_rec) if not offsets else 0.0
+            for k in range(repeat):
+                # Each utterance starts at a planned offset, so the quiet stretch
+                # between them is where duck-and-recover is visible. Playing them
+                # back to back would merge four interruptions into one event.
+                target = (speak_at_ms + k * gap_ms) / 1000.0
+                wait = target - (time.time() - t_rec)
                 if wait > 0:
                     time.sleep(wait)
                 if time.time() - t_rec >= seconds:
@@ -975,6 +981,7 @@ def main() -> int:
                         int(params.get("seconds") or 30),
                         speak_at_ms=int(params.get("speak_at_ms") or 3000),
                         repeat=int(params.get("repeat") or 1),
+                        gap_ms=int(params.get("gap_ms") or 10000),
                         device=args.voice_device,
                         capture_device=args.capture_device,
                         tts_url=args.tts_url,
