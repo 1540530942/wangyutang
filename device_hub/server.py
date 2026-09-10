@@ -809,8 +809,15 @@ async def pcm_websocket(websocket: WebSocket, device_id: str, stream_id: str = "
 
 
 @app.post("/api/device/{device_id}/upload_audio")
-async def upload_audio(device_id: str, file: UploadFile = File(...)) -> Any:
-    """上传音频文件 → 保存 → 下发 play_audio 给设备。"""
+async def upload_audio(
+    device_id: str, file: UploadFile = File(...), play: bool = True
+) -> Any:
+    """上传音频文件 → 保存 →（默认）下发 play_audio 给设备。
+
+    `play=0` 只存不播。设备把自己录的音传上来时必须用这个：默认行为会给它回发
+    play_audio，抢走扬声器 —— AEC 采样时这会掐断正在循环播放的远端，而且这些命令
+    是 retained 的，下次启动还会重放。
+    """
     with DATA_LOCK:
         data = _load()
         if device_id not in data:
@@ -825,6 +832,8 @@ async def upload_audio(device_id: str, file: UploadFile = File(...)) -> Any:
     (AUDIO_DIR / filename).write_bytes(content)
 
     audio_url = f"{AUDIO_PUBLIC_BASE}/{filename}"
+    if not play:
+        return {"ok": True, "command_id": "", "audio_url": audio_url, "played": False}
     with DATA_LOCK:
         data = _load()
         rec = data.get(device_id)
@@ -843,7 +852,7 @@ async def upload_audio(device_id: str, file: UploadFile = File(...)) -> Any:
         })
         data[device_id] = rec
         _save(data)
-    return {"ok": True, "command_id": command_id, "audio_url": audio_url}
+    return {"ok": True, "command_id": command_id, "audio_url": audio_url, "played": True}
 
 
 @app.get("/api/audio/{filename}")
