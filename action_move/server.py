@@ -32,6 +32,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 DEVICE_ONLINE_SECONDS = 30.0
 MAX_TASKS = 100
 CLAIM_TIMEOUT_SECONDS = 35.0
+SPEAK_CLAIM_TIMEOUT_SECONDS = 180.0
 MAX_LONG_POLL_SECONDS = 20.0
 LONG_POLL_TICK_SECONDS = 0.1
 DEFAULT_SETTINGS = {
@@ -197,17 +198,33 @@ def require_token(x_action_token: Annotated[str | None, Header()] = None) -> Non
         raise HTTPException(status_code=401, detail="invalid action token")
 
 
+def claim_timeout_for(task: dict[str, Any]) -> float:
+    """How long a claimed task may run before it is written off as stuck.
+
+    35 s is a safety property for motion: a robot that has been told to move and
+    then loses its poller must not stay claimed indefinitely. Speech is not
+    motion -- nothing is moving, and the edge poller spends most of the window
+    waiting on cloud TTS, which scales with the text (~13 s for 30 characters,
+    ~25 s for 60) before a single sample is played. At the skill's 200-character
+    ceiling the old limit expired the task long before it could finish.
+    """
+    if task.get("type") == "speak":
+        return SPEAK_CLAIM_TIMEOUT_SECONDS
+    return CLAIM_TIMEOUT_SECONDS
+
+
 def refresh_tasks() -> None:
     now = time.time()
     for task in tasks:
         if task["status"] == "pending" and now > float(task["deadline_at"]):
             task["status"] = "expired"
             task["updated_at"] = now
-        if task["status"] == "claimed" and now - float(task.get("claimed_at") or 0) > CLAIM_TIMEOUT_SECONDS:
+        limit = claim_timeout_for(task)
+        if task["status"] == "claimed" and now - float(task.get("claimed_at") or 0) > limit:
             task["status"] = "failed"
             task["updated_at"] = now
             task["completed_at"] = now
-            task["error"] = f"claimed task timed out after {int(CLAIM_TIMEOUT_SECONDS)}s"
+            task["error"] = f"claimed task timed out after {int(limit)}s"
             if device_state.get("current_task_id") == task["id"]:
                 device_state["current_task_id"] = ""
                 device_state["status"] = "failed"
@@ -357,6 +374,14 @@ def create_task(payload: ActionRequest) -> dict[str, Any]:
         settings["unit_distance_cm"] = round(max(1.0, min(50.0, float(payload.settings_override["unit_distance_cm"]))), 2)
     if "turn_angle_deg" in payload.settings_override:
         settings["turn_angle_deg"] = round(max(1.0, min(90.0, float(payload.settings_override["turn_angle_deg"]))), 2)
+    # Same idea for speak: without a per-task override the volume comes from the
+    # stored global, so a caller that wants one announcement louder or quieter
+    # has to change the setting for everything else too. The edge poller mutes
+    # the mixer outright at 0, so the default silently swallows the audio.
+    if "voice_volume_percent" in payload.settings_override:
+        settings["voice_volume_percent"] = round(
+            max(0.0, min(100.0, float(payload.settings_override["voice_volume_percent"]))), 2
+        )
     task = {
         "id": f"{int(now * 1000)}-{secrets.token_hex(3)}",
         "action": payload.action,
