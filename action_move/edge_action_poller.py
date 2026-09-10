@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -24,6 +25,13 @@ ACTION_TIMEOUT_SECONDS = 20
 DIAGNOSTIC_HEARTBEAT_SECONDS = 30.0
 DEFAULT_DISABLED_ACTIONS = "move_forward,move_backward,move_left,move_right,turn_left,turn_right"
 VOICE_PROMPT_DIR = BASE_DIR / "voice_prompts"
+# Synthesized speech, kept on disk and keyed by what determines the audio.
+# Cloud TTS costs ~13 s for 30 characters and ~25 s for 60, which is the whole
+# latency of a speak task; a phrase the robot says more than once should not pay
+# it twice. Also makes a repeated phrase byte-identical, which is what lets it
+# serve as a controlled stimulus in the AEC measurements.
+SPEAK_CACHE_DIR = BASE_DIR / "speak_cache"
+SPEAK_CACHE_MAX_ENTRIES = 200
 DEFAULT_TTS_URL = "https://www.wangyutang.cn/common/api/tts/speech"
 DEFAULT_TTS_MODEL = "qwen3-tts-12hz-1.7b-customvoice"
 DEFAULT_TTS_VOICE = "vivian"
@@ -351,6 +359,32 @@ def schedule_completion_voice(
     return "[INFO] voice_prompt_scheduled=async"
 
 
+def speak_cache_path(
+    text: str, model: str, voice: str, language: str, instructions: str
+) -> Path:
+    """Cache key covers everything that changes the waveform, so switching voice
+    or instructions produces a new file instead of replaying the old one."""
+    key = "\x00".join([text, model, voice, language, instructions or DEFAULT_TTS_INSTRUCTIONS])
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:20]
+    return SPEAK_CACHE_DIR / f"{digest}.wav"
+
+
+def prune_speak_cache() -> None:
+    """Keep the newest SPEAK_CACHE_MAX_ENTRIES files. The Pi's SD card is small
+    and the cache grows with every distinct phrase ever spoken."""
+    try:
+        files = sorted(
+            SPEAK_CACHE_DIR.glob("*.wav"), key=lambda p: p.stat().st_mtime, reverse=True
+        )
+    except OSError:
+        return
+    for stale in files[SPEAK_CACHE_MAX_ENTRIES:]:
+        try:
+            stale.unlink()
+        except OSError:
+            pass
+
+
 def speak_text(
     text: str,
     device: str = "",
@@ -376,23 +410,48 @@ def speak_text(
     if not selected_device and Path(player).name == "aplay":
         selected_device = detect_usb_audio_device()
     volume_output = apply_voice_volume(selected_device, volume_percent) if volume_percent is not None else ""
-    endpoint = tts_url or os.getenv("ACTION_TTS_URL", DEFAULT_TTS_URL).strip()
-    if not endpoint:
-        return False, volume_output, "speak: TTS endpoint not configured"
+    cached = speak_cache_path(text, tts_model, tts_voice, tts_language, instructions)
+    source = "cache"
+    if not cached.is_file():
+        endpoint = tts_url or os.getenv("ACTION_TTS_URL", DEFAULT_TTS_URL).strip()
+        if not endpoint:
+            return False, volume_output, "speak: TTS endpoint not configured"
+        try:
+            audio = fetch_tts_audio(
+                text, endpoint, tts_model, tts_voice, tts_language, instructions=instructions
+            )
+        except Exception as exc:  # noqa: BLE001
+            return False, volume_output, f"speak: tts failed: {exc}"
+        # Write beside the target and rename, so a crash or a second poller
+        # mid-write can never leave a half-file that later plays as garbage.
+        try:
+            SPEAK_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                dir=SPEAK_CACHE_DIR, suffix=".part", delete=False
+            ) as handle:
+                handle.write(audio)
+                staged = Path(handle.name)
+            staged.replace(cached)
+            prune_speak_cache()
+        except OSError as exc:
+            # A read-only or full disk must not break speech; fall back to /tmp.
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+                handle.write(audio)
+                cached = Path(handle.name)
+            source = f"uncached({exc.__class__.__name__})"
+        else:
+            source = "tts"
     try:
-        audio = fetch_tts_audio(text, endpoint, tts_model, tts_voice, tts_language, instructions=instructions)
-    except Exception as exc:  # noqa: BLE001
-        return False, volume_output, f"speak: tts failed: {exc}"
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
-        handle.write(audio)
-        temp_path = Path(handle.name)
-    try:
-        ok, detail = play_audio_file(temp_path, player, selected_device)
+        ok, detail = play_audio_file(cached, player, selected_device)
     finally:
-        temp_path.unlink(missing_ok=True)
+        if source.startswith("uncached"):
+            cached.unlink(missing_ok=True)
     if not ok:
         return False, volume_output, f"speak: playback failed: {detail}"
-    info = f"[INFO] speak_played chars={len(text)} device={detail} voice={tts_voice} text={text[:80]}"
+    info = (
+        f"[INFO] speak_played chars={len(text)} device={detail} "
+        f"voice={tts_voice} source={source} text={text[:80]}"
+    )
     return True, "\n".join(part for part in [volume_output, info] if part), ""
 
 

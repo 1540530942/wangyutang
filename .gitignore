@@ -27,3 +27,6 @@ robot_sandbox/analysis_html_report/
 wangyutang_analysis_report/
 .venv/
 esp32_speaker/speaker_queue.db
+
+# Synthesized speech cached on the Pi at runtime (see SPEAK_CACHE_DIR)
+action_move/speak_cache/
