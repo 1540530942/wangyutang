@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import shutil
 import socket
 import subprocess
@@ -63,9 +64,14 @@ def fetch_tts_audio(
     model: str,
     voice: str,
     language: str,
-    timeout: float = 30.0,
+    timeout: float = 0.0,
     instructions: str = "",
 ) -> bytes:
+    if timeout <= 0:
+        # Synthesis time scales with the text -- roughly 13 s for 30 characters
+        # and 25 s for 60 -- so a flat 30 s silently killed anything longer than
+        # a short sentence, well inside the skill's 200-character ceiling.
+        timeout = min(150.0, 15.0 + 0.5 * len(text))
     payload = {
         "model": model,
         "input": text,
@@ -357,6 +363,124 @@ def schedule_completion_voice(
 
     threading.Thread(target=worker, daemon=True).start()
     return "[INFO] voice_prompt_scheduled=async"
+
+
+LISTEN_MAX_SECONDS = 60
+LISTEN_ASR_URL = "http://110.40.154.41/common/api/asr/transcribe"
+LISTEN_ENVELOPE_MS = 100
+
+
+def detect_usb_capture_device() -> str:
+    """Mirror of detect_usb_audio_device for the capture side: `arecord -l`
+    numbers capture cards independently of playback ones."""
+    try:
+        result = subprocess.run(["arecord", "-l"], text=True, capture_output=True, timeout=2)
+    except (subprocess.SubprocessError, OSError):
+        return ""
+    for line in (result.stdout or "").splitlines():
+        match = re.search(r"card\s+(\d+):.*device\s+(\d+):", line)
+        if match:
+            return f"plughw:{match.group(1)},{match.group(2)}"
+    return ""
+
+
+def rms_envelope(pcm: bytes, sample_rate: int, window_ms: int) -> list[int]:
+    """Per-window RMS of 16-bit mono PCM.
+
+    Returned inline with the task result instead of shipping the WAV anywhere.
+    It is all the barge-in measurement needs: in one recording from the robot's
+    own microphone you can see when the near end started talking and when the
+    far end's speech collapsed, and the gap between those two is the latency --
+    with no clock to synchronise between the two devices.
+    """
+    import audioop
+
+    step = max(1, (sample_rate * window_ms) // 1000) * 2
+    out: list[int] = []
+    for offset in range(0, len(pcm) - step + 1, step):
+        out.append(int(audioop.rms(pcm[offset:offset + step], 2)))
+    return out
+
+
+def transcribe_wav(audio: bytes, timeout: float = 120.0) -> str:
+    boundary = "----listen" + secrets.token_hex(8)
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="file"; filename="listen.wav"\r\n'
+        f"Content-Type: audio/wav\r\n\r\n"
+    ).encode("utf-8") + audio + f"\r\n--{boundary}--\r\n".encode("utf-8")
+    request = urllib.request.Request(
+        LISTEN_ASR_URL,
+        data=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return str(json.loads(response.read().decode("utf-8")).get("text") or "")
+
+
+def listen_and_report(
+    seconds: int,
+    capture_device: str = "",
+    transcribe: bool = True,
+) -> tuple[bool, str, str]:
+    """Record the room from the robot's own microphone and report what it heard.
+
+    The Pi's speaker and microphone stand in for a person in the room: the
+    speaker is the mouth talking to the ESP32, this is the ears. Rather than move
+    the WAV around, the level envelope and the transcript -- the two things the
+    measurements actually consume -- come back inline in the task result.
+    """
+    seconds = max(1, min(LISTEN_MAX_SECONDS, int(seconds)))
+    recorder = shutil.which("arecord")
+    if not recorder:
+        return False, "", "listen: arecord not found"
+    selected = capture_device or os.getenv("ACTION_CAPTURE_DEVICE", "").strip()
+    if not selected:
+        selected = detect_usb_capture_device()
+    rate = 16000
+    command = [recorder, "-q", "-f", "S16_LE", "-r", str(rate), "-c", "1", "-d", str(seconds)]
+    if selected:
+        command.extend(["-D", selected])
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+        wav_path = Path(handle.name)
+    command.append(str(wav_path))
+    started = time.time()
+    try:
+        completed = subprocess.run(command, text=True, capture_output=True, timeout=seconds + 15)
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or "").strip()
+            return False, "", f"listen: arecord rc={completed.returncode}: {detail[:200]}"
+        audio = wav_path.read_bytes()
+    except (subprocess.SubprocessError, OSError) as exc:
+        return False, "", f"listen: record failed: {exc}"
+    finally:
+        wav_path.unlink(missing_ok=True)
+
+    try:
+        import audioop
+        import wave as wave_mod
+        import io
+
+        with wave_mod.open(io.BytesIO(audio)) as handle:
+            rate = handle.getframerate()
+            pcm = handle.readframes(handle.getnframes())
+        overall = int(audioop.rms(pcm, 2))
+    except Exception as exc:  # noqa: BLE001
+        return False, "", f"listen: wav parse failed: {exc}"
+
+    envelope = rms_envelope(pcm, rate, LISTEN_ENVELOPE_MS)
+    lines = [
+        f"[INFO] listen_recorded seconds={seconds} device={selected or 'default'} "
+        f"rate={rate} rms={overall} started_at={started:.3f}",
+        f"[ENV{LISTEN_ENVELOPE_MS}] " + ",".join(str(v) for v in envelope),
+    ]
+    if transcribe:
+        try:
+            lines.append("[ASR] " + transcribe_wav(audio))
+        except Exception as exc:  # noqa: BLE001
+            lines.append(f"[WARN] listen asr failed: {exc}")
+    return True, "\n".join(lines), ""
 
 
 def speak_cache_path(
@@ -661,6 +785,7 @@ def main() -> int:
     parser.add_argument("--no-controller", action="store_true")
     parser.add_argument("--no-voice", action="store_true", help="Disable local completion voice prompt playback.")
     parser.add_argument("--voice-device", default="", help="Audio output device for aplay, for example plughw:2,0.")
+    parser.add_argument("--capture-device", default="", help="Audio input device for arecord, for example plughw:2,0.")
     parser.add_argument("--tts-url", default=DEFAULT_TTS_URL)
     parser.add_argument("--tts-model", default=DEFAULT_TTS_MODEL)
     parser.add_argument("--tts-voice", default=DEFAULT_TTS_VOICE)
@@ -700,6 +825,14 @@ def main() -> int:
                         instructions=str(params.get("instructions") or ""),
                         volume_percent=settings.get("voice_volume_percent"),
                     )
+                elif action == "listen":
+                    # Also no ROS action: record locally and ship the WAV.
+                    heartbeat(args.server, args.token, args.device_id, "running", current_task_id=task_id)
+                    ok, stdout, stderr = listen_and_report(
+                        int(params.get("seconds") or 10),
+                        capture_device=args.capture_device,
+                        transcribe=bool(params.get("transcribe", True)),
+                    )
                 else:
                     ok, stdout, stderr = execute_with_running_heartbeats(
                         args.server,
@@ -711,7 +844,7 @@ def main() -> int:
                         args.controller_url,
                         args.no_controller,
                     )
-                if ok and action != "speak":
+                if ok and action not in ("speak", "listen"):
                     voice_output = schedule_completion_voice(
                         action,
                         enabled=not args.no_voice,

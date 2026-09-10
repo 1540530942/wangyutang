@@ -33,6 +33,7 @@ DEVICE_ONLINE_SECONDS = 30.0
 MAX_TASKS = 100
 CLAIM_TIMEOUT_SECONDS = 35.0
 SPEAK_CLAIM_TIMEOUT_SECONDS = 180.0
+LISTEN_MAX_SECONDS = 60
 MAX_LONG_POLL_SECONDS = 20.0
 LONG_POLL_TICK_SECONDS = 0.1
 DEFAULT_SETTINGS = {
@@ -165,10 +166,22 @@ SPEAK_MAX_CHARS = 200
 def build_task_params(skill: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
     """Validate and normalize the free-form params a skill carries alongside its id.
 
-    Only `speak` uses this today: it needs caller-supplied text that the fixed
-    ActionSettings schema cannot hold. The edge poller reads the returned dict
-    from the task record and routes it through the TTS + playback path.
+    `speak` and `listen` use this: both need caller-supplied values that the
+    fixed ActionSettings schema cannot hold. The edge poller reads the returned
+    dict from the task record and routes it through the local audio path rather
+    than /execute.
     """
+    if skill["id"] == "listen":
+        seconds = params.get("seconds", 10)
+        try:
+            seconds = int(seconds)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="listen seconds must be an integer")
+        if not 1 <= seconds <= LISTEN_MAX_SECONDS:
+            raise HTTPException(
+                status_code=400, detail=f"listen seconds must be 1..{LISTEN_MAX_SECONDS}"
+            )
+        return {"seconds": seconds, "transcribe": bool(params.get("transcribe", True))}
     if skill["id"] != "speak":
         return {}
     text = str(params.get("text") or "").strip()
@@ -208,7 +221,7 @@ def claim_timeout_for(task: dict[str, Any]) -> float:
     ~25 s for 60) before a single sample is played. At the skill's 200-character
     ceiling the old limit expired the task long before it could finish.
     """
-    if task.get("type") == "speak":
+    if task.get("type") in ("speak", "listen"):
         return SPEAK_CLAIM_TIMEOUT_SECONDS
     return CLAIM_TIMEOUT_SECONDS
 

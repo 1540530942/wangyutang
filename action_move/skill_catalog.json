@@ -344,10 +344,22 @@
       },
       "motor_override": {
         "speeds": [
-          {"id": 1, "speed": 35},
-          {"id": 2, "speed": 35},
-          {"id": 3, "speed": 35},
-          {"id": 4, "speed": 35}
+          {
+            "id": 1,
+            "speed": 35
+          },
+          {
+            "id": 2,
+            "speed": 35
+          },
+          {
+            "id": 3,
+            "speed": 35
+          },
+          {
+            "id": 4,
+            "speed": 35
+          }
         ],
         "duration_ms": 2000,
         "note": "四轮同向同速=原地旋转；CCW方向；id1/id2/id3/id4=+35对应逆时针旋转"
@@ -371,10 +383,22 @@
       },
       "motor_override": {
         "speeds": [
-          {"id": 1, "speed": 0},
-          {"id": 2, "speed": 50},
-          {"id": 3, "speed": -50},
-          {"id": 4, "speed": 0}
+          {
+            "id": 1,
+            "speed": 0
+          },
+          {
+            "id": 2,
+            "speed": 50
+          },
+          {
+            "id": 3,
+            "speed": -50
+          },
+          {
+            "id": 4,
+            "speed": 0
+          }
         ],
         "duration_ms": 300,
         "note": "M2=+50,M3=-50,M1=M4=0：右前+左后轮驱动，产生左前方合力"
@@ -398,10 +422,22 @@
       },
       "motor_override": {
         "speeds": [
-          {"id": 1, "speed": -50},
-          {"id": 2, "speed": 0},
-          {"id": 3, "speed": 0},
-          {"id": 4, "speed": 50}
+          {
+            "id": 1,
+            "speed": -50
+          },
+          {
+            "id": 2,
+            "speed": 0
+          },
+          {
+            "id": 3,
+            "speed": 0
+          },
+          {
+            "id": 4,
+            "speed": 50
+          }
         ],
         "duration_ms": 300,
         "note": "M1=-50,M4=+50,M2=M3=0：左前+右后轮驱动，产生右前方合力"
@@ -446,6 +482,32 @@
         "max_chars": 200,
         "tts_endpoint": "https://www.wangyutang.cn/common/api/tts/speech",
         "executor": "edge_action_poller.py (fetch_tts_audio + aplay)"
+      }
+    },
+    {
+      "id": "listen",
+      "name_zh": "倾听",
+      "type": "listen",
+      "description": "用机器人本机麦克风录制 params.seconds 秒环境音，返回逐 100ms 的 RMS 包络与云端 ASR 转写；不搬运音频文件。",
+      "aliases": [
+        "听",
+        "倾听",
+        "录音",
+        "listen",
+        "record"
+      ],
+      "listen": {
+        "seconds_param": "params.seconds",
+        "default_seconds": 10,
+        "max_seconds": 60,
+        "optional_params": [
+          "transcribe"
+        ],
+        "returns": [
+          "[ENV100] 逐100ms RMS",
+          "[ASR] 转写文本"
+        ],
+        "executor": "edge_action_poller.py (arecord + rms_envelope + cloud ASR)"
       }
     }
   ]
