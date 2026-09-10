@@ -509,6 +509,44 @@
         ],
         "executor": "edge_action_poller.py (arecord + rms_envelope + cloud ASR)"
       }
+    },
+    {
+      "id": "speak_listen",
+      "name_zh": "边说边听",
+      "type": "speak_listen",
+      "description": "一个任务里同时播报 params.text 并用本机麦克风录音；返回播报起点偏移、逐100ms RMS 包络与 ASR 转写。用于全双工打断验证 —— 树莓派在此扮演房间里的人。",
+      "aliases": [
+        "边说边听",
+        "说并听",
+        "speak_listen",
+        "converse"
+      ],
+      "speak_listen": {
+        "required": [
+          "text"
+        ],
+        "optional_params": [
+          "seconds",
+          "speak_at_ms",
+          "repeat",
+          "voice",
+          "instructions",
+          "transcribe"
+        ],
+        "defaults": {
+          "seconds": 30,
+          "speak_at_ms": 3000,
+          "repeat": 1
+        },
+        "max_seconds": 60,
+        "max_chars": 200,
+        "returns": [
+          "[SPEAK_MS] 播报起点相对录音起点的毫秒偏移",
+          "[ENV100] 逐100ms RMS",
+          "[ASR] 转写文本"
+        ],
+        "executor": "edge_action_poller.py (arecord + aplay 并发)"
+      }
     }
   ]
 }

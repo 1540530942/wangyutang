@@ -483,6 +483,131 @@ def listen_and_report(
     return True, "\n".join(lines), ""
 
 
+def speak_while_listening(
+    text: str,
+    seconds: int,
+    speak_at_ms: int = 3000,
+    repeat: int = 1,
+    device: str = "",
+    capture_device: str = "",
+    tts_url: str = "",
+    tts_model: str = DEFAULT_TTS_MODEL,
+    tts_voice: str = DEFAULT_TTS_VOICE,
+    tts_language: str = DEFAULT_TTS_LANGUAGE,
+    instructions: str = "",
+    volume_percent: object = None,
+    transcribe: bool = True,
+) -> tuple[bool, str, str]:
+    """Talk and record at the same time, from one task.
+
+    speak and listen are separate skills, but the poller runs one task at a time,
+    so asking for both gets them back to back rather than overlapping -- measured:
+    the second was claimed 0.3 s after the first finished. Barge-in needs them
+    concurrent, and doing it inside a single action also removes the guesswork:
+    playback starts a known offset after recording starts, so the moment the
+    "person" began talking is a number rather than something inferred from the
+    waveform.
+
+    Audio is resolved before recording opens, so a cache miss cannot push the
+    speech outside the window.
+    """
+    text = (text or "").strip()
+    if not text:
+        return False, "", "speak_listen: empty text"
+    seconds = max(1, min(LISTEN_MAX_SECONDS, int(seconds)))
+    speak_at_ms = max(0, min(seconds * 1000, int(speak_at_ms)))
+    repeat = max(1, min(10, int(repeat)))
+
+    player = shutil.which("aplay") or shutil.which("paplay") or ""
+    recorder = shutil.which("arecord")
+    if not player:
+        return False, "", "speak_listen: no audio playback command found"
+    if not recorder:
+        return False, "", "speak_listen: arecord not found"
+
+    out_device = device or os.getenv("ACTION_VOICE_DEVICE", "").strip()
+    if not out_device and Path(player).name == "aplay":
+        out_device = detect_usb_audio_device()
+    in_device = capture_device or os.getenv("ACTION_CAPTURE_DEVICE", "").strip()
+    if not in_device:
+        in_device = detect_usb_capture_device()
+    volume_output = apply_voice_volume(out_device, volume_percent) if volume_percent is not None else ""
+
+    # Resolve the audio up front: a cache miss costs 15-150 s of synthesis.
+    wav_path, source, err = resolve_speech(
+        text, tts_url, tts_model, tts_voice, tts_language, instructions
+    )
+    if err:
+        return False, volume_output, err
+
+    rate = 16000
+    rec_cmd = [recorder, "-q", "-f", "S16_LE", "-r", str(rate), "-c", "1", "-d", str(seconds)]
+    if in_device:
+        rec_cmd.extend(["-D", in_device])
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+        rec_path = Path(handle.name)
+    rec_cmd.append(str(rec_path))
+
+    play_cmd = [player, "-q"]
+    if Path(player).name == "aplay" and out_device:
+        play_cmd.extend(["-D", out_device])
+    play_cmd.append(str(wav_path))
+
+    offsets: list[int] = []
+    try:
+        rec_proc = subprocess.Popen(rec_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        t_rec = time.time()
+        try:
+            for _ in range(repeat):
+                wait = speak_at_ms / 1000.0 - (time.time() - t_rec) if not offsets else 0.0
+                if wait > 0:
+                    time.sleep(wait)
+                if time.time() - t_rec >= seconds:
+                    break
+                offsets.append(int((time.time() - t_rec) * 1000))
+                subprocess.run(play_cmd, capture_output=True, timeout=seconds + 10)
+            rec_proc.wait(timeout=seconds + 15)
+        finally:
+            if rec_proc.poll() is None:
+                rec_proc.kill()
+                rec_proc.wait(timeout=5)
+        if rec_proc.returncode not in (0, None):
+            detail = (rec_proc.stderr.read() or b"").decode("utf-8", "replace").strip()
+            return False, volume_output, f"speak_listen: arecord rc={rec_proc.returncode}: {detail[:200]}"
+        audio = rec_path.read_bytes()
+    except (subprocess.SubprocessError, OSError) as exc:
+        return False, volume_output, f"speak_listen: failed: {exc}"
+    finally:
+        rec_path.unlink(missing_ok=True)
+        if source.startswith("uncached"):
+            wav_path.unlink(missing_ok=True)
+
+    try:
+        import audioop
+        import io
+        import wave as wave_mod
+
+        with wave_mod.open(io.BytesIO(audio)) as handle:
+            rate = handle.getframerate()
+            pcm = handle.readframes(handle.getnframes())
+        overall = int(audioop.rms(pcm, 2))
+    except Exception as exc:  # noqa: BLE001
+        return False, volume_output, f"speak_listen: wav parse failed: {exc}"
+
+    lines = [
+        f"[INFO] speak_listen seconds={seconds} in={in_device or 'default'} out={out_device or 'default'} "
+        f"rate={rate} rms={overall} source={source} chars={len(text)}",
+        f"[SPEAK_MS] " + ",".join(str(v) for v in offsets),
+        f"[ENV{LISTEN_ENVELOPE_MS}] " + ",".join(str(v) for v in rms_envelope(pcm, rate, LISTEN_ENVELOPE_MS)),
+    ]
+    if transcribe:
+        try:
+            lines.append("[ASR] " + transcribe_wav(audio))
+        except Exception as exc:  # noqa: BLE001
+            lines.append(f"[WARN] speak_listen asr failed: {exc}")
+    return True, "\n".join(part for part in [volume_output, *lines] if part), ""
+
+
 def speak_cache_path(
     text: str, model: str, voice: str, language: str, instructions: str
 ) -> Path:
@@ -507,6 +632,49 @@ def prune_speak_cache() -> None:
             stale.unlink()
         except OSError:
             pass
+
+
+def resolve_speech(
+    text: str,
+    tts_url: str,
+    tts_model: str,
+    tts_voice: str,
+    tts_language: str,
+    instructions: str,
+) -> tuple[Path, str, str]:
+    """Return a playable WAV for `text`, from cache when possible.
+
+    Returns (path, source, error). source is "cache", "tts", or
+    "uncached(<reason>)" -- in the last case the caller owns the temp file and
+    must delete it.
+    """
+    cached = speak_cache_path(text, tts_model, tts_voice, tts_language, instructions)
+    if cached.is_file():
+        return cached, "cache", ""
+    endpoint = tts_url or os.getenv("ACTION_TTS_URL", DEFAULT_TTS_URL).strip()
+    if not endpoint:
+        return cached, "", "speak: TTS endpoint not configured"
+    try:
+        audio = fetch_tts_audio(
+            text, endpoint, tts_model, tts_voice, tts_language, instructions=instructions
+        )
+    except Exception as exc:  # noqa: BLE001
+        return cached, "", f"speak: tts failed: {exc}"
+    # Stage beside the target and rename, so a crash or a second poller mid-write
+    # can never leave a half-file that later plays as garbage.
+    try:
+        SPEAK_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=SPEAK_CACHE_DIR, suffix=".part", delete=False) as handle:
+            handle.write(audio)
+            staged = Path(handle.name)
+        staged.replace(cached)
+        prune_speak_cache()
+    except OSError as exc:
+        # A read-only or full disk must not break speech.
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+            handle.write(audio)
+            return Path(handle.name), f"uncached({exc.__class__.__name__})", ""
+    return cached, "tts", ""
 
 
 def speak_text(
@@ -534,37 +702,11 @@ def speak_text(
     if not selected_device and Path(player).name == "aplay":
         selected_device = detect_usb_audio_device()
     volume_output = apply_voice_volume(selected_device, volume_percent) if volume_percent is not None else ""
-    cached = speak_cache_path(text, tts_model, tts_voice, tts_language, instructions)
-    source = "cache"
-    if not cached.is_file():
-        endpoint = tts_url or os.getenv("ACTION_TTS_URL", DEFAULT_TTS_URL).strip()
-        if not endpoint:
-            return False, volume_output, "speak: TTS endpoint not configured"
-        try:
-            audio = fetch_tts_audio(
-                text, endpoint, tts_model, tts_voice, tts_language, instructions=instructions
-            )
-        except Exception as exc:  # noqa: BLE001
-            return False, volume_output, f"speak: tts failed: {exc}"
-        # Write beside the target and rename, so a crash or a second poller
-        # mid-write can never leave a half-file that later plays as garbage.
-        try:
-            SPEAK_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(
-                dir=SPEAK_CACHE_DIR, suffix=".part", delete=False
-            ) as handle:
-                handle.write(audio)
-                staged = Path(handle.name)
-            staged.replace(cached)
-            prune_speak_cache()
-        except OSError as exc:
-            # A read-only or full disk must not break speech; fall back to /tmp.
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
-                handle.write(audio)
-                cached = Path(handle.name)
-            source = f"uncached({exc.__class__.__name__})"
-        else:
-            source = "tts"
+    cached, source, err = resolve_speech(
+        text, tts_url, tts_model, tts_voice, tts_language, instructions
+    )
+    if err:
+        return False, volume_output, err
     try:
         ok, detail = play_audio_file(cached, player, selected_device)
     finally:
@@ -825,6 +967,24 @@ def main() -> int:
                         instructions=str(params.get("instructions") or ""),
                         volume_percent=settings.get("voice_volume_percent"),
                     )
+                elif action == "speak_listen":
+                    # One task, both directions: see speak_while_listening.
+                    heartbeat(args.server, args.token, args.device_id, "running", current_task_id=task_id)
+                    ok, stdout, stderr = speak_while_listening(
+                        str(params.get("text") or ""),
+                        int(params.get("seconds") or 30),
+                        speak_at_ms=int(params.get("speak_at_ms") or 3000),
+                        repeat=int(params.get("repeat") or 1),
+                        device=args.voice_device,
+                        capture_device=args.capture_device,
+                        tts_url=args.tts_url,
+                        tts_model=args.tts_model,
+                        tts_voice=str(params.get("voice") or args.tts_voice),
+                        tts_language=args.tts_language,
+                        instructions=str(params.get("instructions") or ""),
+                        volume_percent=settings.get("voice_volume_percent"),
+                        transcribe=bool(params.get("transcribe", True)),
+                    )
                 elif action == "listen":
                     # Also no ROS action: record locally and ship the WAV.
                     heartbeat(args.server, args.token, args.device_id, "running", current_task_id=task_id)
@@ -844,7 +1004,7 @@ def main() -> int:
                         args.controller_url,
                         args.no_controller,
                     )
-                if ok and action not in ("speak", "listen"):
+                if ok and action not in ("speak", "listen", "speak_listen"):
                     voice_output = schedule_completion_voice(
                         action,
                         enabled=not args.no_voice,

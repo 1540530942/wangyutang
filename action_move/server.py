@@ -171,6 +171,33 @@ def build_task_params(skill: dict[str, Any], params: dict[str, Any]) -> dict[str
     dict from the task record and routes it through the local audio path rather
     than /execute.
     """
+    if skill["id"] == "speak_listen":
+        text = str(params.get("text") or "").strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="speak_listen requires params.text")
+        if len(text) > SPEAK_MAX_CHARS:
+            raise HTTPException(status_code=400, detail=f"text exceeds {SPEAK_MAX_CHARS} chars")
+        try:
+            seconds = int(params.get("seconds", 30))
+            speak_at_ms = int(params.get("speak_at_ms", 3000))
+            repeat = int(params.get("repeat", 1))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="seconds/speak_at_ms/repeat must be integers")
+        if not 1 <= seconds <= LISTEN_MAX_SECONDS:
+            raise HTTPException(status_code=400, detail=f"seconds must be 1..{LISTEN_MAX_SECONDS}")
+        if not 0 <= speak_at_ms <= seconds * 1000:
+            raise HTTPException(status_code=400, detail="speak_at_ms must fall inside the window")
+        if not 1 <= repeat <= 10:
+            raise HTTPException(status_code=400, detail="repeat must be 1..10")
+        result: dict[str, Any] = {
+            "text": text, "seconds": seconds, "speak_at_ms": speak_at_ms, "repeat": repeat,
+            "transcribe": bool(params.get("transcribe", True)),
+        }
+        for key in ("voice", "instructions"):
+            value = str(params.get(key) or "").strip()
+            if value:
+                result[key] = value[:200]
+        return result
     if skill["id"] == "listen":
         seconds = params.get("seconds", 10)
         try:
@@ -221,7 +248,7 @@ def claim_timeout_for(task: dict[str, Any]) -> float:
     ~25 s for 60) before a single sample is played. At the skill's 200-character
     ceiling the old limit expired the task long before it could finish.
     """
-    if task.get("type") in ("speak", "listen"):
+    if task.get("type") in ("speak", "listen", "speak_listen"):
         return SPEAK_CLAIM_TIMEOUT_SECONDS
     return CLAIM_TIMEOUT_SECONDS
 
