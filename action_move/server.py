@@ -9,6 +9,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
@@ -202,6 +203,21 @@ def build_task_params(skill: dict[str, Any], params: dict[str, Any]) -> dict[str
             if value:
                 result[key] = value[:200]
         return result
+    if skill["id"] == "play_audio":
+        url = str(params.get("url") or "").strip()
+        if not url:
+            raise HTTPException(status_code=400, detail="play_audio requires params.url")
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise HTTPException(status_code=400, detail="play_audio url must be http(s)")
+        return {"url": url}
+    if skill["id"] == "play_local_audio":
+        name = str(params.get("name") or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="play_local_audio requires params.name")
+        if "/" in name or "\\" in name or ".." in name:
+            raise HTTPException(status_code=400, detail="play_local_audio name must be a bare filename")
+        return {"name": name}
     if skill["id"] == "listen":
         seconds = params.get("seconds", 10)
         try:
@@ -252,7 +268,7 @@ def claim_timeout_for(task: dict[str, Any]) -> float:
     ~25 s for 60) before a single sample is played. At the skill's 200-character
     ceiling the old limit expired the task long before it could finish.
     """
-    if task.get("type") in ("speak", "listen", "speak_listen"):
+    if task.get("type") in ("speak", "listen", "speak_listen", "play_audio", "play_local_audio"):
         return SPEAK_CLAIM_TIMEOUT_SECONDS
     return CLAIM_TIMEOUT_SECONDS
 

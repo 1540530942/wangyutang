@@ -485,6 +485,54 @@
       }
     },
     {
+      "id": "play_audio",
+      "name_zh": "播放音频",
+      "description": "下载 params.url 指向的 WAV 音频并从机器人本机音箱播报；与 speak 不同，音频不经过 TTS 合成，原样播放，用于播放任意预先准备好的音频文件。",
+      "type": "play_audio",
+      "aliases": [
+        "播放",
+        "放这段音频",
+        "播放音频",
+        "play audio",
+        "play"
+      ],
+      "play_audio": {
+        "url_param": "params.url",
+        "required": [
+          "url"
+        ],
+        "url_schemes": [
+          "http",
+          "https"
+        ],
+        "format": "wav (RIFF/ID3 头校验)",
+        "executor": "edge_action_poller.py (urllib 下载 + aplay，不经 fetch_tts_audio)"
+      }
+    },
+    {
+      "id": "play_local_audio",
+      "name_zh": "播放本地音频",
+      "description": "播放已预先放在树莓派本机 local_audio/ 目录下的 WAV 文件，params.name 只能是裸文件名（不含路径分隔符/..），不经过任何网络下载；用于重复播放同一批固定音频（比如打断测试语料）时省掉每次下载的延迟。",
+      "type": "play_local_audio",
+      "aliases": [
+        "本地播放",
+        "播放本地音频",
+        "播本地",
+        "play local",
+        "play_local_audio"
+      ],
+      "play_local_audio": {
+        "name_param": "params.name",
+        "required": [
+          "name"
+        ],
+        "name_constraints": "裸文件名，禁止 / \\ ..",
+        "local_dir": "action_move/local_audio/（需提前把文件放进这个目录）",
+        "format": "wav (RIFF/ID3 头校验)",
+        "executor": "edge_action_poller.py (直接 aplay，不下载)"
+      }
+    },
+    {
       "id": "listen",
       "name_zh": "倾听",
       "type": "listen",

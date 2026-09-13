@@ -23,6 +23,10 @@ const SKILLS = [
   { id: "camera_snapshot", name: "拍照", group: "sensor", type: "camera_snapshot", definition: "相机抓拍任务，读取 /image_raw 到 JPEG", executor: "action_move_executor.py -> camera_snapshot 服务", verify: "以 /camera/api/latest 元数据和 latest.jpg 的 frame_id/task_id/updated_at 为准；edge_ros_controller 当前可能返回 camera_snapshot unsupported。" },
   { id: "remote_shutdown", name: "远程关机", group: "system", type: "system_shutdown", definition: "sudo shutdown -h now，需要 verification_code=123", executor: "edge_action_poller.py / action_move_executor.py", verify: "破坏性技能，页面默认不执行；只能展示指令和安全边界。" },
   { id: "speak", name: "说话", group: "system", type: "speak", definition: "params.text（≤200字）经 /common/api/tts/speech 合成 WAV，再由 aplay 在本机音箱播报；可选 params.voice / params.instructions", executor: "edge_action_poller.py（fetch_tts_audio + aplay），不经 edge_ros_controller /execute", verify: "以任务 output 的 speak_played chars/device/voice 为准；需现场听到播报，相机无法验证音频。" },
+  { id: "listen", name: "倾听", group: "system", type: "listen", definition: "本机麦克风录制 params.seconds 秒（默认10，最长60），返回逐100ms RMS 包络与云端 ASR 转写，不搬运音频文件", executor: "edge_action_poller.py（arecord + rms_envelope + 云端ASR），不经 edge_ros_controller /execute", verify: "以任务 output 的 [ENV100]/[ASR] 段为准；相机无法验证音频，需看转写文本是否匹配现场说的话。" },
+  { id: "speak_listen", name: "边说边听", group: "system", type: "speak_listen", definition: "一个任务里同时播报 params.text 并录音，repeat/gap_ms 控制循环播报几次、间隔多久；用于全双工打断验证，树莓派在此扮演房间里的人", executor: "edge_action_poller.py（arecord + aplay 并发），不经 edge_ros_controller /execute", verify: "以任务 output 的 [SPEAK_MS]/[ENV100]/[ASR] 为准；需现场听到播报同时确认录音里包含了播报内容。" },
+  { id: "play_audio", name: "播放音频", group: "system", type: "play_audio", definition: "下载 params.url 指向的 WAV 并原样播放，不经 TTS 合成；用于播放任意预先准备好的音频文件", executor: "edge_action_poller.py（urllib 下载 + aplay），不经 edge_ros_controller /execute", verify: "以任务 output 的 play_audio_played bytes/device 为准；需现场听到播报，相机无法验证音频。" },
+  { id: "play_local_audio", name: "播放本地音频", group: "system", type: "play_local_audio", definition: "播放已预先放在树莓派本机 action_move/local_audio/ 目录下的 WAV，params.name 只能是裸文件名（禁止路径分隔符/..），不经过任何网络下载，用于重复播放同一批固定音频时省掉下载延迟", executor: "edge_action_poller.py（直接 aplay，不下载），不经 edge_ros_controller /execute", verify: "以任务 output 的 play_local_audio_played name/device 为准；需现场听到播报，相机无法验证音频。" },
 ];
 
 let selectedSkill = SKILLS.find((item) => item.id === "move_forward");
@@ -39,7 +43,27 @@ function cloudCommand(skill) {
   if (skill.id === "speak") {
     return `curl -X POST https://www.wangyutang.cn/action/api/tasks \\
   -H "Content-Type: application/json" \\
-  -d '{"action":"speak","params":{"text":"你好，我是机器人"},"source":"manual"}'`;
+  -d '{"action":"speak","params":{"text":"你好，我是机器人"},"settings_override":{"voice_volume_percent":70},"source":"manual"}'`;
+  }
+  if (skill.id === "listen") {
+    return `curl -X POST https://www.wangyutang.cn/action/api/tasks \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"listen","params":{"seconds":10},"source":"manual"}'`;
+  }
+  if (skill.id === "speak_listen") {
+    return `curl -X POST https://www.wangyutang.cn/action/api/tasks \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"speak_listen","params":{"text":"你好，我是机器人","seconds":30,"speak_at_ms":3000},"settings_override":{"voice_volume_percent":70},"source":"manual"}'`;
+  }
+  if (skill.id === "play_audio") {
+    return `curl -X POST https://www.wangyutang.cn/action/api/tasks \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"play_audio","params":{"url":"https://example.com/clip.wav"},"settings_override":{"voice_volume_percent":70},"source":"manual"}'`;
+  }
+  if (skill.id === "play_local_audio") {
+    return `curl -X POST https://www.wangyutang.cn/action/api/tasks \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"play_local_audio","params":{"name":"turn01_user.wav"},"settings_override":{"voice_volume_percent":70},"source":"manual"}'`;
   }
   const payload = skill.id === "remote_shutdown"
     ? `{"action":"${skill.id}","verification_code":"123","source":"manual"}`
@@ -50,13 +74,26 @@ function cloudCommand(skill) {
 }
 
 function localCommand(skill) {
-  if (skill.id === "speak") {
-    return `# speak 不走 edge_ros_controller /execute；由 edge_action_poller 取到任务后本机合成播报
+  if (skill.id === "speak" || skill.id === "speak_listen") {
+    return `# ${skill.id} 不走 edge_ros_controller /execute；由 edge_action_poller 取到任务后本机合成播报
 curl -X POST https://www.wangyutang.cn/common/api/tts/speech \\
   -H "Content-Type: application/json" \\
   -d '{"model":"qwen3-tts-12hz-1.7b-customvoice","input":"你好","voice":"vivian","language":"chinese","response_format":"wav"}' \\
   --output speak.wav
 aplay speak.wav`;
+  }
+  if (skill.id === "listen") {
+    return `# listen 不走 edge_ros_controller /execute；本机录音+上传云端 ASR
+arecord -D plughw:2,0 -f S16_LE -r 16000 -c 1 -d 10 listen.wav`;
+  }
+  if (skill.id === "play_audio") {
+    return `# play_audio 不走 edge_ros_controller /execute；本机下载后播放，不经 TTS
+curl -s https://example.com/clip.wav --output clip.wav
+aplay clip.wav`;
+  }
+  if (skill.id === "play_local_audio") {
+    return `# play_local_audio 不走 edge_ros_controller /execute；直接播放已预先放好的本地文件
+aplay /home/pi/action_move/local_audio/turn01_user.wav`;
   }
   return `curl -X POST http://127.0.0.1:8765/execute \\
   -H "Content-Type: application/json" \\
@@ -69,8 +106,14 @@ function stopTwistCommand() {
 }
 
 function rosCommand(skill) {
-  if (skill.id === "speak") {
-    return `# 无 ROS 话题；最底层就是把合成好的 WAV 交给 ALSA 播放\naplay -D plughw:1,0 speak.wav`;
+  if (skill.id === "speak" || skill.id === "speak_listen") {
+    return `# 无 ROS 话题；最底层就是把合成好的 WAV 交给 ALSA 播放\naplay -D plughw:2,0 speak.wav`;
+  }
+  if (skill.id === "listen") {
+    return `# 无 ROS 话题；最底层就是 ALSA 录音\narecord -D plughw:2,0 -f S16_LE -r 16000 -c 1 -d 10 listen.wav`;
+  }
+  if (skill.id === "play_audio" || skill.id === "play_local_audio") {
+    return `# 无 ROS 话题；最底层就是把 WAV 交给 ALSA 播放\naplay -D plughw:2,0 clip.wav`;
   }
   if (skill.twist) {
     return `ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \\
@@ -349,6 +392,33 @@ async function runSkill(skillId) {
         return;
       }
       payload.params = { text: text.trim() };
+    }
+    if (skill.id === "speak_listen") {
+      const text = window.prompt("输入要播报的文本（≤200 字），录音同时进行", "你好，我是机器人，全双工打断验证。");
+      if (!text || !text.trim()) {
+        append("已取消：未输入播报文本");
+        return;
+      }
+      payload.params = { text: text.trim(), seconds: 30, speak_at_ms: 3000 };
+      payload.settings_override = { ...payload.settings_override, voice_volume_percent: 70 };
+    }
+    if (skill.id === "play_audio") {
+      const url = window.prompt("输入要播放的 WAV 音频 URL（http/https）", "https://example.com/clip.wav");
+      if (!url || !url.trim()) {
+        append("已取消：未输入音频 URL");
+        return;
+      }
+      payload.params = { url: url.trim() };
+      payload.settings_override = { ...payload.settings_override, voice_volume_percent: 70 };
+    }
+    if (skill.id === "play_local_audio") {
+      const name = window.prompt("输入树莓派 action_move/local_audio/ 目录下的文件名（不含路径）", "turn01_user.wav");
+      if (!name || !name.trim()) {
+        append("已取消：未输入文件名");
+        return;
+      }
+      payload.params = { name: name.trim() };
+      payload.settings_override = { ...payload.settings_override, voice_volume_percent: 70 };
     }
     append("创建云端任务", payload);
     const created = await apiJson(`${ACTION_BASE}/api/tasks`, {
