@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -14,6 +15,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import wave
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +35,13 @@ VOICE_PROMPT_DIR = BASE_DIR / "voice_prompts"
 # serve as a controlled stimulus in the AEC measurements.
 SPEAK_CACHE_DIR = BASE_DIR / "speak_cache"
 SPEAK_CACHE_MAX_ENTRIES = 200
+# Pre-staged audio for `play_local_audio`: files placed here ahead of time (e.g.
+# rsync'd once) play with no network round trip at task time -- unlike
+# `play_audio`, which fetches from a URL on every call. Built for repeated
+# playback of the same fixed set (e.g. the dialogue_wenyanwen interrupt-test
+# corpus), where downloading each turn again on every run would dominate the
+# latency this skill exists to avoid.
+LOCAL_AUDIO_DIR = BASE_DIR / "local_audio"
 DEFAULT_TTS_URL = "https://www.wangyutang.cn/common/api/tts/speech"
 DEFAULT_TTS_MODEL = "qwen3-tts-12hz-1.7b-customvoice"
 DEFAULT_TTS_VOICE = "vivian"
@@ -93,6 +102,27 @@ def fetch_tts_audio(
     return audio
 
 
+def audio_playback_timeout(path: Path, floor_seconds: float = 8.0) -> float:
+    """Seconds to allow a player subprocess for `path`, from the file's own length.
+
+    The previous flat 8 s killed anything longer mid-sentence -- the
+    dialogue_wenyanwen corpus has a 93 s turn, so the AEC double-talk fixtures
+    were unplayable. Read the duration out of the WAV header and add headroom
+    for ALSA device-open plus the player's own startup; fall back to the old
+    floor when the header can't be parsed (non-WAV, e.g. the ID3 files
+    play_local_audio also accepts).
+    """
+    try:
+        with contextlib.closing(wave.open(str(path), "rb")) as handle:
+            frame_rate = handle.getframerate()
+            if frame_rate <= 0:
+                return floor_seconds
+            duration = handle.getnframes() / float(frame_rate)
+    except (wave.Error, OSError, EOFError):
+        return floor_seconds
+    return max(floor_seconds, duration * 1.2 + 5.0)
+
+
 def play_audio_file(path: Path, player: str, device: str = "") -> tuple[bool, str]:
     selected_device = device or os.getenv("ACTION_VOICE_DEVICE", "").strip()
     if not selected_device and Path(player).name == "aplay":
@@ -104,7 +134,9 @@ def play_audio_file(path: Path, player: str, device: str = "") -> tuple[bool, st
         command.append(str(path))
     else:
         command = [player, str(path)]
-    completed = subprocess.run(command, text=True, capture_output=True, timeout=8)
+    completed = subprocess.run(
+        command, text=True, capture_output=True, timeout=audio_playback_timeout(path)
+    )
     device_label = selected_device or "default"
     if completed.returncode != 0:
         stderr = (completed.stderr or completed.stdout or "").strip()
@@ -727,6 +759,105 @@ def speak_text(
     return True, "\n".join(part for part in [volume_output, info] if part), ""
 
 
+def play_audio_url(
+    url: str,
+    device: str = "",
+    volume_percent: object = None,
+    timeout: float = 60.0,
+) -> tuple[bool, str, str]:
+    """Download a caller-supplied WAV and play it on the local speaker as-is.
+
+    Backs the catalog `play_audio` skill. Unlike `speak`, the audio is not
+    synthesized from text -- it is fetched byte-for-byte from `url` and played
+    unchanged, so any WAV reachable by URL can be announced without a TTS round
+    trip or a pre-registered local prompt file.
+    """
+    url = (url or "").strip()
+    if not url:
+        return False, "", "play_audio: empty url"
+    player = shutil.which("aplay") or shutil.which("paplay") or ""
+    if not player:
+        return False, "", "play_audio: no audio playback command found"
+    selected_device = device or os.getenv("ACTION_VOICE_DEVICE", "").strip()
+    if not selected_device and Path(player).name == "aplay":
+        selected_device = detect_usb_audio_device()
+    volume_output = apply_voice_volume(selected_device, volume_percent) if volume_percent is not None else ""
+    try:
+        request = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            audio = response.read()
+    except Exception as exc:  # noqa: BLE001
+        return False, volume_output, f"play_audio: download failed: {exc}"
+    if not audio.startswith(b"RIFF") and not audio.startswith(b"ID3"):
+        return False, volume_output, "play_audio: response is not an audio payload"
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+        handle.write(audio)
+        temp_path = Path(handle.name)
+    try:
+        ok, detail = play_audio_file(temp_path, player, selected_device)
+    finally:
+        temp_path.unlink(missing_ok=True)
+    if not ok:
+        return False, volume_output, f"play_audio: playback failed: {detail}"
+    info = f"[INFO] play_audio_played bytes={len(audio)} device={detail} url={url[:120]}"
+    return True, "\n".join(part for part in [volume_output, info] if part), ""
+
+
+def play_local_audio(
+    name: str,
+    device: str = "",
+    volume_percent: object = None,
+) -> tuple[bool, str, str]:
+    """Play a WAV already staged under LOCAL_AUDIO_DIR, with no network fetch.
+
+    Backs the catalog `play_local_audio` skill. `name` is a bare filename, not
+    a path -- reject anything containing a path separator or `..` before ever
+    touching the filesystem, so this can never be used to read a file outside
+    LOCAL_AUDIO_DIR. Exists because `play_audio`'s per-call download dominates
+    latency for a fixed, reused corpus (e.g. the dialogue_wenyanwen
+    interrupt-test set): stage the files once, then every call here is just
+    the ~100-140 ms aplay device-open cost measured against that corpus.
+    """
+    name = (name or "").strip()
+    if not name:
+        return False, "", "play_local_audio: empty name"
+    if "/" in name or "\\" in name or ".." in name:
+        return False, "", "play_local_audio: name must be a bare filename"
+    path = LOCAL_AUDIO_DIR / name
+    if not path.is_file():
+        return False, "", f"play_local_audio: not found: {name}"
+    with open(path, "rb") as handle:
+        header = handle.read(4)
+    if not header.startswith(b"RIFF") and not header.startswith(b"ID3"):
+        return False, "", f"play_local_audio: not a WAV/audio file: {name}"
+    player = shutil.which("aplay") or shutil.which("paplay") or ""
+    if not player:
+        return False, "", "play_local_audio: no audio playback command found"
+    selected_device = device or os.getenv("ACTION_VOICE_DEVICE", "").strip()
+    if not selected_device and Path(player).name == "aplay":
+        selected_device = detect_usb_audio_device()
+    volume_output = apply_voice_volume(selected_device, volume_percent) if volume_percent is not None else ""
+    # Catch the subprocess failure here rather than letting it reach the poll
+    # loop's outer handler. That handler only logs a [WARN] and moves on, which
+    # skips the /api/tasks/result POST entirely -- the task then sits in the
+    # queue forever with no terminal state, indistinguishable from one still
+    # playing. A timeout is only one way to land here: a busy ALSA device or a
+    # truncated file fails the same way and used to hang just as silently.
+    try:
+        ok, detail = play_audio_file(path, player, selected_device)
+    except subprocess.TimeoutExpired as exc:
+        limit = getattr(exc, "timeout", None)
+        return False, volume_output, (
+            f"play_local_audio: playback timed out after {limit}s: {name}"
+        )
+    except (subprocess.SubprocessError, OSError) as exc:
+        return False, volume_output, f"play_local_audio: playback error: {exc}"
+    if not ok:
+        return False, volume_output, f"play_local_audio: playback failed: {detail}"
+    info = f"[INFO] play_local_audio_played name={name} device={detail} bytes={path.stat().st_size}"
+    return True, "\n".join(part for part in [volume_output, info] if part), ""
+
+
 def first_ip_address() -> str:
     hostname_ips = command_text(["hostname", "-I"])
     for item in hostname_ips.split():
@@ -992,6 +1123,22 @@ def main() -> int:
                         volume_percent=settings.get("voice_volume_percent"),
                         transcribe=bool(params.get("transcribe", True)),
                     )
+                elif action == "play_audio":
+                    # Also no ROS action: download the caller's WAV and play it as-is.
+                    heartbeat(args.server, args.token, args.device_id, "running", current_task_id=task_id)
+                    ok, stdout, stderr = play_audio_url(
+                        str(params.get("url") or ""),
+                        device=args.voice_device,
+                        volume_percent=settings.get("voice_volume_percent"),
+                    )
+                elif action == "play_local_audio":
+                    # Also no ROS action: play a pre-staged file, no download.
+                    heartbeat(args.server, args.token, args.device_id, "running", current_task_id=task_id)
+                    ok, stdout, stderr = play_local_audio(
+                        str(params.get("name") or ""),
+                        device=args.voice_device,
+                        volume_percent=settings.get("voice_volume_percent"),
+                    )
                 elif action == "listen":
                     # Also no ROS action: record locally and ship the WAV.
                     heartbeat(args.server, args.token, args.device_id, "running", current_task_id=task_id)
@@ -1011,7 +1158,7 @@ def main() -> int:
                         args.controller_url,
                         args.no_controller,
                     )
-                if ok and action not in ("speak", "listen", "speak_listen"):
+                if ok and action not in ("speak", "listen", "speak_listen", "play_audio", "play_local_audio"):
                     voice_output = schedule_completion_voice(
                         action,
                         enabled=not args.no_voice,
