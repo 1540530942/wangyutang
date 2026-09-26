@@ -1,0 +1,39 @@
+# Copy the required Host blocks into the fixed hub user's ~/.ssh/config.
+# These aliases do not start tunnels. Their ports must match the corresponding
+# systemd units installed on WSL, Spark, and Raspberry Pi.
+
+Host wsl-device
+    HostName 127.0.0.1
+    # Example only; this must match the WSL systemd unit.
+    Port 22022
+    User REPLACE_WSL_USER
+    IdentityFile ~/.ssh/REPLACE_WSL_LOGIN_KEY
+    IdentitiesOnly yes
+    HostKeyAlias wsl-reverse-tunnel
+    StrictHostKeyChecking accept-new
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
+
+Host spark-device
+    HostName 127.0.0.1
+    # Example only; this must match the Spark systemd unit.
+    Port 22023
+    User REPLACE_SPARK_USER
+    IdentityFile ~/.ssh/REPLACE_SPARK_LOGIN_KEY
+    IdentitiesOnly yes
+    HostKeyAlias spark-reverse-tunnel
+    StrictHostKeyChecking accept-new
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
+
+Host pi-device
+    HostName 127.0.0.1
+    # Example only; this must match the Pi systemd unit.
+    Port 22024
+    User REPLACE_PI_USER
+    IdentityFile ~/.ssh/REPLACE_PI_LOGIN_KEY
+    IdentitiesOnly yes
+    HostKeyAlias pi-reverse-tunnel
+    StrictHostKeyChecking accept-new
+    ServerAliveInterval 30
+    ServerAliveCountMax 3

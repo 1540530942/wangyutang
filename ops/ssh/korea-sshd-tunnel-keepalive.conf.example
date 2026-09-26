@@ -1,0 +1,11 @@
+# Install on the fixed hub as:
+#   /etc/ssh/sshd_config.d/99-tunnel-keepalive.conf
+# Validate with /usr/sbin/sshd -t before reloading ssh.
+
+# To limit this policy to a dedicated tunnel account, uncomment the next line
+# and replace the placeholder. Leaving it commented applies the policy globally.
+# Match User REPLACE_TUNNEL_USER
+
+ClientAliveInterval 30
+ClientAliveCountMax 3
+TCPKeepAlive yes

@@ -1,0 +1,18 @@
+[Unit]
+Description=Persistent reverse SSH tunnel from Spark to fixed hub
+Wants=network-online.target
+After=network-online.target ssh.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=REPLACE_SPARK_USER
+WorkingDirectory=/home/REPLACE_SPARK_USER
+Environment=HOME=/home/REPLACE_SPARK_USER
+# 22023 is an example. Confirm a unique free hub port before installation.
+ExecStart=/usr/bin/ssh -NT -F /dev/null -i /home/REPLACE_SPARK_USER/.ssh/REPLACE_TUNNEL_KEY -o IdentitiesOnly=yes -o UserKnownHostsFile=/home/REPLACE_SPARK_USER/.ssh/REPLACE_HUB_KNOWN_HOSTS -o StrictHostKeyChecking=yes -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ConnectTimeout=10 -R 127.0.0.1:22023:127.0.0.1:22 REPLACE_HUB_USER@REPLACE_HUB_HOST
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

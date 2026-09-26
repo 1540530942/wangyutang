@@ -26,6 +26,8 @@ docs live under each module (e.g. `robot_sandbox/docs/`, `pi5_robot/docs/`,
 
 ## Runbooks
 
+- [ops/README.md](ops/README.md) - resilient SSH, safe network changes, incident evidence, and out-of-band recovery
+
 - [git-push-remote-branch.md](git-push-remote-branch.md) — safe push runbook for this repo
 - [github-push-troubleshooting.md](github-push-troubleshooting.md) — git push failure recovery
 - [spark-exit-node-novnc-runbook.md](spark-exit-node-novnc-runbook.md) — Spark Korea exit-node networking and noVNC virtual desktop runbook
