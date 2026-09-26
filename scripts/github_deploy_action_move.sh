@@ -58,7 +58,7 @@ fi
 echo "==> Building action-move:local"
 docker build \
   --build-arg PYTHON_IMAGE="${PYTHON_IMAGE:-docker.m.daocloud.io/library/python:3.12-slim}" \
-  --build-arg PIP_INDEX_URL="${PIP_INDEX_URL:-}" \
+  --build-arg PIP_INDEX_URL="${PIP_INDEX_URL:-https://mirrors.cloud.tencent.com/pypi/simple}" \
   -t action-move:local \
   "$platform_root/action_move"
 
