@@ -17,6 +17,7 @@
 - [safe-remote-network-changes.md](safe-remote-network-changes.md)：Wi-Fi、SSH、防火墙和路由变更的防失联流程。
 - [ssh-incident-evidence.md](ssh-incident-evidence.md)：间歇 SSH 故障的现场取证与错误分类。
 - [usb-and-out-of-band-recovery.md](usb-and-out-of-band-recovery.md)：USB、串口、HDMI 和管理控制台的真实能力边界。
+- [runtime-verification.md](runtime-verification.md)：避免假阳性，并把 Git、制品、云端和边缘运行版本串成证据链。
 
 ## 配置责任矩阵
 
@@ -25,7 +26,8 @@
 | `ops/systemd/korea-wsl-reverse-ssh.service.example` | WSL `/etc/systemd/system/korea-wsl-reverse-ssh.service` | WSL | WSL 主动建立并维护反向隧道 |
 | `ops/systemd/spark-korea-reverse-ssh.service.example` | Spark `/etc/systemd/system/spark-korea-reverse-ssh.service` | Spark | Spark 主动建立并维护反向隧道 |
 | `ops/systemd/pi-korea-reverse-ssh.service.example` | Pi `/etc/systemd/system/pi-korea-reverse-ssh.service` | Raspberry Pi | Pi 主动建立并维护反向隧道 |
-| `ops/ssh/korea-sshd-tunnel-keepalive.conf.example` | Korea `/etc/ssh/sshd_config.d/99-tunnel-keepalive.conf` | Korea sshd | 回收半死连接，释放旧反向端口 |
+| `ops/ssh/korea-sshd-tunnel-keepalive.conf.example` | Korea `/etc/ssh/sshd_config.d/99-tunnel-keepalive.conf` | Korea sshd | 缩短部分失联连接的发现时间；不能保证清理所有 `CLOSE_WAIT` 或释放旧端口 |
 | `ops/ssh/korea-device-aliases.config.example` | Korea `~/.ssh/config` 的受管片段 | Korea SSH 客户端 | 把设备别名映射到三个不同的回环端口 |
+| `ops/ssh/check-reverse-tunnels.sh` | Korea 任意只读诊断目录 | Korea 运维终端 | 同时核对监听、TCP 状态和真实 SSH 登录；不修改服务 |
 
 仓库文件与已安装文件没有自动同步关系。仓库更新后，现网配置不会自动变化；安装现网配置也不会自动回写仓库。

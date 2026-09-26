@@ -25,6 +25,21 @@ GitHub 中的示例文件不执行任何发现逻辑。设备身份来自以下�
 
 不能只看到 hub 端口正在监听就判定设备正确。半死隧道也可能接受 TCP，但在 SSH banner 阶段超时。
 
+## Keepalive 的能力边界
+
+`ClientAliveInterval`/`ClientAliveCountMax` 是故障发现手段，不是端口回收承诺。它们只对仍由对应 sshd 会话管理、且能进入 keepalive 判定的连接有效；内核或进程已经积压的 `CLOSE_WAIT`、旧 sshd 子进程仍占用端口、以及客户端抢占失败，都需要另外定位。
+
+因此不能用“配置值是 30/3”推导“90 秒后端口一定释放”。必须同时查看：
+
+```bash
+sudo sshd -T | grep -E '^(clientaliveinterval|clientalivecountmax|tcpkeepalive)'
+sudo ss -lntp
+sudo ss -tan state close-wait
+ssh -vvv -o ConnectTimeout=10 DEVICE_ALIAS true
+```
+
+仓库提供的 `ops/ssh/check-reverse-tunnels.sh` 可把这几类只读证据放在同一份带时间戳的输出中。它发现异常后仍应先定位准确监听进程和服务日志，不能按名称批量杀 sshd。
+
 ## 部署前准备
 
 在设备和 hub 上分别确认：
@@ -102,6 +117,8 @@ sudo lsof -nP -iTCP -sTCP:LISTEN
 ```
 
 验收必须记录别名、端口、返回的 hostname/user、安装的 unit 名、备份位置和恢复耗时。配置 Tailscale 备用入口时，还要单独验证备用别名，确保它没有经过反向隧道。
+
+监听端口缺失与 SSH 登录失败是两个不同结论：前者说明隧道没有落地，后者还可能是认证、主机密钥或目标 sshd 问题。任意一个失败都不能把该设备标记为“已覆盖”。
 
 ## 回滚
 

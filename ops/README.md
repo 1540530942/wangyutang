@@ -12,3 +12,5 @@
 6. 通过语法检查后才启用或 reload。
 
 任何 `.example` 文件都不应未经编辑直接安装到生产系统。
+
+`ssh/check-reverse-tunnels.sh` 是只读诊断脚本，可以直接运行；参数必须显式给出为 `别名:端口`。它不会 reload、restart、kill 或修改配置。

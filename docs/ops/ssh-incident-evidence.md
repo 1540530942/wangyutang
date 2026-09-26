@@ -33,6 +33,14 @@ sudo lsof -nP -iTCP -sTCP:LISTEN
 ssh -vvv DEVICE_ALIAS
 ```
 
+若同时维护多台设备，优先一次性执行只读检查，避免在不同时间点观察到不同现场：
+
+```bash
+bash ops/ssh/check-reverse-tunnels.sh \
+  wsl-device:22022 spark-device:22023 pi-device:22024 \
+  | tee "reverse-tunnels-$(date +%Y%m%d-%H%M%S).log"
+```
+
 在设备端保存：
 
 ```bash
@@ -49,6 +57,8 @@ ip -brief address
 - `Host key verification failed`：核验预期密钥和 `HostKeyAlias`，不要清空全部 `known_hosts`。
 - `remote port forwarding failed`：hub 端口被占用；先定位准确所有者。
 - TCP 已建立但 banner 超时：优先怀疑半死反向隧道或卡住的 sshd 子进程。
+- `Connection refused` 且目标回环端口没有监听：客户端隧道未建立或已经退出，不是登录密钥问题。
+- 端口正在监听但 `hostname` 与别名预期不符：端口映射或隧道身份串线，不能继续按该别名运维。
 
 一次普通重试成功不能证明别名有问题，也不能证明问题已经修复。只有同一时段的两份调试日志才适合比较。
 
